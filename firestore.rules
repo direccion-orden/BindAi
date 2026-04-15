@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Reglas para la colección 'anticipos'
+    match /anticipos/{anticipoId} {
+      // Solo permite lectura y escritura si el usuario:
+      // 1. Inició sesión existosamente.
+      // 2. Su correo termina en @ordendelascosas.com
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
+    
+    // Deniega el acceso a todo lo demás por seguridad
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

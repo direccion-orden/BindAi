@@ -112,8 +112,8 @@ export async function getClientDocuments(clientId: string): Promise<ErpDocument[
       });
     }
 
-    // Obtener Órdenes (Pedidos) - Permitimos Status 0 y 1 para abarcar órdenes con anticipo previo
-    const resOrders = await fetch(`${API_BASE}/Orders?$filter=ClientID eq guid'${clientId}' and (Status eq 1 or Status eq 0)`, {
+    // Obtener Órdenes (Pedidos) - Permitimos Status 0 (Activo)
+    const resOrders = await fetch(`${API_BASE}/Orders?$filter=ClientID eq guid'${clientId}' and Status eq 0`, {
       headers: getHeaders()
     });
 
@@ -238,9 +238,9 @@ export async function getClientAccountStatement(
         }
       }
 
-      // 2. Pedidos (Orders) — solo activos o pendientes (Status eq 1 or Status eq 0)
+      // 2. Pedidos (Orders) — solo activos (Status eq 0)
       const resOrders = await fetch(
-        `${API_BASE}/Orders?$filter=ClientID eq guid'${clientId}' and (Status eq 1 or Status eq 0)`,
+        `${API_BASE}/Orders?$filter=ClientID eq guid'${clientId}' and Status eq 0`,
         { headers: getHeaders() }
       );
       if (resOrders.ok) {

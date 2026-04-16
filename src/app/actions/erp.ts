@@ -188,6 +188,19 @@ export async function getClientAccountStatement(
     return '';
   };
 
+  // 1. Extraer todas las aplicaciones hechas desde nuestra plataforma
+  // Esto nos permite saber qué parte de los "Pagos" en Bind proviene de un Anticipo.
+  const appliedFromAnticipos: Record<string, number> = {};
+  for (const ant of anticipos) {
+    if (ant.applications) {
+      for (const app of ant.applications) {
+        if (app.erpDocumentId) {
+          appliedFromAnticipos[app.erpDocumentId] = (appliedFromAnticipos[app.erpDocumentId] || 0) + (app.amount || 0);
+        }
+      }
+    }
+  }
+
   if (!process.env.BIND_ERP_API_KEY) {
     // Mock data para desarrollo
     lines.push(
@@ -198,7 +211,7 @@ export async function getClientAccountStatement(
     );
   } else {
     try {
-      // 1. Facturas y Remisiones — todos los estatus excepto canceladas (Status ne 2)
+      // 2. Facturas y Remisiones — todos los estatus excepto canceladas (Status ne 2)
       const resInvoices = await fetch(
         `${API_BASE}/Invoices?$filter=ClientID eq guid'${clientId}' and Status ne 2`,
         { headers: getHeaders() }
@@ -223,22 +236,41 @@ export async function getClientAccountStatement(
             runningBalance: 0
           });
 
-          // Línea de abono (pagos ya aplicados en Bind)
+          // Analizar Pagos y separar Pagos Directos de Amortizaciones Locales
           if (paymentsApplied > 0.01) {
-            lines.push({
-              date: extractDate(doc.Date || doc.CreatedDate),
-              type: 'Payment',
-              number: `PAG-${number}`,
-              description: `Pagos aplicados a ${number}`,
-              cargo: 0,
-              abono: paymentsApplied,
-              runningBalance: 0
-            });
+            const antAppliedHere = appliedFromAnticipos[doc.ID] || 0;
+            const directPayment = Math.max(0, paymentsApplied - antAppliedHere);
+
+            // Si hay pago directo con dinero nuevo (no anticipo), se crea la línea de Pago Normal y Suma Abono
+            if (directPayment > 0.01) {
+              lines.push({
+                date: extractDate(doc.Date || doc.CreatedDate),
+                type: 'Payment',
+                number: `PAG-${number}`,
+                description: `Pagos aplicados a ${number}`,
+                cargo: 0,
+                abono: directPayment,
+                runningBalance: 0
+              });
+            }
+
+            // Si hubo amortización mediante anticipo nuestro, agregamos línea informativa (NO AFECTA SALDO, NO ABONO)
+            if (antAppliedHere > 0.01) {
+              lines.push({
+                date: extractDate(doc.Date || doc.CreatedDate),
+                type: 'Anticipo', // Estética
+                number: `AMORT-${number}`,
+                description: `(Amortizado con Anticipos por $${antAppliedHere.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})})`,
+                cargo: 0, // CERO PARA NO INFLAR SALDOS
+                abono: 0, // CERO PARA NO INFLAR SALDOS
+                runningBalance: 0
+              });
+            }
           }
         }
       }
 
-      // 2. Pedidos (Orders) — solo activos (Status eq 0)
+      // 3. Pedidos (Orders) — solo activos (Status eq 0)
       const resOrders = await fetch(
         `${API_BASE}/Orders?$filter=ClientID eq guid'${clientId}' and Status eq 0`,
         { headers: getHeaders() }
@@ -246,15 +278,30 @@ export async function getClientAccountStatement(
       if (resOrders.ok) {
         const data = await resOrders.json();
         for (const doc of data.value) {
+          const numStr = 'ORD-' + (doc.Number || doc.ID.substring(0, 6));
           lines.push({
             date: extractDate(doc.OrderDate || doc.Date || doc.CreatedDate),
             type: 'Order',
-            number: 'ORD-' + (doc.Number || doc.ID.substring(0, 6)),
+            number: numStr,
             description: 'Pedido',
             cargo: doc.Total || 0,
             abono: 0,
             runningBalance: 0
           });
+
+          // Analizar si en la DB un Anticipo tiene un "Pago Ciego" aplicado a este Order
+          const antAppliedHere = appliedFromAnticipos[doc.ID] || 0;
+          if (antAppliedHere > 0.01) {
+              lines.push({
+                date: extractDate(doc.OrderDate || doc.Date || doc.CreatedDate),
+                type: 'Anticipo',
+                number: `AMORT-${numStr}`,
+                description: `(Amortizado con Anticipo por $${antAppliedHere.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})})`,
+                cargo: 0,
+                abono: 0,
+                runningBalance: 0
+              });
+          }
         }
       }
     } catch (error) {
@@ -267,7 +314,7 @@ export async function getClientAccountStatement(
     const folio = ant.folio ? `ANT-${String(ant.folio).padStart(4, '0')}` : `ANT-${ant.id?.substring(0, 5).toUpperCase()}`;
     const date = extractDate(ant.receivedAt) || extractDate(ant.createdAt);
 
-    // El anticipo como abono (dinero a favor del cliente)
+    // El anticipo ORIGINAL como abono (dinero a favor del cliente)
     lines.push({
       date,
       type: 'Anticipo',

@@ -341,8 +341,16 @@ export default function EstadoCuentaPage() {
           else doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
           doc.text(text, cx + colWidths[i] - 2, y + 4.5, { align: "right" });
         } else {
-          doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
-          if (i === 0) doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]); // date muted
+          if (i === 0) {
+             doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]); // date muted
+             doc.setFont("helvetica", "normal");
+          } else if (i === 3 && line.description.includes('(Amortizado')) {
+             doc.setTextColor(46, 125, 50); // Muted green (rgb 46, 125, 50)
+             doc.setFont("helvetica", "italic");
+          } else {
+             doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+             doc.setFont("helvetica", "normal");
+          }
           doc.text(text, cx, y + 4.5);
         }
         cx += colWidths[i];
@@ -605,7 +613,7 @@ export default function EstadoCuentaPage() {
                         <TableCell className="font-medium text-sm whitespace-nowrap">
                           {line.number}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[300px] truncate">
+                        <TableCell className={`text-sm max-w-[300px] truncate ${line.description.includes('(Amortizado') ? 'text-green-600 dark:text-green-500 font-medium italic' : 'text-muted-foreground'}`}>
                           {line.description}
                         </TableCell>
                         <TableCell className="text-right font-medium text-foreground">

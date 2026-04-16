@@ -1,0 +1,259 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
+import { useAuth } from "@/context/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Loader2, Calculator } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+const DENOMINATIONS = [
+  { value: 500, label: "Billetes de $500" },
+  { value: 200, label: "Billetes de $200" },
+  { value: 100, label: "Billetes de $100" },
+  { value: 50, label: "Billetes de $50" },
+  { value: 20, label: "Billetes de $20" },
+  { value: 10, label: "Monedas de $10" },
+  { value: 5, label: "Monedas de $5" },
+  { value: 2, label: "Monedas de $2" },
+  { value: 1, label: "Monedas de $1" },
+  { value: 0.5, label: "Monedas de 50¢" },
+];
+
+export function CerrarTurnoModal({ 
+  isOpen, 
+  onClose, 
+  session, 
+  transactions,
+  onClosed 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void;
+  session: any;
+  transactions: any[];
+  onClosed: () => void;
+}) {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(1);
+  const [cardSales, setCardSales] = useState("");
+  
+  // Bind Sales
+  const [bindSales, setBindSales] = useState(0);
+  const [fetchingBind, setFetchingBind] = useState(false);
+
+  // Denomination counts
+  const [counts, setCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    async function fetchBindSales() {
+      if (!isOpen || !session?.openedAt) return;
+      setFetchingBind(true);
+      try {
+        const openedAtIso = new Date(session.openedAt.seconds * 1000).toISOString();
+        const res = await fetch(`/api/erp/sales-summary?startIso=${openedAtIso}`);
+        if (res.ok) {
+          const data = await res.json();
+          setBindSales(data.totalSales || 0);
+        }
+      } catch (error) {
+        console.error("Bind fetching error", error);
+      } finally {
+        setFetchingBind(false);
+      }
+    }
+    fetchBindSales();
+  }, [isOpen, session]);
+
+  // Derived financial computations
+  const totalFondo = session?.initialFloat || 0;
+  const totalIngresosManuales = transactions.filter(t => t.type === "INCOME").reduce((acc, t) => acc + t.amount, 0);
+  const totalRetirosManuales = transactions.filter(t => t.type === "EXPENSE").reduce((acc, t) => acc + t.amount, 0);
+
+  const cardVouchers = parseFloat(cardSales) || 0;
+  const estimatedCashSales = Math.max(0, bindSales - cardVouchers);
+
+  const expectedCash = totalFondo + totalIngresosManuales - totalRetirosManuales + estimatedCashSales;
+
+  // Real physical counted cash
+  const countedCash = DENOMINATIONS.reduce((acc, denom) => {
+    const qty = counts[denom.value.toString()] || 0;
+    return acc + (qty * denom.value);
+  }, 0);
+
+  const discrepancy = countedCash - expectedCash; // positive = sobrante, negative = faltante
+
+  const handleCountChange = (valStr: string, qtyStr: string) => {
+    const qty = parseInt(qtyStr, 10) || 0;
+    setCounts(prev => ({ ...prev, [valStr]: Math.max(0, qty) }));
+  };
+
+  const handleCloseShift = async () => {
+    if (!confirm("Atención: El arqueo final será registrado y el turno cerrado. Los descuadres no podrán modificarse. ¿Confirmas el cierre?")) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const sessionRef = doc(db, "cash_sessions", session.id);
+      await updateDoc(sessionRef, {
+        status: "closed",
+        closedAt: serverTimestamp(),
+        closedByEmail: user?.email,
+        closedByUid: user?.uid,
+        bindTotalSales: bindSales,
+        cardTotalSales: cardVouchers,
+        expectedCash: expectedCash,
+        countedCash: countedCash,
+        discrepancy: discrepancy,
+        closingDenominations: counts
+      });
+      onClosed();
+    } catch (error) {
+      console.error(error);
+      alert("Error al cerrar el turno");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fmt = (val: number) => val.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">Arqueo y Cierre de Turno</DialogTitle>
+          <DialogDescription>
+            Concilia el efectivo real en la caja para finalizar el turno operativo de hoy.
+          </DialogDescription>
+        </DialogHeader>
+
+        {step === 1 && (
+          <div className="space-y-6 py-4">
+            <div className="bg-muted/50 p-4 rounded-lg flex flex-col sm:flex-row gap-4 items-center justify-between border">
+               <div>
+                 <p className="text-sm text-muted-foreground">Ventas Totales en Bind ERP (Desde apertura)</p>
+                 <div className="flex items-center gap-2">
+                    {fetchingBind ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+                    <p className="text-2xl font-bold text-foreground">{fmt(bindSales)}</p>
+                 </div>
+               </div>
+               <div className="text-center sm:text-right">
+                 <p className="text-xs text-muted-foreground mb-1">Para aislar el efectivo,<br/> ingresa el total cobrado por terminal:</p>
+                 <div className="flex items-center gap-2">
+                    <span className="text-lg font-medium text-muted-foreground">-</span>
+                    <Input 
+                      type="number" 
+                      placeholder="Total Vouchers"
+                      value={cardSales}
+                      onChange={(e) => setCardSales(e.target.value)}
+                      className="w-32 text-right"
+                    />
+                 </div>
+               </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-4 border rounded-lg bg-card">
+               <div>
+                  <p className="text-xs text-muted-foreground uppercase">Fondo</p>
+                  <p className="font-semibold text-primary">{fmt(totalFondo)}</p>
+               </div>
+               <div>
+                  <p className="text-xs text-muted-foreground uppercase">+ Ingresos Manuales</p>
+                  <p className="font-semibold text-green-600">{fmt(totalIngresosManuales)}</p>
+               </div>
+               <div>
+                  <p className="text-xs text-muted-foreground uppercase">- Retiros Manuales</p>
+                  <p className="font-semibold text-red-600">{fmt(totalRetirosManuales)}</p>
+               </div>
+               <div>
+                  <p className="text-xs text-muted-foreground uppercase">+ Efectivo x Ventas</p>
+                  <p className="font-semibold text-green-600">{fmt(estimatedCashSales)}</p>
+               </div>
+            </div>
+
+            <div className="flex items-center justify-between bg-primary/10 p-5 rounded-lg border border-primary/20">
+               <div>
+                 <h4 className="text-lg font-bold text-primary">Efectivo Esperado en Caja</h4>
+                 <p className="text-sm text-primary/80">Esta cantidad es lo que el sistema espera matemáticamente</p>
+               </div>
+               <div className="text-3xl font-black text-primary">
+                 {fmt(expectedCash)}
+               </div>
+            </div>
+            
+            <DialogFooter>
+               <Button onClick={() => setStep(2)}>Siguiente: Conteo Ciego</Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-6 py-4">
+            <h3 className="font-bold border-b pb-2">Arqueo Físico de Billetes y Monedas</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 pl-2">
+              {DENOMINATIONS.map((denom) => {
+                const qty = counts[denom.value.toString()] || '';
+                const subtotal = (Number(qty) * denom.value) || 0;
+                return (
+                  <div key={denom.value} className="flex items-center gap-3">
+                    <div className="w-32 text-sm font-medium text-muted-foreground whitespace-nowrap">
+                      {denom.label}
+                    </div>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      className="w-20 h-8 text-center"
+                      value={qty}
+                      onChange={(e) => handleCountChange(denom.value.toString(), e.target.value)}
+                    />
+                    <div className="text-sm text-foreground font-medium w-20 text-right">
+                      {fmt(subtotal)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className={`p-5 rounded-lg border flex flex-col sm:flex-row items-center justify-between shadow-sm transition-colors ${Math.abs(discrepancy) > 0 ? 'bg-destructive/10 border-destructive/30' : 'bg-green-500/10 border-green-500/30'}`}>
+               <div className="text-center sm:text-left mb-4 sm:mb-0">
+                 <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Total Físico Contado</p>
+                 <p className="text-3xl font-black">{fmt(countedCash)}</p>
+               </div>
+               
+               <div className="text-center sm:text-right border-t sm:border-t-0 sm:border-l pt-4 sm:pt-0 sm:pl-6 border-foreground/10">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Diferencia / Descuadre</p>
+                  <p className={`text-2xl font-bold ${discrepancy === 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    {discrepancy === 0 ? '¡CAJA CUADRADA!' : `${discrepancy > 0 ? 'SOBRANTE +' : 'FALTANTE '}${fmt(discrepancy)}`}
+                  </p>
+               </div>
+            </div>
+
+            <DialogFooter className="flex items-center sm:justify-between w-full">
+               <Button variant="ghost" onClick={() => setStep(1)} disabled={loading}>
+                 Volver
+               </Button>
+               <Button variant={discrepancy === 0 ? 'default' : 'destructive'} onClick={handleCloseShift} disabled={loading} className="gap-2">
+                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                 Confirmar Arqueo y Cerrar Caja
+               </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+      </DialogContent>
+    </Dialog>
+  );
+}

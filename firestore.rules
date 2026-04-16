@@ -8,6 +8,15 @@ service cloud.firestore {
       // 2. Su correo termina en @ordendelascosas.com
       allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
     }
+
+    // Reglas para el nuevo módulo de Control de Caja
+    match /cash_sessions/{sessionId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
+    
+    match /cash_transactions/{txId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
     
     // Deniega el acceso a todo lo demás por seguridad
     match /{document=**} {

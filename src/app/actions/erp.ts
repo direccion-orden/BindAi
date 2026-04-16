@@ -238,9 +238,9 @@ export async function getClientAccountStatement(
         }
       }
 
-      // 2. Pedidos (Orders) — todos excepto cancelados (Status ne 2)
+      // 2. Pedidos (Orders) — solo activos o pendientes (Status eq 1 or Status eq 0)
       const resOrders = await fetch(
-        `${API_BASE}/Orders?$filter=ClientID eq guid'${clientId}' and Status ne 2`,
+        `${API_BASE}/Orders?$filter=ClientID eq guid'${clientId}' and (Status eq 1 or Status eq 0)`,
         { headers: getHeaders() }
       );
       if (resOrders.ok) {

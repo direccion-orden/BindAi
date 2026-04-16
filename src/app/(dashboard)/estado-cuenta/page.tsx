@@ -158,6 +158,12 @@ export default function EstadoCuentaPage() {
     }
   );
 
+  const filteredSummary = {
+    totalCargos: filteredLines.reduce((acc, line) => acc + (line.cargo || 0), 0),
+    totalAbonos: filteredLines.reduce((acc, line) => acc + (line.abono || 0), 0),
+    get saldoTotal() { return this.totalCargos - this.totalAbonos; }
+  };
+
   // Convert SVG logo to PNG data URL for jsPDF
   const loadLogoAsDataUrl = (): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -241,9 +247,9 @@ export default function EstadoCuentaPage() {
     const boxW = (pageWidth - margin * 2 - 10) / 3;
     const boxH = 14;
     const summaryData = [
-      { label: "Total Cargos", value: formatCurrency(statement.summary.totalCargos), borderColor: TAUPE_MID, textColor: TAUPE_DARK },
-      { label: "Total Abonos", value: formatCurrency(statement.summary.totalAbonos), borderColor: TAUPE_MID, textColor: TAUPE_DARK },
-      { label: "Saldo Total", value: formatCurrency(statement.summary.saldoTotal), borderColor: ACCENT, textColor: ACCENT },
+      { label: "Total Cargos", value: formatCurrency(filteredSummary.totalCargos), borderColor: TAUPE_MID, textColor: TAUPE_DARK },
+      { label: "Total Abonos", value: formatCurrency(filteredSummary.totalAbonos), borderColor: TAUPE_MID, textColor: TAUPE_DARK },
+      { label: "Saldo Total", value: formatCurrency(filteredSummary.saldoTotal), borderColor: ACCENT, textColor: ACCENT },
     ];
 
     summaryData.forEach((item, i) => {
@@ -353,7 +359,7 @@ export default function EstadoCuentaPage() {
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
-    doc.text(`Saldo Total: ${formatCurrency(statement.summary.saldoTotal)}`, pageWidth - margin, y, { align: "right" });
+    doc.text(`Saldo Total: ${formatCurrency(filteredSummary.saldoTotal)}`, pageWidth - margin, y, { align: "right" });
 
     doc.save(`EdoCta_${statement.client.legalName.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`);
   };
@@ -446,7 +452,7 @@ export default function EstadoCuentaPage() {
                 </span>
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {formatCurrency(statement.summary.totalCargos)}
+                {formatCurrency(filteredSummary.totalCargos)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Pedidos + Remisiones + Facturas
@@ -462,7 +468,7 @@ export default function EstadoCuentaPage() {
                 </span>
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {formatCurrency(statement.summary.totalAbonos)}
+                {formatCurrency(filteredSummary.totalAbonos)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Pagos + Anticipos
@@ -480,7 +486,7 @@ export default function EstadoCuentaPage() {
                   </span>
                 </div>
                 <p className="text-3xl font-bold text-accent">
-                  {formatCurrency(statement.summary.saldoTotal)}
+                  {formatCurrency(filteredSummary.saldoTotal)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Cargos − Abonos
@@ -631,13 +637,13 @@ export default function EstadoCuentaPage() {
                         Totales
                       </TableCell>
                       <TableCell className="text-right text-foreground">
-                        {formatCurrency(statement.summary.totalCargos)}
+                        {formatCurrency(filteredSummary.totalCargos)}
                       </TableCell>
                       <TableCell className="text-right text-secondary">
-                        {formatCurrency(statement.summary.totalAbonos)}
+                        {formatCurrency(filteredSummary.totalAbonos)}
                       </TableCell>
                       <TableCell className="text-right text-accent text-lg">
-                        {formatCurrency(statement.summary.saldoTotal)}
+                        {formatCurrency(filteredSummary.saldoTotal)}
                       </TableCell>
                     </TableRow>
                   </TableBody>

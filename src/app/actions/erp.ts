@@ -341,7 +341,8 @@ export async function getClientAccountStatement(
   for (const line of lines) {
     totalCargos += line.cargo;
     totalAbonos += line.abono;
-    runningBalance += line.cargo - line.abono;
+    // Saldo a favor del cliente: Abonos (lo que paga) - Cargos (lo que debe)
+    runningBalance += line.abono - line.cargo;
     line.runningBalance = runningBalance;
   }
 

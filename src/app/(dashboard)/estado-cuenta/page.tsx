@@ -161,7 +161,7 @@ export default function EstadoCuentaPage() {
   const filteredSummary = {
     totalCargos: filteredLines.reduce((acc, line) => acc + (line.cargo || 0), 0),
     totalAbonos: filteredLines.reduce((acc, line) => acc + (line.abono || 0), 0),
-    get saldoTotal() { return this.totalCargos - this.totalAbonos; }
+    get saldoTotal() { return this.totalAbonos - this.totalCargos; }
   };
 
   // Convert SVG logo to PNG data URL for jsPDF
@@ -497,7 +497,7 @@ export default function EstadoCuentaPage() {
                   {formatCurrency(filteredSummary.saldoTotal)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Cargos − Abonos
+                  Abonos − Cargos
                 </p>
               </div>
             </div>

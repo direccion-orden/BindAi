@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { collection, query, where, getDocs, limit, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Plus, Banknote } from "lucide-react";
+import { Loader2, Plus, Banknote, Download, Search, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AbrirTurnoForm } from "@/components/caja/AbrirTurnoForm";
 import { TransaccionCajaModal } from "@/components/caja/TransaccionCajaModal";
 import { CerrarTurnoModal } from "@/components/caja/CerrarTurnoModal";
@@ -15,6 +16,21 @@ export default function CajaPage() {
   const [activeSession, setActiveSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isOpening, setIsOpening] = useState(false);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'operacion' | 'reportes'>('operacion');
+
+  // Reportes State
+  const [reportStartDate, setReportStartDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA');
+  });
+  const [reportEndDate, setReportEndDate] = useState(() => {
+    return new Date().toLocaleDateString('en-CA');
+  });
+  const [historySessions, setHistorySessions] = useState<any[]>([]);
+  const [historyTransactions, setHistoryTransactions] = useState<any[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
 
   useEffect(() => {
     async function fetchSession() {
@@ -40,45 +56,117 @@ export default function CajaPage() {
     fetchSession();
   }, [user]);
 
-  useEffect(() => {
-    async function fetchClosedSessions() {
-      if (!user) return;
-      try {
-        const q = query(
-          collection(db, "cash_sessions"), 
-          where("status", "==", "closed")
-        );
-        const snapshot = await getDocs(q);
-        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-        docs.sort((a, b) => (b.closedAt?.seconds || 0) - (a.closedAt?.seconds || 0));
-        setClosedSessions(docs.slice(0, 10));
-      } catch (error) {
-        console.error("Error fetching history:", error);
-      }
-    }
-    fetchClosedSessions();
-  }, [user, activeSession]);
-
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [erpCashSales, setErpCashSales] = useState(0);
+  const [isFetchingErp, setIsFetchingErp] = useState(false);
+  
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
-  const [closedSessions, setClosedSessions] = useState<any[]>([]);
 
   const fetchTransactions = async (sessionId: string) => {
-
     const q = query(collection(db, "cash_transactions"), where("sessionId", "==", sessionId));
     const snapshot = await getDocs(q);
-    // Sort client-side if no index is available yet
     const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
     docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
     setTransactions(docs);
   };
 
+  const fetchErpCashSales = async (openedAt: any) => {
+    if (!openedAt) return;
+    setIsFetchingErp(true);
+    try {
+      const date = new Date(openedAt.seconds * 1000);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      const res = await fetch(`/api/erp/cash-sales?date=${dateStr}`);
+      if (res.ok) {
+         const data = await res.json();
+         setErpCashSales(data.totalCashSales || 0);
+      }
+    } catch (e) {
+      console.error("Failed to fetch ERP Cash Sales", e);
+    } finally {
+      setIsFetchingErp(false);
+    }
+  }
+
   useEffect(() => {
     if (activeSession?.id) {
       fetchTransactions(activeSession.id);
+      fetchErpCashSales(activeSession.openedAt);
     }
-  }, [activeSession?.id]);
+  }, [activeSession?.id, activeSession?.openedAt]);
+
+  const fetchReportData = async () => {
+    if (!user) return;
+    setLoadingReport(true);
+    try {
+      const start = new Date(reportStartDate + "T00:00:00");
+      const end = new Date(reportEndDate + "T23:59:59.999");
+      
+      const qSess = query(
+        collection(db, "cash_sessions"),
+        where("closedAt", ">=", Timestamp.fromDate(start)),
+        where("closedAt", "<=", Timestamp.fromDate(end))
+      );
+      const snapSess = await getDocs(qSess);
+      let docsSess = snapSess.docs.map(d => ({id: d.id, ...d.data()})) as any[];
+      docsSess = docsSess.filter(s => s.status === 'closed');
+      docsSess.sort((a,b) => (b.closedAt?.seconds || 0) - (a.closedAt?.seconds || 0));
+      setHistorySessions(docsSess);
+      
+      const qTx = query(
+        collection(db, "cash_transactions"),
+        where("createdAt", ">=", Timestamp.fromDate(start)),
+        where("createdAt", "<=", Timestamp.fromDate(end))
+      );
+      const snapTx = await getDocs(qTx);
+      const docsTx = snapTx.docs.map(d => ({id: d.id, ...d.data()})) as any[];
+      docsTx.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setHistoryTransactions(docsTx);
+      
+    } catch (error) {
+      console.error("Error fetching report:", error);
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'reportes') {
+      fetchReportData();
+    }
+  }, [activeTab]);
+
+  const handleExportCSV = () => {
+    const headers = ["Fecha", "Hora", "ID Turno", "Tipo", "Clasificacion", "Persona", "Referencia", "Monto"];
+    
+    const rows = historyTransactions.map(tx => {
+       const date = tx.createdAt?.seconds ? new Date(tx.createdAt.seconds * 1000) : new Date();
+       return [
+          date.toLocaleDateString('es-MX'),
+          date.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'}),
+          tx.sessionId,
+          tx.type,
+          tx.category,
+          `"${(tx.person || '').replace(/"/g, '""')}"`,
+          `"${(tx.reference || '').replace(/"/g, '""')}"`,
+          tx.amount
+       ].join(',');
+    });
+    
+    const csvContent = "\uFEFF" + headers.join(',') + "\n" + rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Reporte_Caja_${reportStartDate}_al_${reportEndDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   if (loading) {
     return (
@@ -92,6 +180,7 @@ export default function CajaPage() {
   const totalFondo = activeSession?.initialFloat || 0;
   const totalIngresos = transactions.filter(t => t.type === "INCOME").reduce((acc, t) => acc + t.amount, 0);
   const totalRetiros = transactions.filter(t => t.type === "EXPENSE").reduce((acc, t) => acc + t.amount, 0);
+  const expectedCash = totalFondo + totalIngresos + erpCashSales - totalRetiros;
 
   const handleTxSuccess = () => {
     if (activeSession) fetchTransactions(activeSession.id);
@@ -99,182 +188,291 @@ export default function CajaPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Control de Caja</h1>
-        <p className="text-muted-foreground">
-          Gestión del fondo, arqueos de ingresos por venta y retiros.
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Control de Caja</h1>
+          <p className="text-muted-foreground">
+            Gestión del fondo, arqueos de ingresos por venta y retiros.
+          </p>
+        </div>
+        
+        <div className="flex bg-muted p-1 rounded-lg w-fit">
+          <button 
+            onClick={() => setActiveTab('operacion')} 
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'operacion' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            Operación Diaria
+          </button>
+          <button 
+            onClick={() => setActiveTab('reportes')} 
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'reportes' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            Reportes e Historial
+          </button>
+        </div>
       </div>
 
-      {activeSession ? (
-        <div className="space-y-6 animate-in fade-in">
-          <div className="bg-card border rounded-lg p-6 shadow-sm flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-green-500 animate-pulse"></span>
-                Turno Abierto
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">Responsable: <span className="font-medium text-foreground">{activeSession.openedByEmail}</span></p>
-              <p className="text-xs text-muted-foreground mt-1">Apertura: {activeSession.openedAt?.seconds ? new Date(activeSession.openedAt.seconds * 1000).toLocaleString('es-MX') : 'Reciente'}</p>
+      {activeTab === 'operacion' ? (
+        activeSession ? (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+            <div className="bg-card border rounded-lg p-6 shadow-sm flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-green-500 animate-pulse"></span>
+                  Turno Abierto
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">Responsable: <span className="font-medium text-foreground">{activeSession.openedByEmail}</span></p>
+                <p className="text-sm text-muted-foreground mt-1">Sucursal: <span className="font-medium text-foreground">{activeSession.locationName || 'Nacional'}</span></p>
+                <p className="text-xs text-muted-foreground mt-1">Apertura: {activeSession.openedAt?.seconds ? new Date(activeSession.openedAt.seconds * 1000).toLocaleString('es-MX') : 'Reciente'}</p>
+              </div>
+              <div className="text-right">
+                 <p className="text-sm text-muted-foreground">Fondo Inicial</p>
+                 <p className="text-3xl font-bold text-primary">
+                   {totalFondo.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                 </p>
+              </div>
             </div>
-            <div className="text-right">
-               <p className="text-sm text-muted-foreground">Fondo Inicial</p>
-               <p className="text-3xl font-bold text-primary">
-                 {totalFondo.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
-               </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+               <div className="bg-card border rounded-lg p-5 shadow-sm">
+                  <p className="text-sm text-muted-foreground whitespace-nowrap">Entradas Manuales</p>
+                  <p className="text-2xl font-bold text-foreground">
+                   + {totalIngresos.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                 </p>
+               </div>
+               <div className="bg-card border rounded-lg p-5 shadow-sm relative">
+                  <p className="text-sm text-muted-foreground flex justify-between whitespace-nowrap">Ventas Efectivo (Bind) {isFetchingErp && <Loader2 className="w-4 h-4 animate-spin text-primary"/>}</p>
+                  <p className="text-2xl font-bold text-foreground">
+                   + {erpCashSales.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                 </p>
+               </div>
+               <div className="bg-card border rounded-lg p-5 shadow-sm">
+                  <p className="text-sm text-muted-foreground whitespace-nowrap">Salidas / Retiros</p>
+                  <p className="text-2xl font-bold text-destructive">
+                   - {totalRetiros.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                 </p>
+               </div>
+               <div className="bg-primary/5 border border-primary/20 rounded-lg p-5 shadow-sm">
+                  <p className="text-sm text-primary font-semibold whitespace-nowrap">Esperado en Caja</p>
+                  <p className="text-2xl font-bold text-primary">
+                   = {expectedCash.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                 </p>
+               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div className="bg-card border rounded-lg p-5 shadow-sm">
-                <p className="text-sm text-muted-foreground">Entradas Manuales</p>
-                <p className="text-2xl font-bold text-foreground">
-                 {totalIngresos.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
-               </p>
-             </div>
-             <div className="bg-card border rounded-lg p-5 shadow-sm">
-                <p className="text-sm text-muted-foreground">Salidas (Gastos / Retiros)</p>
-                <p className="text-2xl font-bold text-destructive">
-                 - {totalRetiros.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
-               </p>
-             </div>
-          </div>
-
-          <div className="bg-card border rounded-lg shadow-sm overflow-hidden flex flex-col">
-            <div className="p-4 border-b flex items-center justify-between bg-muted/20">
-              <h3 className="font-semibold text-lg">Movimientos Físicos (Caja)</h3>
-              <div className="flex gap-2">
-                 <Button onClick={() => setIsTxModalOpen(true)} variant="secondary" size="sm" className="gap-1">
-                   <Plus className="h-4 w-4" /> Registrar Movimiento
+            <div className="bg-card border rounded-lg shadow-sm overflow-hidden flex flex-col">
+              <div className="p-4 border-b flex items-center justify-between bg-muted/20">
+                <h3 className="font-semibold text-lg">Movimientos Físicos (Caja)</h3>
+                <div className="flex gap-2">
+                   <Button onClick={() => setIsTxModalOpen(true)} variant="secondary" size="sm" className="gap-1">
+                     <Plus className="h-4 w-4" /> Registrar Movimiento
+                   </Button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                 <table className="w-full text-sm text-left">
+                    <thead className="bg-muted text-muted-foreground text-xs uppercase">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Hora</th>
+                        <th className="px-4 py-3 font-medium">Clasificación</th>
+                        <th className="px-4 py-3 font-medium">Persona</th>
+                        <th className="px-4 py-3 font-medium">Referencia</th>
+                        <th className="px-4 py-3 font-medium text-right">Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                       {transactions.length === 0 ? (
+                         <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No hay movimientos registrados en este turno.</td></tr>
+                       ) : (
+                         transactions.map(tx => (
+                           <tr key={tx.id} className="hover:bg-muted/50 transition-colors">
+                             <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                               {tx.createdAt?.seconds ? new Date(tx.createdAt.seconds * 1000).toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'}) : '...'}
+                             </td>
+                             <td className="px-4 py-3">
+                               <span className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide ${tx.type === 'INCOME' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'}`}>
+                                 {tx.category.replace(/_/g, ' ')}
+                               </span>
+                             </td>
+                             <td className="px-4 py-3 font-medium">{tx.person}</td>
+                             <td className="px-4 py-3 max-w-[200px] truncate" title={tx.reference}>{tx.reference || '-'}</td>
+                             <td className={`px-4 py-3 text-right font-medium ${tx.type === 'INCOME' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                               {tx.type === 'INCOME' ? '+' : '-'}{tx.amount.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                             </td>
+                           </tr>
+                         ))
+                       )}
+                    </tbody>
+                 </table>
+              </div>
+              <div className="p-4 bg-muted/20 border-t flex justify-end">
+                 <Button variant="default" size="lg" className="w-full sm:w-auto" onClick={() => setIsClosingModalOpen(true)}>
+                   Realizar Arqueo y Cerrar Turno
                  </Button>
               </div>
             </div>
-            <div className="overflow-x-auto">
-               <table className="w-full text-sm text-left">
-                  <thead className="bg-muted text-muted-foreground text-xs uppercase">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Hora</th>
-                      <th className="px-4 py-3 font-medium">Clasificación</th>
-                      <th className="px-4 py-3 font-medium">Persona</th>
-                      <th className="px-4 py-3 font-medium">Referencia</th>
-                      <th className="px-4 py-3 font-medium text-right">Monto</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                     {transactions.length === 0 ? (
-                       <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No hay movimientos registrados en este turno.</td></tr>
-                     ) : (
-                       transactions.map(tx => (
-                         <tr key={tx.id} className="hover:bg-muted/50 transition-colors">
-                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                             {tx.createdAt?.seconds ? new Date(tx.createdAt.seconds * 1000).toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'}) : '...'}
+            
+            <TransaccionCajaModal 
+              isOpen={isTxModalOpen} 
+              onClose={() => setIsTxModalOpen(false)} 
+              sessionId={activeSession.id}
+              onSuccess={handleTxSuccess}
+            />
+
+            <CerrarTurnoModal
+              isOpen={isClosingModalOpen}
+              onClose={() => setIsClosingModalOpen(false)}
+              session={activeSession}
+              transactions={transactions}
+              onClosed={() => {
+                 setIsClosingModalOpen(false);
+                 setActiveSession(null);
+              }}
+            />
+          </div>
+        ) : isOpening ? (
+          <div className="bg-card border rounded-lg p-6 shadow-sm animate-in fade-in">
+             <AbrirTurnoForm 
+              onOpened={(session) => {
+                setActiveSession(session);
+                setIsOpening(false);
+              }} 
+              onCancel={() => setIsOpening(false)} 
+             />
+          </div>
+        ) : (
+          <div className="space-y-8 animate-in fade-in">
+            <div className="bg-card border rounded-lg p-12 flex flex-col items-center justify-center text-center space-y-5 shadow-sm">
+              <div className="p-4 bg-muted/50 rounded-full">
+                <Banknote className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="text-xl font-medium">Caja Cerrada</h3>
+                <p className="text-sm text-muted-foreground max-w-sm mt-2 mx-auto">
+                  No hay ningún turno activo. Inicia el turno de hoy declarando de forma exacta el fondo inicial con el que comienza la caja.
+                </p>
+              </div>
+              <Button onClick={() => setIsOpening(true)} size="lg" className="gap-2 mt-4 text-base font-semibold">
+                <Plus className="h-5 w-5" />
+                Abrir Nuevo Turno
+              </Button>
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+          {/* Header Reportes */}
+          <div className="bg-card border rounded-lg p-4 shadow-sm flex flex-col sm:flex-row sm:items-end gap-4">
+             <div className="flex-1 flex gap-4">
+                <div className="space-y-1.5 flex-1 max-w-[200px]">
+                  <label className="text-xs font-semibold text-muted-foreground">Fecha Inicial</label>
+                  <Input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} />
+                </div>
+                <div className="space-y-1.5 flex-1 max-w-[200px]">
+                  <label className="text-xs font-semibold text-muted-foreground">Fecha Final</label>
+                  <Input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} />
+                </div>
+             </div>
+             <div className="flex gap-2">
+                <Button variant="outline" onClick={fetchReportData} disabled={loadingReport} className="gap-2">
+                   {loadingReport ? <Loader2 className="w-4 h-4 animate-spin"/> : <Search className="w-4 h-4" />}
+                   Consultar
+                </Button>
+                <Button variant="default" onClick={handleExportCSV} disabled={historyTransactions.length === 0} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                   <Download className="w-4 h-4" /> Exportar CSV
+                </Button>
+             </div>
+          </div>
+
+          <div className="flex flex-col gap-8 mt-6">
+             {/* Listado de Cierres (Historial de Turnos) */}
+             <div className="space-y-4">
+               <h3 className="text-lg font-semibold flex items-center gap-2 text-muted-foreground">
+                 <RefreshCcw className="w-5 h-5"/> Arqueos / Cierres
+               </h3>
+               <div className="bg-card border rounded-lg shadow-sm overflow-hidden flex flex-col">
+                 <div className="overflow-x-auto">
+                   <table className="w-full text-sm text-left">
+                     <thead className="bg-muted text-muted-foreground text-xs uppercase">
+                       <tr>
+                         <th className="px-4 py-3 font-medium">Cierre</th>
+                         <th className="px-4 py-3 font-medium">Efectivo Real</th>
+                         <th className="px-4 py-3 font-medium text-right">Descuadre</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y">
+                       {loadingReport ? (
+                         <tr><td colSpan={3} className="px-4 py-12 text-center text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mx-auto"/></td></tr>
+                       ) : historySessions.length === 0 ? (
+                         <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">No se encontraron cierres en estas fechas.</td></tr>
+                       ) : historySessions.map(sess => (
+                         <tr key={sess.id} className="hover:bg-muted/50 transition-colors">
+                           <td className="px-4 py-3">
+                             <div className="font-medium whitespace-nowrap">{sess.closedAt?.seconds ? new Date(sess.closedAt.seconds * 1000).toLocaleString('es-MX', {dateStyle:'short', timeStyle:'short'}) : '...'}</div>
+                             <div className="text-xs text-muted-foreground">{sess.closedByEmail}</div>
                            </td>
                            <td className="px-4 py-3">
-                             <span className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide ${tx.type === 'INCOME' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'}`}>
-                               {tx.category.replace(/_/g, ' ')}
+                             {(sess.countedCash || 0).toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                           </td>
+                           <td className="px-4 py-3 text-right">
+                             <span className={`font-bold ${sess.discrepancy === 0 ? 'text-green-600' : 'text-destructive'}`}>
+                               {sess.discrepancy === 0 ? 'OK' : sess.discrepancy.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
                              </span>
                            </td>
-                           <td className="px-4 py-3 font-medium">{tx.person}</td>
-                           <td className="px-4 py-3 max-w-[200px] truncate" title={tx.reference}>{tx.reference || '-'}</td>
-                           <td className={`px-4 py-3 text-right font-medium ${tx.type === 'INCOME' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                             {tx.type === 'INCOME' ? '+' : '-'}{tx.amount.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
-                           </td>
                          </tr>
-                       ))
-                     )}
-                  </tbody>
-               </table>
-            </div>
-            <div className="p-4 bg-muted/20 border-t flex justify-end">
-               <Button variant="default" size="lg" className="w-full sm:w-auto" onClick={() => setIsClosingModalOpen(true)}>
-                 Realizar Arqueo y Cerrar Turno
-               </Button>
-            </div>
-          </div>
-          
-          <TransaccionCajaModal 
-            isOpen={isTxModalOpen} 
-            onClose={() => setIsTxModalOpen(false)} 
-            sessionId={activeSession.id}
-            onSuccess={handleTxSuccess}
-          />
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+               </div>
+             </div>
 
-          <CerrarTurnoModal
-            isOpen={isClosingModalOpen}
-            onClose={() => setIsClosingModalOpen(false)}
-            session={activeSession}
-            transactions={transactions}
-            onClosed={() => {
-               setIsClosingModalOpen(false);
-               setActiveSession(null); // Return to default page state
-            }}
-          />
-        </div>
-      ) : isOpening ? (
-        <div className="bg-card border rounded-lg p-6 shadow-sm">
-           <AbrirTurnoForm 
-            onOpened={(session) => {
-              setActiveSession(session);
-              setIsOpening(false);
-            }} 
-            onCancel={() => setIsOpening(false)} 
-           />
-        </div>
-      ) : (
-        <div className="space-y-8 animate-in fade-in">
-          <div className="bg-card border rounded-lg p-12 flex flex-col items-center justify-center text-center space-y-5 shadow-sm">
-            <div className="p-4 bg-muted/50 rounded-full">
-              <Banknote className="h-10 w-10 text-muted-foreground" />
-            </div>
-            <div>
-              <h3 className="text-xl font-medium">Caja Cerrada</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mt-2 mx-auto">
-                No hay ningún turno activo. Inicia el turno de hoy declarando de forma exacta el fondo inicial con el que comienza la caja.
-              </p>
-            </div>
-            <Button onClick={() => setIsOpening(true)} size="lg" className="gap-2 mt-4 text-base font-semibold">
-              <Plus className="h-5 w-5" />
-              Abrir Nuevo Turno
-            </Button>
+             {/* Tabulador de Movimientos */}
+             <div className="space-y-4">
+               <h3 className="text-lg font-semibold flex items-center gap-2 text-muted-foreground">
+                 <Banknote className="w-5 h-5"/> Todos los Movimientos
+               </h3>
+               <div className="bg-card border rounded-lg shadow-sm overflow-hidden flex flex-col">
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                       <thead className="bg-muted text-muted-foreground text-[10px] tracking-wider uppercase">
+                         <tr>
+                           <th className="px-4 py-3 font-medium">Fecha/Hora</th>
+                           <th className="px-4 py-3 font-medium">Tipo</th>
+                           <th className="px-4 py-3 font-medium text-right">Monto</th>
+                           <th className="px-4 py-3 font-medium">Referencia</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y relative">
+                          {loadingReport ? (
+                            <tr><td colSpan={4} className="px-4 py-12 text-center text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mx-auto"/></td></tr>
+                          ) : historyTransactions.length === 0 ? (
+                            <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No hay movimientos en este rango.</td></tr>
+                          ) : historyTransactions.map(tx => (
+                            <tr key={tx.id} className="hover:bg-muted/50 transition-colors">
+                              <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">
+                                {tx.createdAt?.seconds ? new Date(tx.createdAt.seconds * 1000).toLocaleString('es-MX', {dateStyle:'short', timeStyle:'short'}) : '...'}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 rounded-full text-[9px] font-semibold uppercase ${tx.type === 'INCOME' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'}`}>
+                                  {tx.category.replace(/_/g, ' ')}
+                                </span>
+                              </td>
+                              <td className={`px-4 py-3 text-right font-medium text-xs ${tx.type === 'INCOME' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {tx.type === 'INCOME' ? '+' : '-'}{tx.amount.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                              </td>
+                              <td className="px-4 py-3 text-xs max-w-[150px] truncate" title={`${tx.person || ''} ${tx.reference || ''}`}>
+                                <span className="font-medium mr-1">{tx.person}</span> 
+                                <span className="text-muted-foreground">{tx.reference}</span>
+                              </td>
+                            </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+               </div>
+             </div>
           </div>
-
-          {closedSessions.length > 0 && (
-            <div className="bg-card border rounded-lg shadow-sm overflow-hidden flex flex-col">
-              <div className="p-4 border-b flex items-center justify-between bg-muted/20">
-                <h3 className="font-semibold text-lg text-muted-foreground">Historial de Turnos</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-muted text-muted-foreground text-xs uppercase">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Cierre</th>
-                      <th className="px-4 py-3 font-medium">Responsable</th>
-                      <th className="px-4 py-3 font-medium text-right">Efectivo Real</th>
-                      <th className="px-4 py-3 font-medium text-right">Descuadre</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {closedSessions.map(sess => (
-                      <tr key={sess.id} className="hover:bg-muted/50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap font-medium">
-                          {sess.closedAt?.seconds ? new Date(sess.closedAt.seconds * 1000).toLocaleString('es-MX', {dateStyle: 'medium', timeStyle: 'short'}) : '...'}
-                        </td>
-                        <td className="px-4 py-3">{sess.closedByEmail}</td>
-                        <td className="px-4 py-3 text-right">
-                          {(sess.countedCash || 0).toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={`font-bold ${sess.discrepancy === 0 ? 'text-green-600' : 'text-destructive'}`}>
-                            {sess.discrepancy === 0 ? 'OK' : sess.discrepancy.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

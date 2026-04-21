@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, DollarSign } from "lucide-react";
+import { Loader2, DollarSign, MapPin } from "lucide-react";
 
 const DENOMINATIONS = [
+  { value: 1000, label: "Billetes de $1000" },
   { value: 500, label: "Billetes de $500" },
   { value: 200, label: "Billetes de $200" },
   { value: 100, label: "Billetes de $100" },
@@ -25,6 +26,27 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
   const { user } = useAuth();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
+  
+  // Locations state
+  const [locations, setLocations] = useState<Array<{id: string, name: string}>>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState("");
+  const [loadingLocs, setLoadingLocs] = useState(false);
+
+  useEffect(() => {
+    async function fetchLocations() {
+      setLoadingLocs(true);
+      try {
+        const res = await fetch('/api/erp/locations');
+        const data = await res.json();
+        if (Array.isArray(data)) setLocations(data);
+      } catch (e) {
+        console.error("Error cargando sucursales:", e);
+      } finally {
+        setLoadingLocs(false);
+      }
+    }
+    fetchLocations();
+  }, []);
 
   const handleCountChange = (valStr: string, qtyStr: string) => {
     const qty = parseInt(qtyStr, 10) || 0;
@@ -39,12 +61,19 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
   };
 
   const handleOpenShift = async () => {
+    if (!selectedLocationId) {
+       alert("Por favor selecciona la sucursal de donde estás abriendo la caja.");
+       return;
+    }
+
     const total = calculateTotal();
     if (total <= 0) {
         if (!confirm("El fondo inicial es $0.00. ¿Estás seguro de abrir la caja sin fondo?")) {
             return;
         }
     }
+
+    const locName = locations.find(l => l.id === selectedLocationId)?.name || "Desconocida";
 
     setLoading(true);
     try {
@@ -53,6 +82,8 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
         openedAt: serverTimestamp(),
         openedByEmail: user?.email || "Usuario desconocido",
         openedByUid: user?.uid || "anon",
+        locationId: selectedLocationId,
+        locationName: locName,
         initialFloat: total,
         openingDenominations: counts,
         expectedCash: total, // Al inicio, el esperado es solo el fondo
@@ -77,11 +108,32 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
       <div className="border-b pb-4">
         <h2 className="text-xl font-bold">Declarar Fondo Inicial</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Ingresa la cantidad exacta de billetes y monedas con los que inicia el turno.
+          Configura tu sucursal e ingresa la cantidad exacta de billetes y monedas con los que inicia el turno.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+      <div className="space-y-3 bg-muted/20 p-4 rounded-lg border">
+        <label className="text-sm font-medium flex items-center gap-2">
+           <MapPin className="h-4 w-4 text-muted-foreground" />
+           Sucursal Operativa
+        </label>
+        {loadingLocs ? (
+           <div className="flex gap-2 items-center text-sm text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Cargando catálogo ERP...</div>
+        ) : (
+           <select 
+             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+             value={selectedLocationId}
+             onChange={e => setSelectedLocationId(e.target.value)}
+           >
+             <option value="" disabled>-- Selecciona tu sucursal --</option>
+             {locations.map(loc => (
+                <option key={loc.id} value={loc.id}>{loc.name}</option>
+             ))}
+           </select>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-rows-6 md:grid-flow-col gap-x-8 gap-y-4">
         {DENOMINATIONS.map((denom) => {
           const qty = counts[denom.value.toString()] || '';
           const subtotal = (Number(qty) * denom.value) || 0;
@@ -118,7 +170,7 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
         <Button variant="ghost" onClick={onCancel} disabled={loading}>
           Cancelar
         </Button>
-        <Button onClick={handleOpenShift} disabled={loading} className="gap-2">
+        <Button onClick={handleOpenShift} disabled={loading || !selectedLocationId} className="gap-2">
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Abrir Turno
         </Button>

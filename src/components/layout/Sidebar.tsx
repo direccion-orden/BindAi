@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Receipt, FileText, Calculator, ShoppingCart, Banknote } from "lucide-react";
+import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart } from "lucide-react";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -14,6 +14,7 @@ export function Sidebar() {
       items: [
         { href: "/dashboard", label: "Anticipos", icon: Receipt },
         { href: "/estado-cuenta", label: "Estados de Cuenta", icon: FileText },
+        { href: "/flujo-efectivo", label: "Flujo de Efectivo", icon: LineChart },
       ]
     },
     {

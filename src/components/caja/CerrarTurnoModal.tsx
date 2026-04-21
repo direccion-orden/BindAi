@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 
 const DENOMINATIONS = [
+  { value: 1000, label: "Billetes de $1000" },
   { value: 500, label: "Billetes de $500" },
   { value: 200, label: "Billetes de $200" },
   { value: 100, label: "Billetes de $100" },
@@ -60,7 +61,11 @@ export function CerrarTurnoModal({
       setFetchingBind(true);
       try {
         const openedAtIso = new Date(session.openedAt.seconds * 1000).toISOString();
-        const res = await fetch(`/api/erp/sales-summary?startIso=${openedAtIso}`);
+        let url = `/api/erp/sales-summary?startIso=${openedAtIso}`;
+        if (session.locationId) {
+          url += `&locationId=${session.locationId}`;
+        }
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           setBindSales(data.totalSales || 0);
@@ -202,7 +207,7 @@ export function CerrarTurnoModal({
           <div className="space-y-6 py-4">
             <h3 className="font-bold border-b pb-2">Arqueo Físico de Billetes y Monedas</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 pl-2">
+            <div className="grid grid-cols-1 md:grid-rows-6 md:grid-flow-col gap-x-8 gap-y-3 pl-2">
               {DENOMINATIONS.map((denom) => {
                 const qty = counts[denom.value.toString()] || '';
                 const subtotal = (Number(qty) * denom.value) || 0;

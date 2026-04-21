@@ -1,0 +1,16 @@
+const API_BASE = "https://api.bind.com.mx/api";
+const apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6ImFkbWlufDEwMDc4MCIsIkludGVybmFsSUQiOiI5Mzg2ZjgzMS1iNWI0LTQ1ZWYtODhhNi0zNWFkMDgyZTZiZWYiLCJuYmYiOjE3NzUxNjIwMTQsImV4cCI6MTgwNjY5ODAxNCwiaWF0IjoxNzc1MTYyMDE0LCJpc3MiOiJNaW5udF9Tb2x1dGlvbnNfU0FfREVfQ1YiLCJhdWQiOiJCaW5kX0VSUF9BUElfVXNlcnMifQ.IwmIJDQf1pNLiYC65dGhjJmdulrAGw5k_PuGvkJNOMY";
+const headers = { "Authorization": `Bearer ${apiKey}` };
+
+async function run() {
+    let url = `${API_BASE}/Purchases/GetPurchaseOrders?$top=100`;
+    let res = await fetch(url, { headers });
+    let jData = await res.json();
+    let totalApril = 0;
+    for(let p of jData.value) {
+       if (p.CreationDate.includes("2026-04") || p.CreationDate.includes("2026-03") || p.CreationDate.includes("2026-02")) {
+           console.log(p.CreationDate, p.Provider, p.TotalImport);
+       }
+    }
+}
+run();

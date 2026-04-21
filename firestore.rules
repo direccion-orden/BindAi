@@ -17,6 +17,17 @@ service cloud.firestore {
     match /cash_transactions/{txId} {
       allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
     }
+
+    // Reglas para el nuevo módulo de Flujo de Efectivo
+    match /cf_forecasts/{docId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
+    match /cf_incomes/{docId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
+    match /cf_programmed_expenses/{docId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
     
     // Deniega el acceso a todo lo demás por seguridad
     match /{document=**} {

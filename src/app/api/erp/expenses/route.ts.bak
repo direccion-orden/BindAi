@@ -1,0 +1,174 @@
+import { NextResponse } from 'next/server';
+
+const API_BASE = "https://api.bind.com.mx/api";
+
+export async function POST(request: Request) {
+  try {
+    const apiKey = process.env.BIND_ERP_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "API Key no configurada" }, { status: 500 });
+    }
+
+    const body = await request.json();
+    
+    // Preparar el cuerpo del requerimiento según Bind ERP documentation para /api/Expenses
+    // Requisitos generales: ProviderID, AccountID, LocationID, Total/Amount, Date, Concept
+    // NOTA: Algunas cuentas en Bind exigen DepartmentID y CategoryID, asumiremos que no son estrictos o los omitimos hasta validar.
+
+    const expensePayload = {
+      ProviderID: body.ProviderID,
+      AccountID: body.AccountID,
+      LocationID: body.LocationID,
+      DepartmentID: null,
+      CategoryID: null,
+      Comments: body.Concept,
+      CurrencyID: "e07b8a36-391d-40d9-b2c0-128a1eaadbb9", // Default MXN, o pasarlo si se conoce
+      ExchangeRate: 1,
+      Date: body.Date, // YYYY-MM-DD
+      Status: 1, 
+      Items: [
+        {
+          Concept: body.Concept,
+          Total: body.Amount,
+          VATRate: 0 // Asumiendo IVA 0 por defecto si no es factura, ajusta según caso fiscal real
+        }
+      ]
+    };
+
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    };
+
+    const url = `${API_BASE}/Expenses`;
+    
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(expensePayload)
+    });
+
+    if (!res.ok) {
+      const errorData = await res.text();
+      console.error("Bind ERP POST Expense Error:", errorData);
+      throw new Error(`Error en Bind ERP: ${res.statusText}`);
+    }
+
+    const result = await res.json();
+    return NextResponse.json({ success: true, entry: result });
+
+  } catch (error: any) {
+    console.error("Expense POST Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    const apiKey = process.env.BIND_ERP_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "API Key no configurada" }, { status: 500 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const monthStr = searchParams.get('month');
+    const yearStr = searchParams.get('year');
+
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    };
+
+    let url = `${API_BASE}/AccountingJournals?$top=100`;
+
+    let allData: any[] = [];
+    
+    if (monthStr && yearStr) {
+       const month = parseInt(monthStr);
+       const year = parseInt(yearStr);
+       
+       const startDate = new Date(year, month - 1, 1).toISOString().substring(0, 19);
+       const endDateObj = new Date(year, month, 0);
+       endDateObj.setHours(23, 59, 59, 999);
+       const endDate = endDateObj.toISOString().substring(0, 19);
+       
+    try {
+        const apiKey = process.env.BIND_ERP_API_KEY;
+        if (!apiKey) {
+            return NextResponse.json({ error: "API Key no configurada" }, { status: 500 });
+        }
+
+        const { searchParams } = new URL(request.url);
+        const monthStr = searchParams.get('month');
+        const yearStr = searchParams.get('year');
+        
+        let allExpenses: any[] = [];
+        const monthNum = monthStr ? parseInt(monthStr) : new Date().getMonth() + 1;
+        const yearNum = yearStr ? parseInt(yearStr) : new Date().getFullYear();
+
+        // Limites de fecha para OData
+        const startDate = new Date(yearNum, monthNum - 1, 1).toISOString();
+        const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59).toISOString();
+
+        // 1. OBTENER ÓRDENES DE COMPRA (GetPurchaseOrders)
+        // Bind ERP engloba tanto Órdenes de Costo como de Gasto aquí.
+        let skip = 0;
+        let hasMorePOs = true;
+
+        while (hasMorePOs) {
+            // Utilizamos CreationDate para ubicar la OC en el mes. OData filter:
+            const poUrl = `${API_BASE}/Purchases/GetPurchaseOrders?$filter=CreationDate ge datetime'${startDate.split('T')[0]}T00:00:00' and CreationDate le datetime'${endDate.split('T')[0]}T23:59:59'&$top=100&$skip=${skip}`;
+            
+            console.log(`Fetching PurchaseOrders: ${poUrl}`);
+            const response = await fetch(poUrl, {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                console.error('Error fetching POs:', await response.text());
+                break; // Silenciosamente terminar este bucle, devolver error abajo si es fatal
+            }
+
+            const data = await response.json();
+            const pos = data.value || [];
+            
+            pos.forEach((po: any) => {
+                const date = new Date(po.CreationDate);
+                allExpenses.push({
+                    id: po.ID,
+                    costCenterId: po.ProviderID || 'unknown', // Map to costCenterId prop for UI compatibility temporarily
+                    providerName: po.Provider || po.ProviderName || 'Proveedor General', // New explicit field
+                    day: date.getDate(),
+                    month: date.getMonth() + 1,
+                    year: date.getFullYear(),
+                    amount: po.TotalImport || 0,
+                    concept: `O.C. ${po.Number}${po.Warehouse ? ' (' + po.Warehouse + ')' : ''}`,
+                    isProgrammed: false,
+                    statusText: po.StatusText || 'Desconocido',
+                    status: po.Status
+                });
+            });
+
+            if (pos.length === 100) {
+                skip += 100;
+            } else {
+                hasMorePOs = false;
+            }
+        }
+
+        return NextResponse.json({
+            value: allExpenses,
+            debug_count: allExpenses.length
+        });
+
+    } catch (error: any) {
+        console.error('Error al obtener egresos (POs):', error);
+        return NextResponse.json(
+            { error: 'Error al obtener flujos de egresos de ERP: ' + error.message },
+            { status: 500 }
+        );
+    }
+}

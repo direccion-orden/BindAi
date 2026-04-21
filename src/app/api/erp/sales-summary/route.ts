@@ -5,6 +5,7 @@ const API_BASE = "https://api.bind.com.mx/api";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const startIso = searchParams.get('startIso'); // e.g. 2024-04-16T10:00:00.000Z
+  const locationId = searchParams.get('locationId'); // The Sucursal ID to filter by
 
   try {
     const apiKey = process.env.BIND_ERP_API_KEY;
@@ -28,7 +29,11 @@ export async function GET(request: Request) {
 
     // Obtener Invoices pagados/completados desde openedAt
     // Status 1 = Timbrada / Activa. Asumimos que Punto de Venta general Invoice con Status 1
-    const url = `${API_BASE}/Invoices?$filter=Date ge datetime'${odataDateStr}'`;
+    let filterQuery = `Date ge datetime'${odataDateStr}'`;
+    if (locationId) {
+       filterQuery += ` and LocationID eq guid'${locationId}'`;
+    }
+    const url = `${API_BASE}/Invoices?$filter=${filterQuery}`;
     
     const res = await fetch(url, { headers });
     if (!res.ok) {

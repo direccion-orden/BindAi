@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart } from "lucide-react";
 
-export function Sidebar() {
+export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolean; onCloseMobile?: () => void }) {
   const pathname = usePathname();
 
   const categories = [
@@ -27,8 +27,17 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 border-r bg-card min-h-[calc(100vh-4rem)] sticky top-16 hidden md:flex flex-col overflow-y-auto">
-      <div className="flex-1 py-6 px-4 space-y-8">
+    <>
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden" 
+          onClick={onCloseMobile}
+        />
+      )}
+      <aside className={`fixed md:sticky top-16 z-50 w-64 border-r bg-card min-h-[calc(100vh-4rem)] md:translate-x-0 md:flex flex-col overflow-y-auto transition-transform duration-300 ease-in-out ${
+        isMobileOpen ? "translate-x-0" : "-translate-x-full"
+      }`}>
+        <div className="flex-1 py-6 px-4 space-y-8">
         {categories.map((cat, idx) => (
           <div key={idx} className="space-y-3">
             <div className="flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -40,7 +49,7 @@ export function Sidebar() {
                 {cat.items.map((item) => {
                   const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
                   return (
-                    <Link key={item.href} href={item.href}>
+                    <Link key={item.href} href={item.href} onClick={onCloseMobile}>
                       <div className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                         isActive 
                           ? "bg-accent/15 text-accent font-medium shadow-sm" 
@@ -61,6 +70,7 @@ export function Sidebar() {
           </div>
         ))}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

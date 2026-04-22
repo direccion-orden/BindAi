@@ -72,7 +72,7 @@ export default function CajaPage() {
   }, [user]);
 
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [erpCashSales, setErpCashSales] = useState(0);
+  const [bindSales, setBindSales] = useState(0);
   const [isFetchingErp, setIsFetchingErp] = useState(false);
   
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
@@ -91,6 +91,9 @@ export default function CajaPage() {
         setLiveCounts(activeSession.liveAudit.counts || {});
         hasMounted.current = true;
     } else if (activeSession && !hasMounted.current) {
+        if (activeSession.openingDenominations) {
+            setLiveCounts(activeSession.openingDenominations);
+        }
         hasMounted.current = true;
     }
   }, [activeSession]);
@@ -133,22 +136,30 @@ export default function CajaPage() {
     setTransactions(docs);
   };
 
-  const fetchErpCashSales = async (openedAt: any) => {
+  const fetchBindSales = async (openedAt: any) => {
     if (!openedAt) return;
     setIsFetchingErp(true);
     try {
-      const date = new Date(openedAt.seconds * 1000);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
-      const res = await fetch(`/api/erp/cash-sales?date=${dateStr}`);
+      let dateObj;
+      if (openedAt?.seconds) {
+        dateObj = new Date(openedAt.seconds * 1000);
+      } else if (openedAt?.toDate) {
+        dateObj = openedAt.toDate();
+      } else {
+        dateObj = new Date(openedAt);
+      }
+      const openedAtIso = dateObj.toISOString();
+      let url = `/api/erp/sales-summary?startIso=${openedAtIso}`;
+      if (activeSession?.locationId) {
+        url += `&locationId=${activeSession.locationId}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
          const data = await res.json();
-         setErpCashSales(data.totalCashSales || 0);
+         setBindSales(data.totalSales || 0);
       }
     } catch (e) {
-      console.error("Failed to fetch ERP Cash Sales", e);
+      console.error("Failed to fetch ERP Sales Summary", e);
     } finally {
       setIsFetchingErp(false);
     }
@@ -157,7 +168,7 @@ export default function CajaPage() {
   useEffect(() => {
     if (activeSession?.id) {
       fetchTransactions(activeSession.id);
-      fetchErpCashSales(activeSession.openedAt);
+      fetchBindSales(activeSession.openedAt);
     }
   }, [activeSession?.id, activeSession?.openedAt]);
 
@@ -244,7 +255,7 @@ export default function CajaPage() {
   const totalRetiros = transactions.filter(t => t.type === "EXPENSE").reduce((acc, t) => acc + t.amount, 0);
   
   const liveCardVouchers = parseFloat(liveCardSales) || 0;
-  const estimatedCashSales = Math.max(0, erpCashSales - liveCardVouchers);
+  const estimatedCashSales = Math.max(0, bindSales - liveCardVouchers);
 
   const expectedCash = totalFondo + totalIngresos + estimatedCashSales - totalRetiros;
 
@@ -454,6 +465,8 @@ export default function CajaPage() {
               onClose={() => setIsClosingModalOpen(false)}
               session={activeSession}
               transactions={transactions}
+              initialCounts={liveCounts}
+              initialCardSales={liveCardSales}
               onClosed={() => {
                  setIsClosingModalOpen(false);
                  setActiveSession(null);

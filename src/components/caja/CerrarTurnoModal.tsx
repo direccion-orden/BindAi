@@ -35,32 +35,52 @@ export function CerrarTurnoModal({
   onClose, 
   session, 
   transactions,
+  initialCounts,
+  initialCardSales,
   onClosed 
 }: { 
   isOpen: boolean; 
   onClose: () => void;
   session: any;
   transactions: any[];
+  initialCounts?: Record<string, number>;
+  initialCardSales?: string;
   onClosed: () => void;
 }) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
-  const [cardSales, setCardSales] = useState("");
+  const [cardSales, setCardSales] = useState(initialCardSales || "");
   
   // Bind Sales
   const [bindSales, setBindSales] = useState(0);
   const [fetchingBind, setFetchingBind] = useState(false);
 
   // Denomination counts
-  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [counts, setCounts] = useState<Record<string, number>>(initialCounts || {});
+
+  useEffect(() => {
+    if (isOpen) {
+      setCounts(initialCounts || {});
+      setCardSales(initialCardSales || "");
+      setStep(1);
+    }
+  }, [isOpen, initialCounts, initialCardSales]);
 
   useEffect(() => {
     async function fetchBindSales() {
       if (!isOpen || !session?.openedAt) return;
       setFetchingBind(true);
       try {
-        const openedAtIso = new Date(session.openedAt.seconds * 1000).toISOString();
+        let dateObj;
+        if (session.openedAt?.seconds) {
+          dateObj = new Date(session.openedAt.seconds * 1000);
+        } else if (session.openedAt?.toDate) {
+          dateObj = session.openedAt.toDate();
+        } else {
+          dateObj = new Date(session.openedAt);
+        }
+        const openedAtIso = dateObj.toISOString();
         let url = `/api/erp/sales-summary?startIso=${openedAtIso}`;
         if (session.locationId) {
           url += `&locationId=${session.locationId}`;

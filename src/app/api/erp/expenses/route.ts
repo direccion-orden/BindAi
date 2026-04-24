@@ -90,30 +90,33 @@ export async function GET(request: NextRequest) {
             else hasMorePOs = false;
         }
 
-        // FUENTE 2: ACCOUNTING JOURNALS (Gastos Operativos o directos sin OC)
-        let skipAJ = 0;
-        let hasMoreAJ = true;
-        while (hasMoreAJ) {
-           const ajUrl = `${API_BASE}/AccountingJournals?$filter=Type eq 1 and ApplicationDate ge datetime'${startDate.split('T')[0]}T00:00:00' and ApplicationDate le datetime'${endDate.split('T')[0]}T23:59:59'&$top=100&$skip=${skipAJ}`;
-           const response = await fetch(ajUrl, { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }});
-           if (!response.ok) break;
-           const data = await response.json();
-           const items = data.value || [];
-           
-           items.forEach((exp: any) => {
-               if (exp.Type === 'Gasto') {
+        // FUENTE 2: ACCOUNTING JOURNALS (Gastos Operativos, Pagos de Gastos, Recepciones y Pagos de O.C.)
+        // NOTA: La API de Bind tiene un bug donde omitir el filtro "Type" o usar "OR" ignora las pólizas autogeneradas.
+        // Se deben consultar explícitamente los tipos 1 (Gasto), 2 (Pago de Gasto), 3 (Recepción de Mercancía) y 4 (Pago de Recepción de Mercancía).
+        const typesToFetch = [1, 2, 3, 4];
+        
+        await Promise.all(typesToFetch.map(async (journalType) => {
+            let skipAJ = 0;
+            let hasMoreAJ = true;
+            while (hasMoreAJ) {
+               const ajUrl = `${API_BASE}/AccountingJournals?$filter=Type eq ${journalType} and ApplicationDate ge datetime'${startDate.split('T')[0]}T00:00:00' and ApplicationDate le datetime'${endDate.split('T')[0]}T23:59:59'&$top=100&$skip=${skipAJ}`;
+               const response = await fetch(ajUrl, { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }});
+               if (!response.ok) break;
+               const data = await response.json();
+               const items = data.value || [];
+               
+               items.forEach((exp: any) => {
                    const date = new Date(exp.CreationDate || exp.ApplicationDate);
-                   // El monto total con IVA se refleja sumando el Debe de los items del asiento
+                   // El monto total se refleja sumando el Debe de los items del asiento
                    const totalAmount = (exp.Items || []).reduce((acc: number, item: any) => acc + (item.Debit || 0), 0);
                    
-                   // Si el asiento ya está procesado como Orden de Compra por el O.C. ID etc, evitaríamos duplicarlo
-                   // Usualmente 'Comments' o 'Description' dicen "Pago proveedor O.C. 1611". 
+                   // Evitar duplicar pagos si ya tenemos la O.C. cargada en la Fuente 1 (del mismo mes)
                    const isDuplicateOfPO = allExpenses.some(pOExp => pOExp._isPO && ((exp.Number||"").toString() == pOExp.concept || exp.Items.some((i: any) => (i.Description || "").includes(`O.C. ${pOExp.id}`))));
                    
                    if (!isDuplicateOfPO && totalAmount > 0) {
-                      // Tratar de extraer el proveedor de la descripción "Gasto #14314 - PROVEEDOR"
+                      // Tratar de extraer el proveedor de la descripción "Pago - PROVEEDOR"
                       let pName = 'Gastos Generales';
-                      let desc = exp.Number?.toString() || 'Gasto';
+                      let desc = (exp.JournalType || exp.Type || 'Gasto') + (exp.Number ? ` #${exp.Number}` : '');
                       
                       const mainItem = exp.Items.find((i:any) => i.Description && i.Description.includes(' - '));
                       if (mainItem) {
@@ -121,10 +124,12 @@ export async function GET(request: NextRequest) {
                           if (parts.length > 1) {
                               pName = parts.slice(1).join(' - ').trim();
                           }
-                          desc = parts[0];
+                          // Evitar sobreescribir con descripciones raras, usar la principal si no es muy larga
+                          if (parts[0].length < 50) {
+                              desc = parts[0];
+                          }
                       }
                       
-                      // Hash simple temporal para el ProviderID en base al nombre
                       const pIdFallback = pName; 
 
                       allExpenses.push({
@@ -137,19 +142,40 @@ export async function GET(request: NextRequest) {
                           isProgrammed: false,
                           statusText: 'Afectado',
                           status: 2, // Color code for "Aprobada/Pagada" in UI
-                          _isPO: false
+                          _isPO: false,
+                          _journalType: journalType,
+                          _number: exp.Number,
+                          _desc: (exp.Items || []).map((i:any) => i.Description || '').join(' ')
                       });
                    }
-               }
-           });
-           
-           if (items.length === 100) skipAJ += 100;
-           else hasMoreAJ = false;
-        }
+               });
+               
+               if (items.length === 100) skipAJ += 100;
+               else hasMoreAJ = false;
+            }
+        }));
+
+        // Deduplicación post-procesamiento:
+        // Si hay un Tipo 1 o 3 (Provisiones) en el mes, y también se encuentra un Pago (Tipo 2 o 4) en el mes
+        // que hace referencia al número del original, ocultamos la provisión para evitar doble conteo.
+        const type2Desc = allExpenses.filter(e => e._journalType === 2).map(e => e._desc || '');
+        const type4Desc = allExpenses.filter(e => e._journalType === 4).map(e => e._desc || '');
+        
+        const deduplicatedExpenses = allExpenses.filter(e => {
+            if (e._journalType === 1 && e._number) {
+                const fuePagado = type2Desc.some(desc => desc.includes(`#${e._number}`));
+                if (fuePagado) return false; // Ocultar el Gasto porque ya está representado por su Pago
+            }
+            if (e._journalType === 3 && e._number) {
+                const fuePagado = type4Desc.some(desc => desc.includes(`#${e._number}`));
+                if (fuePagado) return false; // Ocultar Recepción si hay un Pago que la mencione
+            }
+            return true;
+        });
 
         return NextResponse.json({
-            value: allExpenses,
-            debug_count: allExpenses.length
+            value: deduplicatedExpenses,
+            debug_count: deduplicatedExpenses.length
         });
 
     } catch (error: any) {

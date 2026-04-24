@@ -194,15 +194,17 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
            <tbody>
              {/* ----------------- PRONOSTICO DE VENTAS (METAS) ----------------- */}
              <tr>
-               <td colSpan={daysInMonth + 2} className="bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold p-3 border-t border-b shadow-inner">
-                 1. META MENSUAL
+               <td colSpan={daysInMonth + 2} className="bg-blue-500/10 border-t border-b shadow-inner p-0">
+                 <div className="sticky left-0 p-3 w-max text-blue-700 dark:text-blue-400 font-bold z-20 bg-blue-50 dark:bg-slate-900 shadow-[inset_-4px_0_10px_-10px_rgba(0,0,0,0.3)]">
+                   1. META MENSUAL
+                 </div>
                </td>
              </tr>
              {locations.map(loc => {
                const rowTotal = getRowTotal(forecasts, loc.id || loc.ID);
                return (
                  <tr key={loc.id || loc.ID} className="hover:bg-muted/30">
-                   <td className="p-3 sticky left-0 bg-card border-r border-b font-medium text-muted-foreground">{loc.name || loc.Name}</td>
+                   <td className="p-3 sticky left-0 z-20 bg-card border-r border-b font-medium text-muted-foreground">{loc.name || loc.Name}</td>
                    {daysArray.map(day => {
                      const val = getAmount(forecasts, loc.id || loc.ID, day);
                      const isEditing = editingCell?.collectionName === 'cf_forecasts' && editingCell?.entityId === (loc.id || loc.ID) && editingCell?.day === day;
@@ -236,7 +238,7 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
              
              {/* Total Metas Row */}
              <tr className="bg-blue-50/50">
-               <td className="p-3 sticky left-0 bg-blue-50/90 border-r border-b font-bold text-blue-800 text-right">TOTAL METAS:</td>
+               <td className="p-3 sticky left-0 bg-blue-100 dark:bg-blue-900/40 border-r border-b font-bold text-blue-800 text-right z-20">TOTAL METAS:</td>
                {daysArray.map(day => {
                  const dayTotal = forecasts.filter(x => parseInt(String(x.day)) === day).reduce((s, x) => s + (x.amount || 0), 0);
                  return (
@@ -252,15 +254,17 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
 
              {/* ----------------- INGRESOS REALES ----------------- */}
              <tr>
-               <td colSpan={daysInMonth + 2} className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold p-3 border-t border-b shadow-inner">
-                 2. INGRESOS REALES (CAPTURA BANCARIA DIARIA)
+               <td colSpan={daysInMonth + 2} className="bg-emerald-500/10 border-t border-b shadow-inner p-0">
+                 <div className="sticky left-0 p-3 w-max text-emerald-700 dark:text-emerald-400 font-bold z-20 bg-emerald-50 dark:bg-slate-900 shadow-[inset_-4px_0_10px_-10px_rgba(0,0,0,0.3)]">
+                   2. INGRESOS REALES (CAPTURA BANCARIA DIARIA)
+                 </div>
                </td>
              </tr>
              {banks.map(bank => {
                const rowTotal = getRowTotal(incomes, bank.ID);
                return (
                  <tr key={bank.ID} className="hover:bg-muted/30">
-                   <td className="p-3 sticky left-0 bg-card border-r border-b font-medium text-muted-foreground" title={bank.Name}>{bank.Name}</td>
+                   <td className="p-3 sticky left-0 z-20 bg-card border-r border-b font-medium text-muted-foreground" title={bank.Name}>{bank.Name}</td>
                    {daysArray.map(day => {
                      const val = getAmount(incomes, bank.ID, day);
                      const isEditing = editingCell?.collectionName === 'cf_incomes' && editingCell?.entityId === bank.ID && editingCell?.day === day;
@@ -295,7 +299,7 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
 
              {/* Total Incomes Row */}
              <tr className="bg-emerald-50/50">
-               <td className="p-3 sticky left-0 bg-emerald-50/90 border-r border-b font-bold text-emerald-800 text-right">TOTAL INGRESOS:</td>
+               <td className="p-3 sticky left-0 bg-emerald-100 dark:bg-emerald-900/40 border-r border-b font-bold text-emerald-800 text-right z-20">TOTAL INGRESOS:</td>
                {daysArray.map(day => {
                  const dayTotal = incomes.filter(x => parseInt(String(x.day)) === day).reduce((s, x) => s + (x.amount || 0), 0);
                  return (
@@ -311,8 +315,10 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
 
              {/* ----------------- GASTOS Y ÓRDENES DE COMPRA (PROVEEDORES) ----------------- */}
              <tr>
-               <td colSpan={daysInMonth + 2} className="bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold p-3 border-t border-b shadow-inner">
-                 3. EGRESOS Y PAGOS (ÓRDENES DE COMPRA + PROGRAMADOS)
+               <td colSpan={daysInMonth + 2} className="bg-rose-500/10 border-t border-b shadow-inner p-0">
+                 <div className="sticky left-0 p-3 w-max text-rose-700 dark:text-rose-400 font-bold z-20 bg-rose-50 dark:bg-slate-900 shadow-[inset_-4px_0_10px_-10px_rgba(0,0,0,0.3)]">
+                   3. EGRESOS Y PAGOS (ÓRDENES DE COMPRA + PROGRAMADOS)
+                 </div>
                </td>
              </tr>
              {(() => {
@@ -350,15 +356,17 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
                   <React.Fragment key={provider.ID}>
                     {/* Provider Grouping Header Row */}
                     <tr className="bg-muted/10">
-                      <td className="p-3 sticky left-0 bg-card border-r border-b font-bold text-foreground text-xs uppercase" colSpan={daysInMonth + 2}>
-                        {provider.Name}
+                      <td className="p-0 border-r border-b" colSpan={daysInMonth + 2}>
+                        <div className="sticky left-0 p-3 w-max font-bold text-foreground text-xs uppercase z-20 bg-slate-50 dark:bg-slate-900 shadow-[inset_-4px_0_10px_-10px_rgba(0,0,0,0.3)]">
+                          {provider.Name}
+                        </div>
                       </td>
                     </tr>
 
                     {/* Individual Expense Rows */}
                     {mixedExpenses.map((exp, expIdx) => (
                       <tr key={exp.id || expIdx} className="hover:bg-muted/20">
-                        <td className="p-3 sticky left-0 bg-card border-r border-b text-xs text-muted-foreground pl-8 shadow-[inset_4px_0_0_0_theme(colors.rose.300)]" title={exp.concept}>
+                        <td className="p-3 sticky left-0 z-20 bg-card border-r border-b text-xs text-muted-foreground pl-8 shadow-[inset_4px_0_0_0_theme(colors.rose.300)]" title={exp.concept}>
                           <div className="flex flex-col gap-1">
                             <span className="line-clamp-1">{exp.concept || 'Gasto sin concepto'} {exp.isProgrammed ? '(Prog.)' : ''}</span>
                             {exp.statusText && exp.statusText !== 'Desconocido' && (
@@ -404,7 +412,7 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
                     {/* Subtotal Row for the Provider */}
                     {mixedExpenses.length > 1 && (
                        <tr className="bg-rose-50/10">
-                         <td className="p-2 sticky left-0 bg-rose-50/30 border-r border-b text-xs font-semibold text-rose-700 text-right pr-4">
+                         <td className="p-2 sticky left-0 bg-rose-100 dark:bg-rose-900 border-r border-b text-xs font-semibold text-rose-700 text-right pr-4 z-20">
                            Subtotal {provider.Name}:
                          </td>
                          {daysArray.map(day => {
@@ -424,7 +432,7 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
 
              {/* Total Expenses Row */}
              <tr className="bg-rose-50/50">
-               <td className="p-3 sticky left-0 bg-rose-50/90 border-r border-b font-bold text-rose-800 text-right">TOTAL EGRESOS:</td>
+               <td className="p-3 sticky left-0 bg-rose-100 dark:bg-rose-900/40 border-r border-b font-bold text-rose-800 text-right z-20">TOTAL EGRESOS:</td>
                {daysArray.map(day => {
                  const dayTotal = [...programmedExpenses, ...realExpenses].filter(x => parseInt(String(x.day)) === day).reduce((s, x) => s + (x.amount || 0), 0);
                  return (
@@ -440,12 +448,14 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
 
              {/* ----------------- FLUJO DE EFECTIVO RESUMEN ----------------- */}
              <tr>
-               <td colSpan={daysInMonth + 2} className="bg-accent/10 text-accent font-bold p-3 border-t border-b mt-4">
-                 FLUJO DIARIO NETO
+               <td colSpan={daysInMonth + 2} className="bg-accent/10 border-t border-b mt-4 p-0">
+                 <div className="sticky left-0 p-3 w-max text-accent font-bold z-20 bg-slate-100 dark:bg-slate-800 shadow-[inset_-4px_0_10px_-10px_rgba(0,0,0,0.3)]">
+                   FLUJO DIARIO NETO
+                 </div>
                </td>
              </tr>
              <tr className="bg-muted/20 font-bold">
-               <td className="p-3 sticky left-0 bg-muted/50 border-r text-foreground shadow-[1px_0_0_0_theme(colors.border)] z-20">
+               <td className="p-3 sticky left-0 bg-slate-200 dark:bg-slate-800 border-r text-foreground shadow-[1px_0_0_0_theme(colors.border)] z-20">
                  Saldo Final del Día
                </td>
                {daysArray.map(day => {

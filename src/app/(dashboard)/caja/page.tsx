@@ -148,8 +148,18 @@ export default function CajaPage() {
       } else {
         dateObj = new Date(openedAt);
       }
-      const openedAtIso = dateObj.toISOString();
-      let url = `/api/erp/sales-summary?startIso=${openedAtIso}`;
+      
+      // Bind ERP API uses local time without Z, so we must format it as YYYY-MM-DDTHH:mm:ss in local time
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const hours = String(dateObj.getHours()).padStart(2, '0');
+      const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+      const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+      
+      const localIsoString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+      
+      let url = `/api/erp/sales-summary?startIso=${localIsoString}`;
       if (activeSession?.locationId) {
         url += `&locationId=${activeSession.locationId}`;
       }

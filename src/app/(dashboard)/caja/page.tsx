@@ -149,27 +149,20 @@ export default function CajaPage() {
         dateObj = new Date(openedAt);
       }
       
-      // Bind ERP API uses local time without Z, so we must format it as YYYY-MM-DDTHH:mm:ss in local time
       const year = dateObj.getFullYear();
       const month = String(dateObj.getMonth() + 1).padStart(2, '0');
       const day = String(dateObj.getDate()).padStart(2, '0');
-      const hours = String(dateObj.getHours()).padStart(2, '0');
-      const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-      const seconds = String(dateObj.getSeconds()).padStart(2, '0');
       
-      const localIsoString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+      const localDateString = `${year}-${month}-${day}`;
       
-      let url = `/api/erp/sales-summary?startIso=${localIsoString}`;
-      if (activeSession?.locationId) {
-        url += `&locationId=${activeSession.locationId}`;
-      }
+      let url = `/api/erp/cash-sales?date=${localDateString}`;
       const res = await fetch(url);
       if (res.ok) {
          const data = await res.json();
-         setBindSales(data.totalSales || 0);
+         setBindSales(data.totalCashSales || 0);
       }
     } catch (e) {
-      console.error("Failed to fetch ERP Sales Summary", e);
+      console.error("Failed to fetch ERP Cash Sales", e);
     } finally {
       setIsFetchingErp(false);
     }
@@ -265,7 +258,7 @@ export default function CajaPage() {
   const totalRetiros = transactions.filter(t => t.type === "EXPENSE").reduce((acc, t) => acc + t.amount, 0);
   
   const liveCardVouchers = parseFloat(liveCardSales) || 0;
-  const estimatedCashSales = Math.max(0, bindSales - liveCardVouchers);
+  const estimatedCashSales = Math.max(0, bindSales);
 
   const expectedCash = totalFondo + totalIngresos + estimatedCashSales - totalRetiros;
 
@@ -335,7 +328,7 @@ export default function CajaPage() {
                  </p>
                </div>
                <div className="bg-card border rounded-lg p-5 shadow-sm relative">
-                  <p className="text-sm text-muted-foreground flex justify-between whitespace-nowrap" title="El total reportado de ERP menos la resta de los vouchers manuales que ingreses.">Efectivo Mínimo x Ventas {isFetchingErp && <Loader2 className="w-4 h-4 animate-spin text-primary"/>}</p>
+                  <p className="text-sm text-muted-foreground flex justify-between whitespace-nowrap" title="Total exacto de ventas en efectivo extraído de los diarios contables de Bind ERP.">Efectivo Mínimo x Ventas {isFetchingErp && <Loader2 className="w-4 h-4 animate-spin text-primary"/>}</p>
                   <p className="text-2xl font-bold text-foreground">
                    + {estimatedCashSales.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
                  </p>

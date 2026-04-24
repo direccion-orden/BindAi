@@ -19,7 +19,7 @@ export default function DashboardLayout({
         <div className="flex flex-1 relative">
           <Sidebar isMobileOpen={isMobileMenuOpen} onCloseMobile={() => setIsMobileMenuOpen(false)} />
           <main className="flex-1 p-6 md:p-8 lg:p-10 w-full overflow-x-hidden">
-            <div className="max-w-6xl mx-auto w-full">
+            <div className="w-full">
               {children}
             </div>
           </main>

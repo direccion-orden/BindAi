@@ -62,33 +62,7 @@ export async function GET(request: NextRequest) {
         const endDate = endDateOb.toISOString();
 
         // FUENTE 1: ÓRDENES DE COMPRA (Borradores y Formales)
-        let skipPOs = 0;
-        let hasMorePOs = true;
-        while (hasMorePOs) {
-            const poUrl = `${API_BASE}/Purchases/GetPurchaseOrders?$filter=CreationDate ge datetime'${startDate.split('T')[0]}T00:00:00' and CreationDate le datetime'${endDate.split('T')[0]}T23:59:59'&$top=100&$skip=${skipPOs}`;
-            const response = await fetch(poUrl, { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }});
-            if (!response.ok) break;
-            const data = await response.json();
-            const pos = data.value || [];
-            
-            pos.forEach((po: any) => {
-                const date = new Date(po.CreationDate);
-                allExpenses.push({
-                    id: po.ID,
-                    costCenterId: po.ProviderID || 'unknown',
-                    providerName: po.Provider || po.ProviderName || 'Proveedor General',
-                    day: date.getDate(), month: date.getMonth() + 1, year: date.getFullYear(),
-                    amount: po.TotalImport || 0,
-                    concept: `O.C. ${po.Number}${po.Warehouse ? ' (' + po.Warehouse + ')' : ''}`,
-                    isProgrammed: false,
-                    statusText: po.StatusText || 'Desconocido',
-                    status: po.Status,
-                    _isPO: true
-                });
-            });
-            if (pos.length === 100) skipPOs += 100;
-            else hasMorePOs = false;
-        }
+        // Eliminado a petición del usuario ya que no utilizan el módulo de Órdenes de Compra.
 
         // FUENTE 2: ACCOUNTING JOURNALS (Gastos Operativos, Pagos de Gastos, Recepciones y Pagos de O.C.)
         // NOTA: La API de Bind tiene un bug donde omitir el filtro "Type" o usar "OR" ignora las pólizas autogeneradas.
@@ -106,14 +80,11 @@ export async function GET(request: NextRequest) {
                const items = data.value || [];
                
                items.forEach((exp: any) => {
-                   const date = new Date(exp.CreationDate || exp.ApplicationDate);
+                   const date = new Date(exp.ApplicationDate || exp.CreationDate);
                    // El monto total se refleja sumando el Debe de los items del asiento
                    const totalAmount = (exp.Items || []).reduce((acc: number, item: any) => acc + (item.Debit || 0), 0);
                    
-                   // Evitar duplicar pagos si ya tenemos la O.C. cargada en la Fuente 1 (del mismo mes)
-                   const isDuplicateOfPO = allExpenses.some(pOExp => pOExp._isPO && ((exp.Number||"").toString() == pOExp.concept || exp.Items.some((i: any) => (i.Description || "").includes(`O.C. ${pOExp.id}`))));
-                   
-                   if (!isDuplicateOfPO && totalAmount > 0) {
+                   if (totalAmount > 0) {
                       // Tratar de extraer el proveedor de la descripción "Pago - PROVEEDOR"
                       let pName = 'Gastos Generales';
                       let desc = (exp.JournalType || exp.Type || 'Gasto') + (exp.Number ? ` #${exp.Number}` : '');

@@ -8,6 +8,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date'); // YYYY-MM-DD local format
+    const locationId = searchParams.get('locationId');
     
     const apiKey = process.env.BIND_ERP_API_KEY;
     if (!apiKey) {
@@ -31,6 +32,27 @@ export async function GET(request: Request) {
     const monthNum = parseInt(monthStr);
     const dayNum = parseInt(dayStr);
 
+    // Fetch Bank Accounts to find the specific cash account for this location
+    let targetAccountName = "";
+    if (locationId) {
+      try {
+        const banksRes = await fetch(`${API_BASE}/BankAccounts`, { headers, cache: 'no-store' });
+        if (banksRes.ok) {
+          const banksData = await banksRes.json();
+          // Find the bank account assigned to this location that is a cash account
+          const locationCashAccount = (banksData.value || []).find((b: any) => 
+            b.LocationID === locationId && 
+            (b.Name.toLowerCase().includes('efectivo') || b.Name.toLowerCase().includes('caja'))
+          );
+          if (locationCashAccount) {
+            targetAccountName = locationCashAccount.Name.toLowerCase();
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching bank accounts for location:", e);
+      }
+    }
+
     let skip = 0;
     let keepFetching = true;
 
@@ -53,8 +75,21 @@ export async function GET(request: Request) {
             if (journal.Type === 'Pago de Venta') {
                 if (journal.Items) {
                    journal.Items.forEach((item: any) => {
-                      if (item.Charge > 0 && (item.AccountName.toLowerCase().includes('efectivo') || item.AccountName.toLowerCase().includes('caja'))) {
-                         totalCashSales += item.Charge;
+                      if (item.Charge > 0) {
+                          const accNameLower = item.AccountName.toLowerCase();
+                          let isCashMatch = false;
+                          
+                          if (targetAccountName) {
+                              // If we have a specific account for this location, strictly match it
+                              isCashMatch = accNameLower.includes(targetAccountName);
+                          } else {
+                              // Fallback for global or unmapped locations
+                              isCashMatch = accNameLower.includes('efectivo') || accNameLower.includes('caja');
+                          }
+
+                          if (isCashMatch) {
+                              totalCashSales += item.Charge;
+                          }
                       }
                    });
                 }

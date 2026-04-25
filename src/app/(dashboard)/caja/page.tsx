@@ -28,6 +28,7 @@ const DENOMINATIONS = [
 
 export default function CajaPage() {
   const { user } = useAuth();
+  const [allOpenSessions, setAllOpenSessions] = useState<any[]>([]);
   const [activeSession, setActiveSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isOpening, setIsOpening] = useState(false);
@@ -47,27 +48,37 @@ export default function CajaPage() {
   const [historyTransactions, setHistoryTransactions] = useState<any[]>([]);
   const [loadingReport, setLoadingReport] = useState(false);
 
-  useEffect(() => {
-    async function fetchSession() {
-      if (!user) return;
-      try {
-        const q = query(
-          collection(db, "cash_sessions"),
-          where("status", "==", "open"),
-          limit(1)
-        );
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          setActiveSession({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
-        } else {
-          setActiveSession(null);
-        }
-      } catch (error) {
-        console.error("Error fetching session:", error);
-      } finally {
-        setLoading(false);
+  const fetchSession = async () => {
+    if (!user) return;
+    try {
+      const q = query(
+        collection(db, "cash_sessions"),
+        where("status", "==", "open")
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const sessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAllOpenSessions(sessions);
+        
+        // Mantener la sesión activa seleccionada si sigue abierta, si no, tomar la primera
+        setActiveSession((current: any) => {
+          if (current && sessions.some(s => s.id === current.id)) {
+            return sessions.find(s => s.id === current.id);
+          }
+          return sessions[0];
+        });
+      } else {
+        setAllOpenSessions([]);
+        setActiveSession(null);
       }
+    } catch (error) {
+      console.error("Error fetching session:", error);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     fetchSession();
   }, [user]);
 
@@ -156,6 +167,9 @@ export default function CajaPage() {
       const localDateString = `${year}-${month}-${day}`;
       
       let url = `/api/erp/cash-sales?date=${localDateString}&_t=${Date.now()}`;
+      if (activeSession?.locationId) {
+          url += `&locationId=${activeSession.locationId}`;
+      }
       const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) {
          const data = await res.json();
@@ -277,11 +291,31 @@ export default function CajaPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+        <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-bold tracking-tight">Control de Caja</h1>
-          <p className="text-muted-foreground">
-            Gestión del fondo, arqueos de ingresos por venta y retiros.
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-muted-foreground">
+              Gestión del fondo, arqueos de ingresos por venta y retiros.
+            </p>
+            {allOpenSessions.length > 1 && (
+              <select 
+                className="ml-4 h-8 rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={activeSession?.id || ""}
+                onChange={(e) => setActiveSession(allOpenSessions.find(s => s.id === e.target.value))}
+              >
+                {allOpenSessions.map(session => (
+                  <option key={session.id} value={session.id}>
+                    Caja Activa: {session.locationName || 'Sin sucursal'}
+                  </option>
+                ))}
+              </select>
+            )}
+            {allOpenSessions.length === 1 && activeSession?.locationName && (
+               <span className="ml-4 inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                 {activeSession.locationName}
+               </span>
+            )}
+          </div>
         </div>
         
         <div className="flex bg-muted p-1 rounded-lg w-fit">

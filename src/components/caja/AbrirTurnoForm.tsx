@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, getDocs, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,20 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
 
     setLoading(true);
     try {
+      // First, check if there's already an open session for this location
+      const q = query(
+        collection(db, "cash_sessions"),
+        where("status", "==", "open"),
+        where("locationId", "==", selectedLocationId)
+      );
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        alert("Ya existe una caja abierta para esta sucursal. Por favor selecciona otra o cierra la actual primero.");
+        setLoading(false);
+        return;
+      }
+
       const sessionData = {
         status: "open",
         openedAt: serverTimestamp(),

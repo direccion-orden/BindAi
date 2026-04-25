@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-type TransactionCategory = "INGRESO_FONDO" | "RETIRO_FONDO" | "RETIRO_GASTO";
+type TransactionCategory = "INGRESO_FONDO" | "RETIRO_FONDO" | "RETIRO_GASTO" | "RETIRO_CANCELACION";
 
 interface TransaccionCajaModalProps {
   isOpen: boolean;
@@ -76,6 +76,7 @@ export function TransaccionCajaModal({ isOpen, onClose, sessionId, onSuccess }: 
       case "INGRESO_FONDO": return "Ingreso de Moneda/Cambio";
       case "RETIRO_FONDO": return "Retiro de Valores (Depósito/Bóveda)";
       case "RETIRO_GASTO": return "Retiro por Gasto/Comisión";
+      case "RETIRO_CANCELACION": return "Retiro por Cancelación de Venta";
       default: return "Movimiento de Caja";
     }
   };
@@ -100,6 +101,7 @@ export function TransaccionCajaModal({ isOpen, onClose, sessionId, onSuccess }: 
               >
                 <option value="RETIRO_GASTO">Retiro por Gasto (Sueldos, Insumos)</option>
                 <option value="RETIRO_FONDO">Retiro de Valores (Bóveda/Depósito)</option>
+                <option value="RETIRO_CANCELACION">Retiro por Cancelación de Venta (Efectivo)</option>
                 <option value="INGRESO_FONDO">Añadir Fondo (Morralla extra)</option>
               </select>
             </div>

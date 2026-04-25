@@ -255,10 +255,11 @@ export default function CajaPage() {
   // Cálculos del turno activo
   const totalFondo = activeSession?.initialFloat || 0;
   const totalIngresos = transactions.filter(t => t.type === "INCOME").reduce((acc, t) => acc + t.amount, 0);
-  const totalRetiros = transactions.filter(t => t.type === "EXPENSE").reduce((acc, t) => acc + t.amount, 0);
+  const totalCancelaciones = transactions.filter(t => t.type === "EXPENSE" && t.category === "RETIRO_CANCELACION").reduce((acc, t) => acc + t.amount, 0);
+  const totalRetiros = transactions.filter(t => t.type === "EXPENSE" && t.category !== "RETIRO_CANCELACION").reduce((acc, t) => acc + t.amount, 0);
   
   const liveCardVouchers = parseFloat(liveCardSales) || 0;
-  const estimatedCashSales = Math.max(0, bindSales);
+  const estimatedCashSales = Math.max(0, bindSales - totalCancelaciones);
 
   const expectedCash = totalFondo + totalIngresos + estimatedCashSales - totalRetiros;
 

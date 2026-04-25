@@ -155,8 +155,8 @@ export default function CajaPage() {
       
       const localDateString = `${year}-${month}-${day}`;
       
-      let url = `/api/erp/cash-sales?date=${localDateString}`;
-      const res = await fetch(url);
+      let url = `/api/erp/cash-sales?date=${localDateString}&_t=${Date.now()}`;
+      const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) {
          const data = await res.json();
          setBindSales(data.totalCashSales || 0);

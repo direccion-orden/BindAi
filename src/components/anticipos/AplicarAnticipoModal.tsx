@@ -90,7 +90,13 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
   };
 
   const totalApplied = Object.values(applications).reduce((acc, curr) => acc + curr, 0);
-  const remainingBalance = anticipo?.balance - totalApplied;
+  let remainingBalance = (anticipo?.balance || 0) - totalApplied;
+  
+  // Tolerancia para errores de redondeo de punto flotante y diferencias con ERP (hasta 5 centavos)
+  if (Math.abs(remainingBalance) <= 0.05) {
+    remainingBalance = 0;
+  }
+
   const canApply = totalApplied > 0 && remainingBalance >= 0;
 
   const handleSubmit = async () => {
@@ -136,7 +142,13 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
       }
 
       // Actualizar el anticipo en Firestore
-      const newBalance = anticipo.balance - totalApplied;
+      let newBalance = anticipo.balance - totalApplied;
+      
+      // Aplicar tolerancia de redondeo antes de guardar para evitar que quede abierto por centavos
+      if (Math.abs(newBalance) <= 0.05) {
+        newBalance = 0;
+      }
+      
       const newStatus = newBalance <= 0 ? "applied" : "partially_applied";
 
       const existingApps = anticipo.applications || [];

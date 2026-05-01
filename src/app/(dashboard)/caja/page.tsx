@@ -85,6 +85,9 @@ export default function CajaPage() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [bindSales, setBindSales] = useState(0);
   const [isFetchingErp, setIsFetchingErp] = useState(false);
+
+  const [totalDailySales, setTotalDailySales] = useState<number | null>(null);
+  const [isFetchingDailySales, setIsFetchingDailySales] = useState(false);
   
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
@@ -182,10 +185,38 @@ export default function CajaPage() {
     }
   }
 
+  const fetchDailySales = async () => {
+    setIsFetchingDailySales(true);
+    try {
+      const dateObj = new Date();
+      
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      
+      const localIsoString = `${year}-${month}-${day}T00:00:00.000Z`;
+      let url = `/api/erp/sales-summary?startIso=${localIsoString}`;
+      if (activeSession?.locationId) {
+          url += `&locationId=${activeSession.locationId}`;
+      }
+      
+      const res = await fetch(url, { cache: 'no-store' });
+      if (res.ok) {
+         const data = await res.json();
+         setTotalDailySales(data.totalSales || 0);
+      }
+    } catch (e) {
+      console.error("Failed to fetch total daily sales", e);
+    } finally {
+      setIsFetchingDailySales(false);
+    }
+  }
+
   useEffect(() => {
     if (activeSession?.id) {
       fetchTransactions(activeSession.id);
       fetchBindSales(activeSession.openedAt);
+      fetchDailySales();
     }
   }, [activeSession?.id, activeSession?.openedAt]);
 
@@ -337,7 +368,7 @@ export default function CajaPage() {
       {activeTab === 'operacion' ? (
         activeSession ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            <div className="bg-card border rounded-lg p-6 shadow-sm flex items-center justify-between">
+            <div className="bg-card border rounded-lg p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <span className="h-3 w-3 rounded-full bg-green-500 animate-pulse"></span>
@@ -347,11 +378,21 @@ export default function CajaPage() {
                 <p className="text-sm text-muted-foreground mt-1">Sucursal: <span className="font-medium text-foreground">{activeSession.locationName || 'Nacional'}</span></p>
                 <p className="text-xs text-muted-foreground mt-1">Apertura: {activeSession.openedAt?.seconds ? new Date(activeSession.openedAt.seconds * 1000).toLocaleString('es-MX') : 'Reciente'}</p>
               </div>
-              <div className="text-right">
-                 <p className="text-sm text-muted-foreground">Fondo Inicial</p>
-                 <p className="text-3xl font-bold text-primary">
-                   {totalFondo.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
-                 </p>
+              <div className="flex gap-8 text-right">
+                 <div>
+                   <p className="text-sm text-muted-foreground flex items-center gap-1 justify-end" title="Total de ventas del día en la sucursal (Efectivo + Tarjeta + Transferencias)">
+                     Venta Total del Día {isFetchingDailySales && <Loader2 className="w-3 h-3 animate-spin"/>}
+                   </p>
+                   <p className="text-3xl font-bold text-foreground">
+                     {totalDailySales !== null ? totalDailySales.toLocaleString('es-MX', {style:'currency', currency:'MXN'}) : '...'}
+                   </p>
+                 </div>
+                 <div className="border-l pl-8">
+                   <p className="text-sm text-muted-foreground">Fondo Inicial</p>
+                   <p className="text-3xl font-bold text-primary">
+                     {totalFondo.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
+                   </p>
+                 </div>
               </div>
             </div>
 

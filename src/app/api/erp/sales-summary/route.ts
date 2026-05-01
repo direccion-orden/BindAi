@@ -22,41 +22,51 @@ export async function GET(request: Request) {
       "Authorization": `Bearer ${apiKey}`
     };
 
-    // Convert JS ISO string to OData Edm.DateTime format if necessary, or just use substring.
-    // Bind API date filter expects: Year-Month-DayT00:00:00
-    // Example: 2024-04-16T15:30:00
-    const odataDateStr = startIso.substring(0, 19); 
+    const yearNum = parseInt(startIso.substring(0, 4));
+    const monthNum = parseInt(startIso.substring(5, 7));
+    const dayNum = parseInt(startIso.substring(8, 10));
 
-    // Obtener Invoices pagados/completados desde openedAt
-    // Status 1 = Timbrada / Activa. Asumimos que Punto de Venta general Invoice con Status 1
-    let filterQuery = `Date ge datetime'${odataDateStr}'`;
+    let filterQuery = `year(Date) eq ${yearNum} and month(Date) eq ${monthNum} and day(Date) eq ${dayNum}`;
     if (locationId) {
        filterQuery += ` and LocationID eq guid'${locationId}'`;
     }
-    const url = `${API_BASE}/Invoices?$filter=${filterQuery}`;
-    
-    const res = await fetch(url, { headers });
-    if (!res.ok) {
-      throw new Error("Failed to fetch from Bind");
-    }
-
-    const data = await res.json();
-
     let totalSales = 0;
-    
-    // Sumar el campo Payments de todas las facturas/remisiones generadas desde la apertura
-    // Solo tomamos en cuenta aquellas que han sido pagadas (Payments > 0)
-    data.value.forEach((invoice: any) => {
-      // In Punto de venta, usually the entire invoice is paid instantly
-      if (invoice.Payments && invoice.Payments > 0) {
-        totalSales += invoice.Payments;
+    let invoiceCount = 0;
+    let skip = 0;
+    let keepFetching = true;
+
+    while (keepFetching) {
+      const url = `${API_BASE}/Invoices?$filter=${filterQuery}&$top=100&$skip=${skip}`;
+      const res = await fetch(url, { headers, cache: 'no-store' });
+      
+      if (!res.ok) {
+        throw new Error(`Failed to fetch from Bind: ${res.status}`);
       }
-    });
+
+      const data = await res.json();
+      
+      if (!data.value || data.value.length === 0) {
+        break;
+      }
+
+      data.value.forEach((invoice: any) => {
+        if (invoice.Total && invoice.Total > 0 && invoice.Status === 1) { // Only count active/timbrada invoices
+          totalSales += invoice.Total;
+        }
+      });
+
+      invoiceCount += data.value.length;
+      skip += 100;
+
+      if (data.value.length < 100) {
+        keepFetching = false;
+      }
+    }
 
     return NextResponse.json({
       success: true,
       totalSales,
-      invoiceCount: data.value.length
+      invoiceCount
     });
 
   } catch (error: any) {

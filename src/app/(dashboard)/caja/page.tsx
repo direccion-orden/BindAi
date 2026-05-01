@@ -376,7 +376,19 @@ export default function CajaPage() {
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">Responsable: <span className="font-medium text-foreground">{activeSession.openedByEmail}</span></p>
                 <p className="text-sm text-muted-foreground mt-1">Sucursal: <span className="font-medium text-foreground">{activeSession.locationName || 'Nacional'}</span></p>
-                <p className="text-xs text-muted-foreground mt-1">Apertura: {activeSession.openedAt?.seconds ? new Date(activeSession.openedAt.seconds * 1000).toLocaleString('es-MX') : 'Reciente'}</p>
+                <div className="flex items-center gap-3 mt-2">
+                  <p className="text-xs text-muted-foreground">Apertura: {activeSession.openedAt?.seconds ? new Date(activeSession.openedAt.seconds * 1000).toLocaleString('es-MX') : 'Reciente'}</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => { fetchBindSales(activeSession.openedAt); fetchDailySales(); }} 
+                    disabled={isFetchingErp || isFetchingDailySales} 
+                    className="h-6 text-[10px] px-2 py-0 gap-1 bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary"
+                  >
+                    <RefreshCcw className={`w-3 h-3 ${isFetchingErp || isFetchingDailySales ? 'animate-spin' : ''}`} />
+                    Actualizar ERP
+                  </Button>
+                </div>
               </div>
               <div className="flex gap-8 text-right">
                  <div>

@@ -53,6 +53,32 @@ export async function GET(request: Request) {
       }
     }
 
+    // Fetch Invoices for this branch on this day to link anonymous cash journals to the branch.
+    const branchInvoiceNumbers = new Set<string>();
+    if (locationId) {
+      try {
+        let skipInvoices = 0;
+        let keepFetchingInvoices = true;
+        while (keepFetchingInvoices) {
+          const invUrl = `${API_BASE}/Invoices?$filter=year(Date) eq ${yearNum} and month(Date) eq ${monthNum} and day(Date) eq ${dayNum} and LocationID eq guid'${locationId}'&$top=100&$skip=${skipInvoices}`;
+          const invRes = await fetch(invUrl, { headers, cache: 'no-store' });
+          if (invRes.ok) {
+            const invData = await invRes.json();
+            if (!invData.value || invData.value.length === 0) break;
+            invData.value.forEach((inv: any) => {
+               branchInvoiceNumbers.add(inv.Number.toString());
+            });
+            skipInvoices += 100;
+            if (invData.value.length < 100) keepFetchingInvoices = false;
+          } else {
+            break;
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching branch invoices:", e);
+      }
+    }
+
     let skip = 0;
     let keepFetching = true;
 
@@ -71,20 +97,45 @@ export async function GET(request: Request) {
         }
 
         for (const journal of data.value) {
-            // Ya no es necesario comprobar el match estricto del substring porque Bind lo hizo con el OData
             if (journal.Type === 'Pago de Venta') {
+                
+                // If locationId is provided, check if the journal belongs to this branch via invoice number match.
+                let belongsToBranch = true;
+                if (locationId) {
+                    if (branchInvoiceNumbers.size === 0) {
+                        // There are no invoices for this branch today, so no cash sales.
+                        belongsToBranch = false;
+                    } else {
+                        belongsToBranch = false;
+                        for (const item of journal.Items || []) {
+                            if (item.Description) {
+                                for (const invNum of branchInvoiceNumbers) {
+                                    if (item.Description.includes(`#${invNum}`)) {
+                                        belongsToBranch = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (belongsToBranch) break;
+                        }
+                    }
+                }
+
+                if (!belongsToBranch) continue;
+
                 if (journal.Items) {
                    journal.Items.forEach((item: any) => {
                       if (item.Charge > 0) {
                           const accNameLower = item.AccountName.toLowerCase();
                           let isCashMatch = false;
                           
-                          if (targetAccountName) {
-                              // If we have a specific account for this location, strictly match it
-                              isCashMatch = accNameLower.includes(targetAccountName);
-                          } else {
-                              // Fallback for global or unmapped locations
-                              isCashMatch = accNameLower.includes('efectivo') || accNameLower.includes('caja');
+                          if (targetAccountName && accNameLower.includes(targetAccountName)) {
+                              // Strict match if we found a specific bank account name.
+                              isCashMatch = true;
+                          } else if (accNameLower.includes('efectivo') || accNameLower.includes('caja')) {
+                              // If it falls back to a generic account like "caja y efectivo" 
+                              // we accept it because we already verified it belongs to the branch (belongsToBranch).
+                              isCashMatch = true;
                           }
 
                           if (isCashMatch) {

@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Control de Anticipos",
-  description: "Captura de anticipos conectada a Bind ERP",
+  title: "BusinessFlow - ERP y Finanzas Inteligentes",
+  description: "La plataforma integral para administrar ventas, inventarios, compras y tu contabilidad sincronizada con el SAT.",
 };
 
 export default function RootLayout({

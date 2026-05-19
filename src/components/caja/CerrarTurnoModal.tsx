@@ -47,7 +47,7 @@ export function CerrarTurnoModal({
   initialCardSales?: string;
   onClosed: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, companyId } = useAuth();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [cardSales, setCardSales] = useState(initialCardSales || "");
@@ -129,7 +129,8 @@ export function CerrarTurnoModal({
 
     setLoading(true);
     try {
-      const sessionRef = doc(db, "cash_sessions", session.id);
+      if (!companyId) return;
+      const sessionRef = doc(db, "companies", companyId, "cash_sessions", session.id);
       await updateDoc(sessionRef, {
         status: "closed",
         closedAt: serverTimestamp(),

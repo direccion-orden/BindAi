@@ -364,7 +364,8 @@ export async function applyPaymentToErp(
   amount: number,
   bankAccountId: string,
   paymentTerm: number,
-  reference: string
+  reference: string,
+  paymentDate?: string
 ) {
   if (!process.env.BIND_ERP_API_KEY) {
     return { success: true, paymentId: "MOCK-PAY-" + Math.floor(Math.random() * 1000) };
@@ -384,13 +385,18 @@ export async function applyPaymentToErp(
       finalAccountId = "28b5ba5e-d7e9-442a-a206-1e08e5aa2534";
     }
 
+    // Si envían fecha, usamos mediodía UTC para evitar cambios de día por zona horaria. Si no, usamos Date actual.
+    const isoDate = paymentDate 
+      ? new Date(`${paymentDate}T12:00:00Z`).toISOString() 
+      : new Date().toISOString();
+
     const payload = {
       InvoiceID: documentId,
       AccountID: finalAccountId,
       Amount: amount,
       Reference: reference || "Anticipo de App",
       PaymentTerm: paymentTerm || 3,
-      Date: new Date().toISOString()
+      Date: isoDate
     };
 
     // El endpoint real validado para pagos a facturas es /Invoices/Payment

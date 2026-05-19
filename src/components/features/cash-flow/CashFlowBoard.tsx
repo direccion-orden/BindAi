@@ -5,6 +5,7 @@ import { Loader2, Plus, ArrowRight } from "lucide-react";
 import { CashFlowModal } from "./CashFlowModal";
 import { collection, query, where, getDocs, addDoc, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { useAuth } from "@/context/AuthContext";
 import type { CashFlowRecord, BindERPAccount, BindERPCostCenter } from "@/types/cashFlow";
 
 interface CashFlowBoardProps {
@@ -13,6 +14,7 @@ interface CashFlowBoardProps {
 }
 
 export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
+  const { companyId } = useAuth();
   const [locations, setLocations] = useState<any[]>([]);
   const [banks, setBanks] = useState<BindERPAccount[]>([]);
   
@@ -39,39 +41,40 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
   const daysInMonth = new Date(year, month, 0).getDate();
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const fetchData = async () => {
+    const fetchData = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch Catalogs from Bind
-      const [locRes, bankRes] = await Promise.all([
-         fetch('/api/erp/locations'),
-         fetch('/api/erp/bank-accounts')
+      if (!companyId) return;
+
+      // 1. Fetch Catalogs from Firestore
+      const [locSnap, bankSnap] = await Promise.all([
+         getDocs(query(collection(db, 'companies', companyId, 'locations'))),
+         getDocs(query(collection(db, 'companies', companyId, 'bankAccounts')))
       ]);
-      const locData = await locRes.json();
-      const bankData = await bankRes.json();
+      const locData = locSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const bankData = bankSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      setLocations(Array.isArray(locData) ? locData : locData.locations || []);
-      setBanks(bankData.value || []);
+      setLocations(locData);
+      setBanks(bankData as any);
 
       // 2. Fetch Firestore Manual Data
       const qRange = [
         where("month", "==", month),
         where("year", "==", year)
       ];
-      
-      const [snapFor, snapInc, snapProg, expRes] = await Promise.all([
-         getDocs(query(collection(db, 'cf_forecasts'), ...qRange)),
-         getDocs(query(collection(db, 'cf_incomes'), ...qRange)),
-         getDocs(query(collection(db, 'cf_programmed_expenses'), ...qRange)),
-         fetch(`/api/erp/expenses?month=${month}&year=${year}`)
+
+      const [snapFor, snapInc, snapProg] = await Promise.all([
+         getDocs(query(collection(db, 'companies', companyId, 'cf_forecasts'), ...qRange)),
+         getDocs(query(collection(db, 'companies', companyId, 'cf_incomes'), ...qRange)),
+         getDocs(query(collection(db, 'companies', companyId, 'cf_programmed_expenses'), ...qRange))
       ]);
 
       setForecasts(snapFor.docs.map(d => ({ id: d.id, ...d.data() })));
       setIncomes(snapInc.docs.map(d => ({ id: d.id, ...d.data() })));
       setProgrammedExpenses(snapProg.docs.map(d => ({ id: d.id, ...d.data() })));
       
-      const expData = await expRes.json();
-      setRealExpenses(expData.value || []);
+      // Expenses will be fully managed by our internal ERP in phase 2/3.
+      setRealExpenses([]);
       
     } catch (error) {
       console.error(error);
@@ -81,8 +84,10 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [month, year]);
+    if (companyId) {
+      fetchData();
+    }
+  }, [month, year, companyId]);
 
   const handleCellClickEdit = (collectionName: string, entityId: string, day: number, currentValue: number) => {
     setEditingCell({ collectionName, entityId, day, value: currentValue > 0 ? currentValue.toString() : "" });
@@ -114,10 +119,12 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
          setArray(stateArray.map(item => item.id === existing.id ? { ...item, amount } : item));
          
          // Background sync without blocking UI
-         await updateDoc(doc(db, collectionName, existing.id), { amount });
+         if (!companyId) return;
+         await updateDoc(doc(db, "companies", companyId, collectionName, existing.id), { amount });
       } else if (amount > 0) {
          // We generate local sync after fast creation
-         const docRef = await addDoc(collection(db, collectionName), {
+         if (!companyId) return;
+         const docRef = await addDoc(collection(db, "companies", companyId, collectionName), {
             entityId, day, month, year, amount, createdAt: new Date()
          });
          setArray([...stateArray, { id: docRef.id, entityId, day, month, year, amount }]);
@@ -139,7 +146,8 @@ export function CashFlowBoard({ month, year }: CashFlowBoardProps) {
 
   const handleSaveExpense = async (formData: Partial<CashFlowRecord>) => {
     if (formData.isProgrammed) {
-        await addDoc(collection(db, "cf_programmed_expenses"), {
+        if (!companyId) return;
+        await addDoc(collection(db, "companies", companyId, "cf_programmed_expenses"), {
           ...formData, Date: new Date().toISOString()
         });
     } else {

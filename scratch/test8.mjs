@@ -3,21 +3,9 @@ const apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6ImFkbWl
 const headers = { "Authorization": `Bearer ${apiKey}` };
 
 async function run() {
-    let id = "9bf941a4-f87b-481b-82cb-d5dbf6737ec8";
-    let url = `${API_BASE}/Purchases/${id}`;
+    let url = `${API_BASE}/Invoices?$filter=Date ge datetime'2024-04-16T00:00:00'&$top=5`;
     let res = await fetch(url, { headers });
-    if (!res.ok) {
-        console.log("Error Purchases/:id:", res.status, await res.text());
-        // Try GetPurchaseOrder
-        url = `${API_BASE}/Purchases/GetPurchaseOrder?id=${id}`;
-        res = await fetch(url, { headers });
-        if (!res.ok) {
-            console.log("Error GetPurchaseOrder:", res.status, await res.text());
-        } else {
-            console.dir(await res.json(), {depth:null});
-        }
-    } else {
-        console.dir(await res.json(), {depth:null});
-    }
+    let data = await res.json();
+    console.log(data);
 }
 run();

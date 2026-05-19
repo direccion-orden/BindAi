@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Camera, Image as ImageIcon, Loader2, Search } from "lucide-react";
 import { ErpClient } from "@/app/actions/erp";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, serverTimestamp, query as firestoreQuery, orderBy, limit, getDocs } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query as firestoreQuery, orderBy, limit, getDocs, where } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 
@@ -20,12 +20,12 @@ const PAYMENT_TERMS = [
 ];
 
 export default function NuevoAnticipoPage() {
-  const { user } = useAuth();
+  const { user, companyId } = useAuth();
   const router = useRouter();
   
   const [query, setQuery] = useState("");
-  const [clients, setClients] = useState<ErpClient[]>([]);
-  const [selectedClient, setSelectedClient] = useState<ErpClient | null>(null);
+  const [clients, setClients] = useState<any[]>([]);
+  const [selectedClient, setSelectedClient] = useState<any | null>(null);
   
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
@@ -43,22 +43,45 @@ export default function NuevoAnticipoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
-    fetch('/api/erp/banks')
-      .then(res => res.json())
-      .then((data) => {
+    if (!companyId) return;
+    const fetchAccounts = async () => {
+      try {
+        const q = firestoreQuery(collection(db, "companies", companyId, "bankAccounts"));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
         setBankAccounts(data);
         if (data && data.length > 0) setSelectedAccountId(data[0].id);
-      })
-      .catch(console.error);
-  }, []);
+      } catch (error) {
+        console.error("Error loading bank accounts:", error);
+      }
+    };
+    fetchAccounts();
+  }, [companyId]);
 
   const handleSearch = async () => {
-    if (!query) return;
+    if (!query || !companyId) return;
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/erp/clients?q=${encodeURIComponent(query)}`);
-      const results = await res.json();
-      setClients(results || []);
+      // Basic search simulating a 'like' query in Firestore (Firestore doesn't have native case-insensitive LIKE, so we'll fetch all and filter in memory since the list won't be huge at first, or we can just fetch all once. For now, fetch all and filter).
+      const q = firestoreQuery(collection(db, "companies", companyId, "clients"));
+      const snapshot = await getDocs(q);
+      const allClients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      
+      const searchTerm = query.toLowerCase();
+      const results = allClients.filter(c => 
+        c.name?.toLowerCase().includes(searchTerm) || 
+        c.rfc?.toLowerCase().includes(searchTerm) ||
+        c.email?.toLowerCase().includes(searchTerm)
+      );
+      
+      // Map to expected structure
+      const mapped = results.map(c => ({
+        id: c.id,
+        legalName: c.name,
+        rfc: c.rfc || ""
+      }));
+      
+      setClients(mapped);
     } catch (error) {
       console.error(error);
     } finally {
@@ -89,15 +112,16 @@ export default function NuevoAnticipoPage() {
       }
 
       // 1. Obtener último Folio
+      if (!companyId) return;
       let nextFolio = 1;
-      const qFolio = firestoreQuery(collection(db, "anticipos"), orderBy("folio", "desc"), limit(1));
+      const qFolio = firestoreQuery(collection(db, "companies", companyId, "anticipos"), orderBy("folio", "desc"), limit(1));
       const folioSnap = await getDocs(qFolio);
       if (!folioSnap.empty) {
         nextFolio = ((folioSnap.docs[0].data() as any).folio || 0) + 1;
       }
 
       // Guardar en Firestore
-      await addDoc(collection(db, "anticipos"), {
+      await addDoc(collection(db, "companies", companyId, "anticipos"), {
         folio: nextFolio,
         clientId: selectedClient.id,
         clientName: selectedClient.legalName,

@@ -23,7 +23,7 @@ const DENOMINATIONS = [
 ];
 
 export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any) => void; onCancel: () => void }) {
-  const { user } = useAuth();
+  const { user, companyId } = useAuth();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   
@@ -34,11 +34,13 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
 
   useEffect(() => {
     async function fetchLocations() {
+      if (!companyId) return;
       setLoadingLocs(true);
       try {
-        const res = await fetch('/api/erp/locations');
-        const data = await res.json();
-        if (Array.isArray(data)) setLocations(data);
+        const q = query(collection(db, "companies", companyId, "locations"));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+        setLocations(data);
       } catch (e) {
         console.error("Error cargando sucursales:", e);
       } finally {
@@ -77,9 +79,10 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
 
     setLoading(true);
     try {
+      if (!companyId) return;
       // First, check if there's already an open session for this location
       const q = query(
-        collection(db, "cash_sessions"),
+        collection(db, "companies", companyId, "cash_sessions"),
         where("status", "==", "open"),
         where("locationId", "==", selectedLocationId)
       );
@@ -105,7 +108,7 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
         discrepancy: 0
       };
 
-      const docRef = await addDoc(collection(db, "cash_sessions"), sessionData);
+      const docRef = await addDoc(collection(db, "companies", companyId, "cash_sessions"), sessionData);
       onOpened({ id: docRef.id, ...sessionData, openedAt: new Date() });
     } catch (error) {
       console.error("Error al abrir turno:", error);

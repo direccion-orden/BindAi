@@ -3,16 +3,9 @@ const apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6ImFkbWl
 const headers = { "Authorization": `Bearer ${apiKey}` };
 
 async function run() {
-    let id = '8fefec38-eb24-4795-af55-00a26499b164';
-    let url = `${API_BASE}/Inventory/GetMerchandiseReception?id=${id}`;
+    let url = `${API_BASE}/AccountingJournals?$top=1`;
     let res = await fetch(url, { headers });
-    if (res.ok) {
-        console.dir(await res.json(), {depth: null});
-    } else {
-        url = `${API_BASE}/Inventory/${id}`;
-        res = await fetch(url, { headers });
-        if (res.ok) console.dir(await res.json(), {depth: null});
-        else console.log(res.status);
-    }
+    let data = await res.json();
+    console.log(JSON.stringify(data.value, null, 2));
 }
 run();

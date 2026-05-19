@@ -27,7 +27,7 @@ const DENOMINATIONS = [
 ];
 
 export default function CajaPage() {
-  const { user } = useAuth();
+  const { user, companyId } = useAuth();
   const [allOpenSessions, setAllOpenSessions] = useState<any[]>([]);
   const [activeSession, setActiveSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -49,10 +49,10 @@ export default function CajaPage() {
   const [loadingReport, setLoadingReport] = useState(false);
 
   const fetchSession = async () => {
-    if (!user) return;
+    if (!user || !companyId) return;
     try {
       const q = query(
-        collection(db, "cash_sessions"),
+        collection(db, "companies", companyId, "cash_sessions"),
         where("status", "==", "open")
       );
       const snapshot = await getDocs(q);
@@ -80,7 +80,7 @@ export default function CajaPage() {
 
   useEffect(() => {
     fetchSession();
-  }, [user]);
+  }, [user, companyId]);
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [bindSales, setBindSales] = useState(0);
@@ -118,7 +118,8 @@ export default function CajaPage() {
      setSyncStatus('syncing');
      const timerId = setTimeout(async () => {
          try {
-            const ref = doc(db, "cash_sessions", activeSession.id);
+            if (!companyId) return;
+            const ref = doc(db, "companies", companyId, "cash_sessions", activeSession.id);
             await updateDoc(ref, {
                 liveAudit: {
                     cardSales: liveCardSales,
@@ -143,7 +144,8 @@ export default function CajaPage() {
 
 
   const fetchTransactions = async (sessionId: string) => {
-    const q = query(collection(db, "cash_transactions"), where("sessionId", "==", sessionId));
+    if (!companyId) return;
+    const q = query(collection(db, "companies", companyId, "cash_transactions"), where("sessionId", "==", sessionId));
     const snapshot = await getDocs(q);
     const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
     docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
@@ -221,14 +223,14 @@ export default function CajaPage() {
   }, [activeSession?.id, activeSession?.openedAt]);
 
   const fetchReportData = async () => {
-    if (!user) return;
+    if (!user || !companyId) return;
     setLoadingReport(true);
     try {
       const start = new Date(reportStartDate + "T00:00:00");
       const end = new Date(reportEndDate + "T23:59:59.999");
       
       const qSess = query(
-        collection(db, "cash_sessions"),
+        collection(db, "companies", companyId, "cash_sessions"),
         where("closedAt", ">=", Timestamp.fromDate(start)),
         where("closedAt", "<=", Timestamp.fromDate(end))
       );
@@ -239,7 +241,7 @@ export default function CajaPage() {
       setHistorySessions(docsSess);
       
       const qTx = query(
-        collection(db, "cash_transactions"),
+        collection(db, "companies", companyId, "cash_transactions"),
         where("createdAt", ">=", Timestamp.fromDate(start)),
         where("createdAt", "<=", Timestamp.fromDate(end))
       );

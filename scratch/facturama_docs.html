@@ -1,0 +1,1152 @@
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+	<link rel="icon" href="/Content/img/facturama-favicon.ico">
+
+	<title>Documentaci&#243;n API REST de Facturaci&#243;n 4.0 Facturama</title>
+	<link rel="canonical" href="https://apisandbox.facturama.mx/Docs" />
+	<link href="/Content/Site.css" rel="stylesheet">
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+		  integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+
+
+
+	<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.0.10/css/all.css"
+		  integrity="sha384-+d0P83n9kaQMCwj8F4RJB66tzIwOKmrdb46+porD/OvrJ+37WqIM7UoBtwHO6Nlg"
+		  crossorigin="anonymous">
+
+
+	
+
+	<style type="text/css">
+
+
+		body {
+			margin: 0;
+			font-family: 'Montserrat', sans-serif;
+			font-size: 1rem;
+			font-weight: 300;
+			line-height: 1.5;
+			color: #455A64;
+			text-align: left;
+			background-color: white;
+		}
+
+		/* SIDEBAR O MENU LATERAL */
+		.sidebar-menu {
+			padding-top: 0px;
+			overflow-y: auto;
+			overflow-x: auto;
+			height: calc( 100vh - 70px );
+			border-right: 1px solid rgba(0,0,0,.05);
+			font-size: 14px;
+			padding-bottom: 50px;
+		}
+
+			.sidebar-menu #search_container {
+				position: relative;
+				padding: 1rem 15px;
+				margin-right: -15px;
+				margin-left: -15px;
+				border-bottom: 1px solid rgba(0,0,0,.05);
+			}
+
+		.sidebar-menu {
+			height: calc( 100vh - 170px );
+			border-bottom: 1px solid rgba(0,0,0,.1);
+		}
+
+		.menu-item {
+		}
+
+		.menu-item-header {
+			cursor: pointer;
+			display: block;
+		}
+
+			.menu-item-header:hover {
+			}
+
+
+		.menu-item ul {
+			padding-left: 8px;
+		}
+
+
+		.menu-item li {
+			list-style: none;
+		}
+
+		.menu-item a,
+		.menu-item li {
+			color: #333;
+			padding: 3px 5px;
+		}
+
+			.menu-item a:hover,
+			.menu-item li:hover {
+				color: #00bcd4;
+			}
+
+		a.menu-item-li {
+			border-left: 1px solid rgba(0,0,0,.05);
+			padding-left: 10px;
+			display: block;
+		}
+
+			a.menu-item-li:hover,
+			a.menu-item-li.active {
+				color: #00bcd4;
+				border-left: 1px solid #00bcd4;
+			}
+
+		.menu-item-header[aria-expanded="true"] {
+			color: #00bcd4 !important;
+		}
+		/* Buscador*/
+		#search_results {
+			position: absolute;
+			z-index: 1;
+			background: white;
+			max-height: 300px;
+			overflow-y: auto;
+			box-shadow: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
+			padding: 10px;
+			display: none;
+		}
+
+			#search_results .search-results-item {
+				border-bottom: 1px solid rgba(0,0,0,.05);
+				padding: 3px 0px;
+			}
+
+				#search_results .search-results-item a {
+					color: #333;
+				}
+
+				#search_results .search-results-item:hover a {
+					color: #00bcd4 !important;
+					cursor: pointer
+				}
+		/* SECCIÓN DE CONTENIDO DE LA DOCUMENTACIÓN */
+		.doc-content {
+			padding-top: 30px;
+			overflow-y: auto;
+			height: calc( 100vh - 70px );
+		}
+
+		.help-page-table tbody tr:hover td {
+			background-color: #fff !important;
+		}
+
+		nav a .txt-logo {
+			color: #00bcd4 !important;
+		}
+
+		.help-page h1, .help-page .h1 {
+			font-size: 26px !important;
+		}
+
+		.help-page h2, .help-page .h2 {
+			font-size: 22px !important;
+		}
+
+		.h4, h4 {
+			font-size: 1.1rem;
+		}
+		/* Colores de los vervos en la petición */
+		.help-page .sample-header.verb-POST {
+			background-color: #F5A726;
+			margin-left: -4px;
+		}
+
+		.help-page .sample-header.verb-GET {
+			background-color: #7ED321;
+			margin-left: -4px;
+		}
+
+		.help-page .sample-header.verb-PUT {
+			background-color: #5A9AE4;
+			margin-left: -4px;
+		}
+
+		.help-page .sample-header.verb-DELETE {
+			background-color: #ED4B48;
+			margin-left: -4px;
+		}
+
+		.help-page .sample-content {
+			font-family: SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+		}
+
+		/* Parámetros de petición y respuesta */
+
+		.help-page .parameter-documentation {
+			width: 100%;
+		}
+
+		.parameter-row {
+			margin-bottom: 1rem;
+			padding-bottom: 1rem;
+			border-bottom: 1px solid rgba(0,0,0,.05);
+		}
+
+		.parameter-name {
+			text-align: left;
+			font-weight: bold;
+			margin-bottom: 5px;
+		}
+
+		.parameter-row p {
+			margin-bottom: 0.1rem;
+		}
+
+
+		.btn-outline-secondary:not(:disabled):not(.disabled).active, .btn-outline-secondary:not(:disabled):not(.disabled):active, .show > .btn-outline-secondary.dropdown-toggle, .btn-outline-secondary:hover {
+			background-color: white;
+		}
+
+
+		nav .menu {
+			display: inline-block;
+			vertical-align: middle;
+		}
+
+			nav .menu.main .reference, nav .menu.main .guides {
+				position: relative;
+				display: inline-block;
+				vertical-align: top;
+			}
+
+			nav .menu.main a {
+				color: #455A64;
+			}
+
+			nav .menu a {
+				display: inline-block;
+				padding: 0.5rem 1rem;
+			}
+
+		@media only screen and (min-width: 768px) {
+			nav .menu.main ul.submenu {
+				background-color: #fff;
+				border-radius: 0.5rem;
+				box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.25), 0px 16px 12px -16px rgba(0, 0, 0, 0.25);
+				margin-top: 1rem;
+				width: 160px;
+				z-index: 1000;
+			}
+		}
+
+		nav .menu.main ul.submenu {
+			display: none;
+			list-style-type: none;
+			margin: 0;
+			padding: 0;
+			position: absolute;
+		}
+
+			nav .menu.main ul.submenu li {
+				border-bottom: 1px solid #ccc;
+			}
+
+				nav .menu.main ul.submenu li a:hover {
+					background-color: #fafbfc;
+					color: #00bcd4;
+				}
+
+				nav .menu.main ul.submenu li a {
+					display: block;
+					padding: 1rem;
+				}
+
+		nav .menu.profile {
+			border-left: 1px solid #ccc;
+		}
+
+		a:hover, header a:active, header a:focus {
+			text-decoration: none;
+		}
+
+		a:hover {
+			color: #00ACC1;
+			text-decoration: underline;
+		}
+
+		nav a {
+			font-size: 14px;
+			color: #00bcd4;
+		}
+
+
+		.button.primary:hover {
+			background-color: #00ACC1;
+			border-color: #00ACC1;
+			box-shadow: 0px 16px 12px -16px rgba(0, 0, 0, 0.25);
+			text-decoration: none;
+		}
+
+		.button {
+			border-radius: 2rem;
+			border-top-left-radius: 2rem;
+			border-top-right-radius: 2rem;
+			border-bottom-right-radius: 2rem;
+			border-bottom-left-radius: 2rem;
+			text-align: center;
+		}
+
+			.button.primary {
+				background-color: #00bcd4;
+				border-color: #00bcd4;
+				border-top-color: rgb(0, 188, 212);
+				border-right-color: rgb(0, 188, 212);
+				border-bottom-color: rgb(0, 188, 212);
+				border-left-color: rgb(0, 188, 212);
+				color: #fff;
+			}
+
+		.menu-footer {
+			color: gray;
+			position: fixed;
+			bottom: 0;
+			margin-bottom: 20px;
+		}
+
+
+		.menu-item.menu-footer a {
+			font-size: 14px;
+			color: #00bcd4;
+			font-weight: 300;
+		}
+
+		b, strong {
+			font-weight: bold;
+		}
+
+		#show-menu-culture img {
+			height: 20px;
+		}
+	</style>
+
+	<script>
+		(function (w, d, s, l, i) {
+			w[l] = w[l] || []; w[l].push({
+				'gtm.start':
+					new Date().getTime(), event: 'gtm.js'
+			}); var f = d.getElementsByTagName(s)[0],
+				j = d.createElement(s), dl = l != 'dataLayer' ? '&l=' + l : ''; j.async = true; j.src =
+					'https://www.googletagmanager.com/gtm.js?id=' + i + dl; f.parentNode.insertBefore(j, f);
+		})(window, document, 'script', 'dataLayer', 'GTM-NTXPXK7');
+
+
+	var PageType = '' || 'Api';
+
+        window.dataLayer = window.dataLayer || []
+        dataLayer.push({
+	        'pageCode': '200',
+	        'user': 'nologueado',
+	        'robots': 'index,follow',
+	        'PageType': PageType
+        });</script>
+	<!-- End Google Tag Manager -->
+</head>
+<body>
+
+	<!-- Google Tag Manager (noscript) -->
+	<noscript>
+		<iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NTXPXK7"
+				height="0" width="0" style="display:none;visibility:hidden"></iframe>
+	</noscript>
+	<!-- End Google Tag Manager (noscript) -->
+
+    <nav class="d-flex flex-column flex-md-row align-items-center p-3 px-md-4 mb-3 bg-white border-bottom box-shadow fixed-top">
+        <div class="my-0 mr-md-auto font-weight-normal">
+            <a href="/">
+                <img class="img-logo" src="/Content/img/brand/facturama-redux.png"
+                     alt="Facturama facturación electrónica logo" />  <span class="txt-logo">Developers</span>
+            </a>
+                <span class="subtitle" style="font-size: 12px;">API Web</span>
+        </div>
+
+        <nav>
+			<div class="menu main">
+				<div class="reference">
+					<a href="#" id="show-menu-culture">
+						<img src="/Content/img/flags/mexico.png" alt="Facturama-idioma-Espa&#241;ol" />
+						<i class="fa fa-angle-down"></i>
+					</a>
+
+					<!-- Submenu -->
+					<ul class="submenu" id="menu-culture" style="display: none;">
+						<li><a href="/docs/SetCulture?culture=es&currentUrl=Docs">Español</a></li>
+						<li><a href="/docs/SetCulture?culture=en&currentUrl=Docs">Inglés</a></li>
+					</ul>
+				</div>
+
+				<div class="reference">
+					<a href="#" id="show-menu-reference">
+						Referencias API <i class="fa fa-angle-down"></i>
+					</a>
+
+					<!-- Submenu -->
+					<ul class="submenu" id="menu-reference" style="display: none;">
+						<li><a href="/Docs">API Web</a></li>
+						<li><a href="/Docs-multi">API Multiemisor</a></li>
+					</ul>
+				</div>
+
+				<a href="/guias">Guias</a>
+				<a href="https://facturama.mx/planes-facturacion">Costos</a>
+				<a href="https://facturama.mx/contacto">Contacto</a>
+			</div>
+        </nav>
+        <div class="menu profile">            
+
+        <a href="https://dev.facturama.mx/api/login">Inicia Sesión</a>
+        <a href="https://dev.facturama.mx/api/registro" class="button primary">Regístrate</a>
+
+
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row" style="padding-top: 70px;">
+
+
+            
+
+            <div id="sidebar_menu" class="col-md-2 sidebar-menu">
+
+                
+                <form action="/" method="post">
+                    <div id="search_container">
+                        <input type="text" name="search" class="form-control typeahead" placeholder="Buscar ..." />
+                    </div>
+                    <div id="search_results"></div>
+                </form>
+
+
+
+                
+<div>
+
+
+
+
+
+    
+
+    <div class="menu-item">
+
+        <a href="#Cfdi" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Facturas</a>
+
+        <ul class="collapse" data-parent="#sidebar_menu" id="Cfdi">
+
+            <li>
+                
+                <a href="/docs/api/POST-3-cfdis" class="menu-item-li">Crear un cfdi de emision</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-Cfdi-format-type-id" class="menu-item-li">Descargar factura</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-Acuse-format-type-id" class="menu-item-li">Obtener acuse de cancelaci&#243;n</a>
+            </li>
+            <li>
+                <a href="/docs/api/DELETE-cfdi-id_type_motive_uuidReplacement" class="menu-item-li">Cancelar un cfdi</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-cfdi_type_keyword_status_invoiceType_page" class="menu-item-li">Obtener los ultimos 2000 cfdi que contienen determinada palabra clave</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-Cfdi-id_type" class="menu-item-li">Obtener el detalle del CFDi con el id y tipo seleccionado</a>
+            </li>
+            <li>
+                <a href="/docs/api/POST-cfdi_cfdiType_cfdiId_email_subject_comments_issuerEmail_includePayBtn" class="menu-item-li">Enviar el CFDi por email especificando el concepto</a>
+            </li>
+        </ul>
+    </div>
+
+
+
+
+
+
+
+    
+
+    <div class="menu-item">
+
+
+        <a href="#Product" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Productos &#243; servicios</a>
+
+
+
+        <ul class="collapse" data-parent="#sidebar_menu" id="Product">
+            <li>
+                <a href="/docs/api/GET-products_start_length_search_orderBy_orderAsc_draw" class="menu-item-li">Obtener lista de productos</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-Product-id" class="menu-item-li">Obtener producto por Id</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-Product_keyword" class="menu-item-li">Obtener lista de productos filtrando por palabra clave</a>
+            </li>
+            <li>
+                <a href="/docs/api/PUT-Product-id" class="menu-item-li">Editar producto</a>
+            </li>
+            <li>
+                <a href="/docs/api/POST-Product" class="menu-item-li">Agregar producto</a>
+            </li>
+            <li>
+                <a href="/docs/api/DELETE-Product-id" class="menu-item-li">Eliminar producto</a>
+            </li>
+        </ul>
+
+    </div>
+
+
+
+
+
+
+
+
+    
+
+
+    <div class="menu-item">
+
+
+        <a href="#Client" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Clientes</a>
+
+
+
+        <ul class="collapse" data-parent="#sidebar_menu" id="Client">
+            <li>
+                <a href="/docs/api/GET-Clients_start_length_search_orderBy_orderAsc_draw" class="menu-item-li">Obtener lista de clientes</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-Client_keyword" class="menu-item-li">Obtener clientes filtrados</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-Client-id" class="menu-item-li">Obtener cliente por Id</a>
+            </li>
+            <li>
+                <a href="/docs/api/PUT-Client-id" class="menu-item-li">Editar cliente</a>
+            </li>
+            <li>
+                <a href="/docs/api/POST-Client" class="menu-item-li">Agregar cliente</a>
+            </li>
+            <li>
+                <a href="/docs/api/DELETE-Client-id" class="menu-item-li">Eliminar cliente</a>
+            </li>
+            <li>
+                <a href="/docs/api/GET-Customers-status_rfc" class="menu-item-li">Informaci&#243;n del RFC</a>
+            </li>
+
+        </ul>
+
+    </div>
+
+
+
+
+
+
+
+    
+
+    <div class="menu-item">
+
+        <a href="#MyAccount" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Mi cuenta</a>
+
+
+        <ul class="collapse" data-parent="#sidebar_menu" id="MyAccount">
+
+
+            <li>
+                
+                <a href="/docs/api/GET-Account-UserInfo" class="menu-item-li">Obtener cuenta y perfil fiscal</a>
+            </li>
+
+
+            <li>
+
+                
+
+                <div class="menu-item">
+
+
+
+                    <a href="#TaxEntity" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Perfil fiscal</a>
+
+
+                    <ul class="collapse" data-parent="#MyAccount" id="TaxEntity">
+                        <li>
+                            <a href="/docs/api/PUT-TaxEntity-UploadLogo" class="menu-item-li">Cargar logo</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/PUT-TaxEntity-UploadCsd" class="menu-item-li">Subir los CSD</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-TaxEntity" class="menu-item-li">Obtener la informaci&#243;n fiscal</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/PUT-TaxEntity" class="menu-item-li">Actualizar una entidad fiscal</a>
+                        </li>
+                    </ul>
+
+                </div>
+            </li>
+
+
+
+            <li>
+
+                
+
+                <div class="menu-item">
+
+                    <a href="#SuscriptionPlan" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Plan de suscripci&#243;n</a>
+
+
+                    <ul class="collapse" data-parent="#MyAccount" id="SuscriptionPlan">
+                        <li>
+                            <a href="/docs/api/GET-SuscriptionPlan" class="menu-item-li">Obtener la suscripci&#243;n vigente</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/POST-Subscription" class="menu-item-li">Comprar una nueva suscripci&#243;n con cargo a tarjeta</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/DELETE-Subscription" class="menu-item-li">Eliminar los cargos recurrentes</a>
+                        </li>
+                    </ul>
+
+                </div>
+
+            </li>
+
+
+
+            <li>
+                
+
+                <div class="menu-item">
+
+                    <a href="#BranchOffice" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Lugares  de expedici&#243;n</a>
+
+
+
+                    <ul class="collapse" data-parent="#MyAccount" id="BranchOffice">
+                        <li>
+                            <a href="/docs/api/GET-BranchOffice" class="menu-item-li">Obtener lista de sucursales</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-BranchOffice-id" class="menu-item-li">Obtener sucursal por Id</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/PUT-BranchOffice-id" class="menu-item-li">Actualizar una sucursal</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/POST-BranchOffice" class="menu-item-li">Crear sucursal</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/DELETE-BranchOffice-id" class="menu-item-li">Eliminar sucursal</a>
+                        </li>
+                    </ul>
+
+                </div>
+
+
+            </li>
+
+
+
+
+            <li>
+
+                
+
+
+                <div class="menu-item">
+
+
+                    <a href="#Serie" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Series</a>
+
+
+
+                    <ul class="collapse" data-parent="#MyAccount" id="Serie">
+                        <li>
+                            <a href="/docs/api/GET-serie-idBranchOffice" class="menu-item-li">Obtener  lista de series</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-serie-idBranchOffice-name" class="menu-item-li">Obtener una serie a partir de su nombre</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/PUT-serie-idBranchOffice-name" class="menu-item-li">Actualizar serie</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/POST-serie-idBranchOffice" class="menu-item-li">Crear serie</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/DELETE-serie-idBranchOffice-name" class="menu-item-li">Eliminar serie</a>
+                        </li>
+                    </ul>
+
+                </div>
+
+            </li>
+
+        </ul>
+
+    </div>
+
+
+
+
+
+
+
+    
+    <div class="menu-item">
+
+
+        <a href="#GeneralCatalogs" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Cat&#225;logos</a>
+
+
+
+        <ul class="collapse" data-parent="#sidebar_menu" id="GeneralCatalogs">
+            <li>
+
+
+
+                
+
+
+                <div class="menu-item">
+
+
+                    <a href="#Catalogs" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Cat&#225;logos CFDI</a>
+
+
+
+                    <ul class="collapse" data-parent="#GeneralCatalogs" id="Catalogs">
+                        <li>
+                            <a href="/docs/api/GET-Catalogs-ProductsOrServices_keyword" class="menu-item-li">C&#243;digos de productos y servicios</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-Catalogs-PostalCodes_keyword" class="menu-item-li">C&#243;digo postal</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-Catalogs-Units_keyword" class="menu-item-li">Unidades</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-Catalogs-Currencies_keyword" class="menu-item-li">Monedas</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-Countries_keyword" class="menu-item-li">Pa&#237;ses</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-PaymentForms" class="menu-item-li">Formas de pago</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-PaymentMethods" class="menu-item-li">M&#233;todos de pago</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-FederalTaxes" class="menu-item-li">Impuestos federales</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-FiscalRegimens_rfc" class="menu-item-li">Reg&#237;menes Fiscales</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-CfdiTypes" class="menu-item-li">Tipos de Cfdi</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-RelationTypes" class="menu-item-li">Tipos de Relaci&#243;n</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-CfdiUses_keyword" class="menu-item-li">Usos de Cfdi</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-NameIds" class="menu-item-li">Nombres del CFDI</a>
+                        </li>
+                    </ul>
+
+                </div>
+
+
+
+            </li>
+
+
+            <li>
+
+                
+
+                <div class="menu-item">
+
+
+                    <a href="#CatalogsForeignTrade" data-toggle="collapse" class="menu-item-header" role="button" aria-expanded="false">Cat&#225;logos de comercio exterior</a>
+
+
+
+                    <ul class="collapse" data-parent="#GeneralCatalogs" id="CatalogsForeignTrade">
+                        <li>
+                            <a href="/docs/api/GET-catalogs-States_countryCode" class="menu-item-li">Estados (MEX, USA, CAN) a partir del Pa&#237;s</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-Municipalities_stateCode" class="menu-item-li">Municipios a partir del Estado</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-Localities_stateCode" class="menu-item-li">Localidades</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-Neighborhoods_postalCode" class="menu-item-li">Colonias a partir del c&#243;digo postal</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-CustomsUnits_keyword" class="menu-item-li">Unidades de comercio exterior</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-TariffFractions_keyword" class="menu-item-li">Fracciones arancelarias </a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-Incoterm" class="menu-item-li">INCOTERM</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-ReasonsForTransfer" class="menu-item-li">Motivos de Transferencia</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-RequestCodes" class="menu-item-li">Claves de Pedimento</a>
+                        </li>
+                        <li>
+                            <a href="/docs/api/GET-catalogs-OperationTypes" class="menu-item-li">Tipos de Operaci&#243;n</a>
+                        </li>
+                    </ul>
+
+                </div>
+
+
+            </li>
+
+        </ul>
+
+    </div>
+
+
+
+
+
+
+    <div class="menu-item menu-footer">
+        <a href="/errores" class="menu-item-header">Errores</a>
+        <a href="/librerias" class="menu-item-header">Librer&#237;as</a>
+        <a href="https://github.com/Facturama/" class="menu-item-header">GitHub</a>
+    </div>
+
+
+
+</div>                
+            </div>
+
+
+            
+
+            <div class="col-md-10 doc-content">
+                
+
+
+<link type="text/css" href="/Areas/Docs/Docs.css" rel="stylesheet" />
+
+
+
+<header class="help-page">
+    <div class="row">
+        <div class="float-left">
+            <h1></h1>
+        </div>
+    </div>
+
+    <style type="text/css">
+        div {
+            display: block;
+        }
+
+        h1, h2, h3 {
+            display: block;
+            width: 100%
+        }
+
+        .help-page div, .help-page p {
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .m-bottom-60 {
+            margin-bottom: 60px;
+        }
+    </style>
+</header>
+<div id="body" class="help-page">
+
+
+    <section class="container m-bottom-60">
+        <div class="row">
+            <br />
+
+            <h1> Gu&#237;a de uso b&#225;sico</h1>
+
+            El objetivo de esta gu&#237;a es explicar paso a paso como generar facturas sencillas.
+
+            <div>
+                <h2>1.- Registrarse en Facturama</h2>
+            </div>
+            <p>
+                Deber&#225;s generar una cuenta en
+
+                    <a href="https://dev.facturama.mx/api/registro" target="_blank">Facturama</a>
+
+                donde deber&#225;s completar la informaci&#243;n solicitada es importante cargar correctamente tus certificados del sello digital (CSD)
+            </p>
+
+            <div>
+                <h2>  2.- Generar token de autentificaci&#243;n</h2>
+            </div>
+
+            <p>
+                Para realizar cualquier llamada a nuestra api deber&#225; generar su token de
+                <a href="https://es.wikipedia.org/wiki/Autenticaci%C3%B3n_de_acceso_b%C3%A1sica" target="_blank" rel="nofollow">
+                    autentificación basic
+                </a>
+                a partir de su usuario y contrase&#241;a
+                <div class="sample-content">
+                    "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="
+                </div>
+
+            </p>
+
+
+
+
+
+
+                <div>
+                    <h2>3.- Carga tus cat&#225;logos</h2>
+                </div>
+                <p>
+                    Los elementos requeridos para crear una factura cfdi:
+                </p>
+                <br />
+                <ul>
+                    <li><a href="/Docs/Api/POST-api-Product" target="_blank"> Producto</a><br /></li>
+                    <li><a href="/Docs/Api/POST-api-Client" target="_blank"> Cliente</a><br /></li>
+                    <li><a href="/Docs/Api/POST-api-BranchOffice" target="_blank">Sucursal</a><br /></li>
+                </ul>
+                <br />
+                <div>
+                    <h2>4.- Crea tu primer cfdi</h2>
+                </div>
+                <ul>
+                    <li><a href="/docs/api/POST-2-cfdis" target="_blank">Emitir un CFDI</a></li>
+                </ul>
+
+
+
+
+
+                <div>
+                    <h2>5.- Descargar el Xml &#243; el PDF  </h2>
+                </div>
+                <p>
+                    <strong>format</strong>:define el formato del cfdi puede ser &quot;pdf&quot;, &quot;html&quot; &#243; &quot;xml&quot; <br />
+                    <strong>type</strong>: tipo de xml api: &quot;issued&quot;, &quot;received&quot;, para api-lite: &quot;issuedLite&quot; <br />
+                    <strong>id</strong>: identificador &#250;nico de la factura
+                </p>
+                <br />
+                <br />
+                <ul>
+                    <li><a href="/Docs/Api/GET-api-Cfdi-format-type-id">Descargar XML</a></li>
+                </ul>
+                <br />
+                <div>
+                    Ejemplo:
+
+                    <div class="sample-content">
+
+                        https://api.facturama.mx/Cfdi/xml/issued/qQfgX3B_t5pUKTBFN3_DTww
+
+
+
+                    </div>
+                </div>
+
+
+
+
+        </div>
+
+
+        <div>
+            <p><strong><i> <a href="/docs/examples" target="_blank">Ejemplos de CFDI 4.0</a></i></strong></p>
+            <p><strong><i> <a href="/docs/catalogs" target="_blank">Cat&#225;logos de control interno (aparte de los del SAT)</a></i></strong></p>
+        </div>
+
+    </section>
+</div>
+
+            </div>
+        </div>
+    </div>
+
+    
+    <script src="/Content/js/jquery-3.1.1.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validate/1.15.1/jquery.validate.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validate/1.15.1/additional-methods.min.js"></script>
+    <script src="/Scripts/facturama-api/facturama.api.js"></script>
+    <script src="/Content/js/landing-api.js"></script>
+
+
+
+    <script type="text/javascript">
+
+
+        $(document).ready(function () {
+            setSearchEvent();           //  Activa el evento de busqueda, al escribir en la cada correspondiente
+			markMenuItemSelected();     // Marca el elemento seleccionado del menu
+
+			
+		});
+
+
+
+
+        /** ------------------------------------------------------------------------------------------
+         *                     DESTACA EN EL MENU EL ELEMENTO SELECIONADO
+         ------------------------------------------------------------------------------------------ */
+        function markMenuItemSelected() {
+            var path = window.location.pathname;
+
+            // Se marca el elemento seleccionado
+            var item_selected = $('.menu-item-li[href="' + path + '"]');
+            $(item_selected).addClass('active');
+
+            // Se despliega el conjunto de items, donde se encuentra el seleccionado
+            var item_selected = showParents(item_selected);
+
+            showParents(item_selected);
+        }
+
+        // Se despliega el conjunto de items, donde se encuentra el seleccionado
+        function showParents(item_selected) {
+            var parent = $(item_selected).closest('.collapse');
+
+            $(parent).addClass('show');
+
+            var super_parent = $(parent).closest('.menu-item');
+            var header = $(super_parent).children(".menu-item-header").attr("aria-expanded", 'true');
+
+            return header;
+        }
+
+
+
+
+
+        /** ------------------------------------------------------------------------------------------
+         *                                  BUSCADOR
+         ------------------------------------------------------------------------------------------ */
+
+
+        var APIDOC = {};
+        APIDOC.resultsControlHtml = "";  // Contenido HTML del control de resultados
+        APIDOC.resultsControlJSON = [];
+
+
+        /**
+         * Establece el evento de busqueda de un componente,
+         * al liberar la presion de una tecla estando en la caja de busqueda
+         */
+        function setSearchEvent() {
+            $('#search_container input').on('keyup', function () {
+                var to_search = $(this).val();
+                var to_show = [];
+
+                APIDOC.resultsControlHtml = "";
+
+                if (to_search == "") {
+
+                    $('#search_results').fadeOut();
+                    $('#search_results').html('');
+
+                } else {
+                    to_search = to_search.toUpperCase();
+
+                    var list = $('.menu-item-li');
+
+                    for (var i = 0; i < list.length; i++) {
+                        var txt = $(list[i]).html().toUpperCase();
+                        if (txt.includes(to_search)) {
+                            APIDOC.addItemToResultsControl(list[i]);
+                        }
+                    }
+
+                    APIDOC.renderResultsControl();
+                }
+
+            }).on('focusout', function () {
+                $('#search_results').fadeOut();
+            });
+
+
+        }
+
+        /**
+         * Agrega un item al control de resultados
+         */
+        APIDOC.addItemToResultsControl = function (html_control) {
+
+
+            if ($(html_control).hasClass('menu-item-li')) {
+
+                var control = "<div class='search-results-item' > <a href='" + $(html_control).attr('href') + "'>" + $(html_control).html() + "</a> </div> \n";
+
+                APIDOC.resultsControlHtml = APIDOC.resultsControlHtml + control;
+            }
+        }
+
+
+        /**
+        * Muestra u oculta el control con los resultados de busqueda, segun sea necesario
+        */
+        APIDOC.renderResultsControl = function () {
+
+            if (APIDOC.resultsControlHtml == "") {
+                $('#search_results').fadeOut();
+            } else {
+                $('#search_results').fadeIn();
+                $('#search_results').html(APIDOC.resultsControlHtml);
+            }
+
+        }
+
+
+
+    </script>
+
+
+
+</body>
+</html>

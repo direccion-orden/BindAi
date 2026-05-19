@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { ErpDocument } from "@/app/actions/erp";
 import { doc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { useAuth } from "@/context/AuthContext";
 
 interface AplicarAnticipoModalProps {
   anticipo: any;
@@ -17,12 +18,14 @@ interface AplicarAnticipoModalProps {
 }
 
 export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess }: AplicarAnticipoModalProps) {
+  const { companyId } = useAuth();
   const [documents, setDocuments] = useState<ErpDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   
   // Mapeamos docId -> monto a aplicar
   const [applications, setApplications] = useState<Record<string, number>>({});
   const [isApplying, setIsApplying] = useState(false);
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState("");
@@ -49,7 +52,8 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
       let docs: ErpDocument[] = await resDocs.json();
 
       // 2. Localizar aplicaciones "Ciegas" en la base de datos de los Anticipos existentes
-      const q = query(collection(db, "anticipos"), where("clientId", "==", anticipo.clientId));
+      if (!companyId) return;
+      const q = query(collection(db, "companies", companyId, "anticipos"), where("clientId", "==", anticipo.clientId));
       const snaps = await getDocs(q);
       
       const blindDeductions: Record<string, number> = {};
@@ -116,7 +120,8 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
           amount: amount,
           bankAccountId: anticipo.bankAccountId || "CUENTA_MOCK",
           paymentTerm: anticipo.paymentTermId || 3,
-          reference: `Anticipo de ${anticipo.clientName}`
+          reference: `Anticipo de ${anticipo.clientName}`,
+          date: paymentDate
         };
 
         const resApply = await fetch('/api/erp/apply', {
@@ -153,7 +158,8 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
 
       const existingApps = anticipo.applications || [];
 
-      const ref = doc(db, "anticipos", anticipo.id);
+      if (!companyId) throw new Error("No company ID");
+      const ref = doc(db, "companies", companyId, "anticipos", anticipo.id);
       await updateDoc(ref, {
         balance: newBalance,
         status: newStatus,
@@ -197,6 +203,19 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
               <p className="text-muted-foreground">Saldo Restante</p>
               <p className="font-semibold">${remainingBalance.toFixed(2)}</p>
             </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4 p-4 rounded-lg border bg-muted/10 items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Fecha de aplicación</p>
+              <p className="text-[11px] text-muted-foreground">El pago se registrará en el ERP con esta fecha.</p>
+            </div>
+            <Input 
+              type="date" 
+              value={paymentDate} 
+              onChange={e => setPaymentDate(e.target.value)}
+              className="w-full sm:w-48 h-9"
+            />
           </div>
 
           <div className="space-y-3">

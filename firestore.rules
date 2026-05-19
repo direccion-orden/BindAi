@@ -1,24 +1,30 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Reglas para la colección 'anticipos'
-    match /anticipos/{anticipoId} {
-      // Solo permite lectura y escritura si el usuario:
-      // 1. Inició sesión existosamente.
-      // 2. Su correo termina en @ordendelascosas.com
-      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    
+    // Función auxiliar para validar si el usuario autenticado pertenece a la empresa
+    function isUserOfCompany(companyId) {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId;
     }
 
-    // Reglas para el nuevo módulo de Control de Caja
+    // Perfiles de usuario (Lectura y escritura propia, necesario para el Onboarding)
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // =========================================================================
+    // REGLAS LEGACY (Para rehabilitar la aplicación actualmente en producción)
+    // =========================================================================
+    match /anticipos/{anticipoId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
     match /cash_sessions/{sessionId} {
       allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
     }
-    
     match /cash_transactions/{txId} {
       allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
     }
-
-    // Reglas para el nuevo módulo de Flujo de Efectivo
     match /cf_forecasts/{docId} {
       allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
     }
@@ -28,8 +34,155 @@ service cloud.firestore {
     match /cf_programmed_expenses/{docId} {
       allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
     }
+    match /products/{productId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
+    match /clients/{clientId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
+    match /sales/{saleId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
+    match /counters/{counterId} {
+      allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
+    }
+
+    // =========================================================================
+    // NUEVAS REGLAS SAAS MULTI-TENANT (Desarrollo actual)
+    // =========================================================================
     
-    // Deniega el acceso a todo lo demás por seguridad
+    // Colección de Empresas (Tenants)
+    match /companies/{companyId} {
+      // Cualquier usuario logueado puede crear su empresa en el onboarding
+      allow create: if request.auth != null;
+      // Solo miembros de la empresa pueden leerla o actualizarla
+      allow read, update: if isUserOfCompany(companyId);
+
+      // --- SUBCOLECCIONES DE DATOS PRIVADOS AISLADOS POR EMPRESA ---
+      
+      match /anticipos/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /cash_sessions/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /cash_transactions/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /cf_forecasts/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /cf_incomes/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /cf_programmed_expenses/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /products/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /clients/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /sales/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /counters/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /locations/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /bankAccounts/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /warehouses/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /categories/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /tags/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /vendors/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /inventory_transactions/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /inventory_movements/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /label_formats/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /inventory_transfers/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /purchase_orders/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /purchases/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /production_orders/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /production_formulas/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /inventory_adjustments/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /inventory_counts/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /production_stages/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /quotes/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /pedidos/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /remisiones/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /facturas/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /projects/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /discounts/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /credentials/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /expenses_inbox/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /sat_requests/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /payments/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /outflows/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /accounts/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /journal_entries/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+    }
+    
+    // Por seguridad, cualquier otra colección global queda bloqueada
     match /{document=**} {
       allow read, write: if false;
     }

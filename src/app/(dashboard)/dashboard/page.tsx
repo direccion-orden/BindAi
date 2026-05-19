@@ -9,8 +9,10 @@ import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { AplicarAnticipoModal } from "@/components/anticipos/AplicarAnticipoModal";
 import { DetalleAnticipoModal } from "@/components/anticipos/DetalleAnticipoModal";
+import { useAuth } from "@/context/AuthContext";
 
 export default function DashboardPage() {
+  const { companyId } = useAuth();
   const [anticipos, setAnticipos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -35,7 +37,8 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, "anticipos"), orderBy("createdAt", "desc"));
+    if (!companyId) return;
+    const q = query(collection(db, "companies", companyId, "anticipos"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAnticipos(data);
@@ -43,7 +46,7 @@ export default function DashboardPage() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [companyId]);
 
   const openModalFor = (anticipo: any) => {
     setSelectedAnticipo(anticipo);

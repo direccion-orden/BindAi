@@ -26,7 +26,7 @@ interface TransaccionCajaModalProps {
 }
 
 export function TransaccionCajaModal({ isOpen, onClose, sessionId, onSuccess }: TransaccionCajaModalProps) {
-  const { user } = useAuth();
+  const { user, companyId } = useAuth();
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState<TransactionCategory>("RETIRO_GASTO");
   const [amount, setAmount] = useState("");
@@ -54,7 +54,8 @@ export function TransaccionCajaModal({ isOpen, onClose, sessionId, onSuccess }: 
         createdBy: user?.email,
       };
 
-      await addDoc(collection(db, "cash_transactions"), payload);
+      if (!companyId) return;
+      await addDoc(collection(db, "companies", companyId, "cash_transactions"), payload);
       onSuccess(); // Triggers a re-fetch of the session transactions
       onClose();   // Close modal
       

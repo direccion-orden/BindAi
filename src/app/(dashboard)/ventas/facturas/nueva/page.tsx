@@ -7,11 +7,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt, Building2, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
 import { getNextSequence } from "@/lib/firebase/counters";
+import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/discountEngine";
 
 interface OrderItem {
   productId: string;
@@ -22,6 +23,7 @@ interface OrderItem {
   unitPrice: number;
   discountPercentage: number;
   imageUrl?: string;
+  categoryIds?: string[];
 }
 
 export default function NuevaFacturaPage() {
@@ -47,7 +49,17 @@ export default function NuevaFacturaPage() {
   const [productSearch, setProductSearch] = useState("");
   const [items, setItems] = useState<OrderItem[]>([]);
   
+  const [locations, setLocations] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  
+  const [locationId, setLocationId] = useState("");
+  const [accountId, setAccountId] = useState("");
+
   const [saving, setSaving] = useState(false);
+
+  // Engine state
+  const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
+  const [enteredPromoCode, setEnteredPromoCode] = useState<string>("");
 
   useEffect(() => {
     if (!companyId) return;
@@ -65,7 +77,20 @@ export default function NuevaFacturaPage() {
       setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); };
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
+      const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAccounts(allAcc.filter((a: any) => a.type === "INGRESOS" && a.level > 2));
+    });
+
+    const unsubD = onSnapshot(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active")), (snap) => {
+      setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
+    });
+
+    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubD(); };
   }, [companyId]);
 
   const getFilteredClients = () => {
@@ -100,7 +125,11 @@ export default function NuevaFacturaPage() {
         quantity: 1, 
         unitPrice: variant.price || 0,
         discountPercentage: 0,
-        imageUrl: product.images?.[0]?.src || ""
+        imageUrl: product.images?.[0]?.src || "",
+        categoryIds: [
+          ...(product.productType ? [product.productType] : []),
+          ...(product.tags || [])
+        ]
       }]);
     }
     setProductSearch("");
@@ -119,10 +148,19 @@ export default function NuevaFacturaPage() {
     setItems(prev => prev.filter(i => i.variantId !== variantId));
   };
 
-  // Calculations
-  const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0);
-  const tax = subtotal * 0.16;
-  const total = subtotal + tax;
+  // Calculations via Engine
+  const engineItems: EngineItem[] = items.map(i => ({
+    id: i.variantId,
+    quantity: i.quantity,
+    unitPrice: i.unitPrice,
+    manualDiscountPercentage: i.discountPercentage,
+    categoryIds: i.categoryIds || []
+  }));
+
+  const totals = calculateOrderTotals(engineItems, availableDiscounts, enteredPromoCode);
+  const subtotal = totals.subtotal;
+  const tax = totals.tax;
+  const total = totals.total;
 
   const handleSave = async () => {
     if (!companyId) return;
@@ -149,6 +187,11 @@ export default function NuevaFacturaPage() {
 
     if (items.length === 0) {
       alert("Agrega al menos un producto a la factura.");
+      return;
+    }
+
+    if (!locationId || !accountId) {
+      alert("Debes seleccionar una Sucursal y una Cuenta Contable de Ingreso.");
       return;
     }
 
@@ -187,8 +230,11 @@ export default function NuevaFacturaPage() {
         Date: new Date().toISOString().split('.')[0],
         ExpeditionPlace: "64753",
         Items: items.map((item: any) => {
-          const discountAmt = item.quantity * item.unitPrice * (item.discountPercentage / 100);
+          // Find the precise engine calculations for this item
+          const engineItem = totals.processedItems?.find(ei => ei.id === item.variantId);
+          const discountAmt = engineItem ? engineItem.finalDiscountAmt : 0;
           const subtotalItem = (item.quantity * item.unitPrice) - discountAmt;
+          
           return {
             ProductCode: "01010101",
             IdentificationNumber: item.variantId || "SKU",
@@ -197,7 +243,7 @@ export default function NuevaFacturaPage() {
             UnitCode: "H87",
             UnitPrice: Number(item.unitPrice.toFixed(4)),
             Quantity: item.quantity,
-            Subtotal: Number(subtotalItem.toFixed(4)),
+            Subtotal: Number((item.quantity * item.unitPrice).toFixed(4)),
             Discount: Number(discountAmt.toFixed(4)),
             TaxObject: "02",
             Taxes: [
@@ -239,6 +285,11 @@ export default function NuevaFacturaPage() {
         totalAmount: total,
         projectId: projectId || null,
         projectName: projectId ? projects.find(p => p.id === projectId)?.name : null,
+        locationId,
+        locationName: locations.find(l => l.id === locationId)?.name || "",
+        accountId,
+        accountCode: accounts.find(a => a.id === accountId)?.code || "",
+        accountName: accounts.find(a => a.id === accountId)?.name || "",
         status: "por_timbrar", 
         cfdiPayload: cfdiPayload,
         createdAt: new Date().toISOString(),
@@ -397,6 +448,46 @@ export default function NuevaFacturaPage() {
                 </select>
               </div>
             )}
+          </div>
+
+          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4 mt-6">
+            <h3 className="font-semibold border-b pb-2 flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-purple-600" />
+              Clasificación de la Factura
+            </h3>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Sucursal (Origen) *</label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                value={locationId}
+                onChange={e => setLocationId(e.target.value)}
+                required
+              >
+                <option value="" disabled>Selecciona una sucursal...</option>
+                {locations.map(l => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-purple-600" />
+                Cuenta Contable de Ingreso *
+              </label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                value={accountId}
+                onChange={e => setAccountId(e.target.value)}
+                required
+              >
+                <option value="" disabled>Selecciona cuenta de ingreso...</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 

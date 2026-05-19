@@ -4,11 +4,12 @@ import React, { useState, useEffect, use } from "react";
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, ArrowLeft, Receipt, Package, FileText, FileCode, Download } from "lucide-react";
+import { Loader2, ArrowLeft, Receipt, Package, FileText, FileCode, Download, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { createCfdi, cancelCfdi, downloadCfdi } from "@/actions/facturama";
 import { useRouter } from "next/navigation";
+import { PaymentModal } from "@/components/payments/PaymentModal";
 
 export default function FacturaDetallePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise);
@@ -23,6 +24,7 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
   const [cancelMotive, setCancelMotive] = useState("02");
   const [canceling, setCanceling] = useState(false);
   const [downloading, setDownloading] = useState<'pdf' | 'xml' | null>(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   
   const router = useRouter();
 
@@ -258,6 +260,12 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
         </div>
 
         <div className="flex items-center gap-3">
+          {factura.status !== 'cancelada' && (factura.paidAmount || 0) < subtotal * 1.16 - 0.01 && (
+            <Button onClick={() => setIsPaymentModalOpen(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+              <DollarSign className="w-4 h-4" /> Registrar Pago
+            </Button>
+          )}
+
           {factura.status === 'por_timbrar' && (
             <>
               <Link href={`/ventas/facturas/${factura.id}/editar`}>
@@ -357,6 +365,18 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
               <span>Total CFDI</span>
               <span className="text-indigo-700">${factura.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
             </div>
+            {(factura.paidAmount || 0) > 0 && (
+              <>
+                <div className="flex justify-between text-emerald-600 font-medium pt-2">
+                  <span>Pagado</span>
+                  <span>${(factura.paidAmount || 0).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+                <div className="flex justify-between text-rose-600 font-bold border-t mt-2 pt-2">
+                  <span>Saldo Pendiente</span>
+                  <span>${Math.max(0, factura.totalAmount - (factura.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -401,6 +421,14 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
           </div>
         </div>
       )}
+
+      <PaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        document={factura}
+        documentType="factura"
+        companyId={companyId || ""}
+      />
     </div>
   );
 }

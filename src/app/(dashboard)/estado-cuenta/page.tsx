@@ -22,6 +22,7 @@ import {
   TrendingDown,
   DollarSign,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 import { ErpClient } from "@/app/actions/erp";
 import type { AccountStatement, AccountStatementLine } from "@/app/actions/erp";
 
@@ -69,6 +70,7 @@ function formatDate(dateStr: string): string {
 }
 
 export default function EstadoCuentaPage() {
+  const { companyId } = useAuth();
   // Client search
   const [query, setQuery] = useState("");
   const [clients, setClients] = useState<ErpClient[]>([]);
@@ -107,8 +109,9 @@ export default function EstadoCuentaPage() {
     setQuery("");
     setIsLoading(true);
     try {
+      if (!companyId) throw new Error("No company ID");
       // Fetch anticipos from Firestore client-side
-      const q = firestoreQuery(collection(db, "anticipos"), where("clientId", "==", client.id));
+      const q = firestoreQuery(collection(db, "companies", companyId, "anticipos"), where("clientId", "==", client.id));
       const snapshot = await getDocs(q);
       const anticipos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 

@@ -2,58 +2,69 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { User, onAuthStateChanged, signOut, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { auth } from "@/lib/firebase/client";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase/client";
+import { useRouter, usePathname } from "next/navigation";
 
 interface AuthContextType {
   user: User | null;
+  companyId: string | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   logOut: () => Promise<void>;
-  allowedDomain: string;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-const ALLOWED_DOMAIN = "@ordendelascosas.com";
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        if (currentUser.email?.endsWith(ALLOWED_DOMAIN)) {
-          setUser(currentUser);
-        } else {
-          // Si el dominio no es de la empresa, cerramos sesión inmediatamente.
-          signOut(auth);
-          setUser(null);
-          // Opcional: Podrías lanzar un toast o alert
-          alert(`Acceso denegado. Se requiere una cuenta de ${ALLOWED_DOMAIN}`);
+        setUser(currentUser);
+        // Fetch user profile to get companyId
+        try {
+          const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+          if (userDoc.exists() && userDoc.data().companyId) {
+            setCompanyId(userDoc.data().companyId);
+          } else {
+            setCompanyId(null);
+            // Si no tiene empresa y no está ya en la ruta de onboarding, lo mandamos
+            if (pathname !== "/onboarding") {
+              router.push("/onboarding");
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+          setCompanyId(null);
         }
       } else {
         setUser(null);
+        setCompanyId(null);
       }
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [pathname, router]);
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({
-      hd: ALLOWED_DOMAIN.replace("@", ""),
-    });
     await signInWithPopup(auth, provider);
   };
 
   const logOut = async () => {
     await signOut(auth);
+    setCompanyId(null);
+    router.push("/login");
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, logOut, allowedDomain: ALLOWED_DOMAIN }}>
+    <AuthContext.Provider value={{ user, companyId, loading, signInWithGoogle, logOut }}>
       {children}
     </AuthContext.Provider>
   );

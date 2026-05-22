@@ -49,10 +49,31 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const [recyclerInserted, setRecyclerInserted] = useState<number>(0);
   const [recyclerEventMessage, setRecyclerEventMessage] = useState<string>('');
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const recyclerStatusRef = useRef(recyclerStatus);
+  useEffect(() => {
+    recyclerStatusRef.current = recyclerStatus;
+  }, [recyclerStatus]);
 
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      // Auto-cancel and close session if unmounted while waiting for payment
+      if (recyclerStatusRef.current === 'waiting') {
+          fetch('http://localhost:3001/api/session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ request: 'CancelPayment' })
+          }).then(() => {
+              // Wait 1 second for physical transition before closing global session
+              setTimeout(() => {
+                  fetch('http://localhost:3001/api/session', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ request: 'CloseSession' })
+                  }).catch(() => {});
+              }, 1000);
+          }).catch(() => {});
+      }
     };
   }, []);
 
@@ -81,12 +102,44 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       setRecyclerEventMessage('Iniciando sesión en reciclador...');
       
       try {
+          // Reset proactivo: Intentar cancelar y cerrar cualquier sesión previa stuck
+          try {
+              await fetch('http://localhost:3001/api/session', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ request: 'CancelPayment' }),
+                  signal: AbortSignal.timeout(2000)
+              }).catch(() => {});
+              
+              await fetch('http://localhost:3001/api/session', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ request: 'CloseSession' }),
+                  signal: AbortSignal.timeout(2000)
+              }).catch(() => {});
+
+              await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (e) {
+              console.log("Error during proactive reset:", e);
+          }
+
           const response = await fetch('http://localhost:3001/api/session', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ request: 'PayAmount', value: Math.round(remaining * 100) })
+              body: JSON.stringify({ request: 'PayAmount', value: Math.round(remaining * 100) }),
+              signal: AbortSignal.timeout(5000)
           });
-          if (!response.ok) throw new Error("Error iniciando sesión en hardware");
+          
+          if (!response.ok) {
+              let errMsg = "Error iniciando sesión en hardware";
+              try {
+                  const errData = await response.json();
+                  if (errData && errData.error) {
+                      errMsg = `${errData.error} (${errData.details || ''})`;
+                  }
+              } catch (e) {}
+              throw new Error(errMsg);
+          }
           
           const sessionData = await response.json();
           const txId = sessionData?.responseData; // Capture the transaction ID
@@ -95,17 +148,24 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           
           pollIntervalRef.current = setInterval(async () => {
               try {
-                  const statusRes = await fetch('http://localhost:3001/api/status');
+                  const statusRes = await fetch('http://localhost:3001/api/status', {
+                      signal: AbortSignal.timeout(3000)
+                  });
                   if (!statusRes.ok) return;
                   const data = await statusRes.json();
                   
-                  if (data.transaction && data.transaction.payinReceived !== undefined) {
-                      setRecyclerInserted(data.transaction.payinReceived / 100);
-                  }
-                  
                   const events = data.events || [];
                   // Only process events that belong to the current transaction to avoid reading cached past events
-                  const currentTxEvents = txId ? events.filter((e: any) => e.transaction?.transaction_id === txId) : events;
+                  const currentTxEvents = txId ? events.filter((e: any) => e.transaction?.transaction_id === txId || e.transaction?.transaction_id === "") : events;
+                  
+                  if (data.transaction && data.transaction.payinReceived !== undefined) {
+                      setRecyclerInserted(data.transaction.payinReceived / 100);
+                  } else {
+                      const latestEvent = currentTxEvents[currentTxEvents.length - 1];
+                      if (latestEvent && latestEvent.transaction && latestEvent.transaction.cash_in !== undefined) {
+                          setRecyclerInserted(latestEvent.transaction.cash_in / 100);
+                      }
+                  }
                   
                   const isCompleted = currentTxEvents.some((e: any) => e.EventName === 'PaymentComplete' || e.event === 'PaymentComplete');
                   const isCanceled = currentTxEvents.some((e: any) => 
@@ -122,7 +182,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                           await fetch('http://localhost:3001/api/session', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ request: 'CloseSession' })
+                              body: JSON.stringify({ request: 'CloseSession' }),
+                              signal: AbortSignal.timeout(3000)
                           });
                           setRecyclerEventMessage('Sesión cerrada exitosamente. Añadiendo pago...');
                       } catch (err) {
@@ -159,6 +220,18 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
                       setRecyclerStatus('idle');
                       setRecyclerEventMessage('Pago cancelado');
+                      
+                      // Wait 1 second for physical transition before closing global session
+                      setTimeout(async () => {
+                          try {
+                              await fetch('http://localhost:3001/api/session', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ request: 'CloseSession' }),
+                                  signal: AbortSignal.timeout(3000)
+                              });
+                          } catch (e) {}
+                      }, 1000);
                   }
                   
               } catch (err) {
@@ -166,9 +239,16 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               }
           }, 1000);
       } catch (error: any) {
-          console.log("Recycler offline, falling back to simulation:", error?.message || error);
+          console.error("Recycler error:", error);
           setRecyclerStatus('error');
-          setRecyclerEventMessage('Error al conectar con el agente local.');
+          
+          if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
+              setRecyclerEventMessage('Error: Tiempo de espera agotado al conectar con el hardware.');
+          } else if (error.message.includes('Failed to fetch') || error.message.includes('fetch')) {
+              setRecyclerEventMessage('Error: No se pudo conectar con el Agente Local en http://localhost:3001. Verifica que esté encendido.');
+          } else {
+              setRecyclerEventMessage(`Error: ${error.message || 'Error de conexión con el hardware.'}`);
+          }
       }
   };
 
@@ -179,7 +259,18 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           await fetch('http://localhost:3001/api/session', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ request: 'CancelPayment' })
+              body: JSON.stringify({ request: 'CancelPayment' }),
+              signal: AbortSignal.timeout(3000)
+          });
+          
+          // Wait 1 second for physical transition before closing global session
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          await fetch('http://localhost:3001/api/session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ request: 'CloseSession' }),
+              signal: AbortSignal.timeout(3000)
           });
       } catch (e) {}
   };

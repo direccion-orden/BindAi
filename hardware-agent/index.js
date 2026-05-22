@@ -37,6 +37,7 @@ async function getToken() {
 
         const response = await axios.post(`${BASE_URL}/token`, params, {
             httpsAgent,
+            timeout: 5000, // 5 seconds timeout for authentication
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
@@ -63,6 +64,7 @@ async function makeRecyclerRequest(method, endpoint, data = null) {
     const config = {
         method,
         url: `${BASE_URL}${endpoint}`,
+        timeout: 10000, // 10 seconds timeout for general requests
         headers: {
             'Authorization': `Bearer ${currentToken}`
         }
@@ -108,6 +110,7 @@ app.get('/api/system', async (req, res) => {
 app.get('/api/status', async (req, res) => {
     try {
         const data = await makeRecyclerRequest('GET', '/status');
+        console.log("GET /api/status response:", JSON.stringify(data));
         res.json(data);
     } catch (error) {
         res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });
@@ -116,8 +119,10 @@ app.get('/api/status', async (req, res) => {
 
 // POST /api/session - Inicia o detiene una sesión (ej. cobrar, cancelar, vaciar)
 app.post('/api/session', async (req, res) => {
+    console.log("POST /api/session body:", JSON.stringify(req.body));
     try {
         const data = await makeRecyclerRequest('POST', '/session', req.body);
+        console.log("Response from recycler:", JSON.stringify(data));
         res.json(data);
     } catch (error) {
         res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });

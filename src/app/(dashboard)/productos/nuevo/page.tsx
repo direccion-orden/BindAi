@@ -44,7 +44,7 @@ export default function NuevoProductoPage() {
   const [description, setDescription] = useState("");
   const [vendor, setVendor] = useState("");
   const [productType, setProductType] = useState("");
-  const [status, setStatus] = useState<"ACTIVE" | "DRAFT">("DRAFT");
+  const [status, setStatus] = useState<"ACTIVE" | "DRAFT">("ACTIVE");
   const [inventoryRole, setInventoryRole] = useState<
     "PRODUCTO" | "MATERIA_PRIMA" | "AMBOS"
   >("PRODUCTO");
@@ -112,7 +112,10 @@ export default function NuevoProductoPage() {
     // Categories
     const qC = query(collection(db, "companies", companyId, "categories"));
     const unsubC = onSnapshot(qC, (snap) => {
-      const c = snap.docs.map((doc) => ({ id: doc.id, name: doc.data().name }));
+      const c = snap.docs.map((doc) => {
+        const d = doc.data();
+        return { id: doc.id, name: d.name || d.Name || d.description || d.Description || "Sin nombre" };
+      });
       setCategories(c);
     });
 
@@ -126,7 +129,10 @@ export default function NuevoProductoPage() {
     // Vendors
     const qV = query(collection(db, "companies", companyId, "vendors"));
     const unsubV = onSnapshot(qV, (snap) => {
-      const v = snap.docs.map((doc) => ({ id: doc.id, name: doc.data().name }));
+      const v = snap.docs.map((doc) => {
+        const d = doc.data();
+        return { id: doc.id, name: d.name || d.Name || d.RazonSocial || d.NombreComercial || d.LegalName || d.ComercialName || "Sin nombre" };
+      });
       setAvailableVendors(v);
     });
 

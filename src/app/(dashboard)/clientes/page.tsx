@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy, writeBatch, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2, Edit2, Users, Search, Building, Mail, Phone } from "lucide-react";
+import { Loader2, Plus, Trash2, Edit2, Users, Search, Building, Mail, Phone, Eye, Upload } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -40,6 +40,8 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   
   const [isEditing, setIsEditing] = useState(false);
+  const [isViewing, setIsViewing] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [currentId, setCurrentId] = useState("");
   const [formData, setFormData] = useState<Partial<Client>>({});
   
@@ -47,7 +49,7 @@ export default function ClientesPage() {
 
   useEffect(() => {
     if (!companyId) return;
-    const q = query(collection(db, "companies", companyId, "clients"), orderBy("name"));
+    const q = query(collection(db, "companies", companyId, "clients"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
       setClients(data);
@@ -56,10 +58,146 @@ export default function ClientesPage() {
     return () => unsubscribe();
   }, [companyId]);
 
-  const handleOpenForm = (client?: Client) => {
+  
+  
+  const handleCleanup = async () => {
+    if (!companyId || !window.confirm("¿Seguro que deseas limpiar duplicados? Esto fusionará las direcciones importadas del CSV a los registros originales.")) return;
+    setImporting(true);
+    try {
+      const snap = await getDocs(query(collection(db, "companies", companyId, "clients")));
+      const clients = snap.docs.map(d => ({ id: d.id, ...d.data() } as Client));
+      
+      const grouped: Record<string, Client[]> = {};
+      clients.forEach(c => {
+        const key = (c.LegalName || c.CommercialName || c.name || "UNKNOWN").trim().toUpperCase();
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(c);
+      });
+
+      let updated = 0;
+      let deleted = 0;
+      const batches = [];
+      let currentBatch = writeBatch(db);
+      let operations = 0;
+
+      for (const key of Object.keys(grouped)) {
+        const group = grouped[key];
+        if (group.length > 1) {
+          const bindClient = group.find(c => c.id.length > 30);
+          const csvClient = group.find(c => c.id.length === 20 && c.address);
+
+          if (bindClient && csvClient) {
+            const ref = doc(db, "companies", companyId, "clients", bindClient.id);
+            currentBatch.update(ref, {
+              address: csvClient.address || "",
+              zipCode: csvClient.zipCode || "",
+              city: csvClient.city || "",
+              state: csvClient.state || "",
+              neighborhood: csvClient.neighborhood || ""
+            });
+            operations++;
+            
+            // Delete all other duplicates in the group that are not the Bind client
+            for (const dup of group) {
+              if (dup.id !== bindClient.id) {
+                 const delRef = doc(db, "companies", companyId, "clients", dup.id);
+                 currentBatch.delete(delRef);
+                 operations++;
+                 deleted++;
+              }
+            }
+            updated++;
+          }
+        }
+        
+        if (operations >= 450) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          operations = 0;
+        }
+      }
+      
+      if (operations > 0) batches.push(currentBatch);
+      for (const b of batches) {
+        await b.commit();
+      }
+      
+      alert(`¡Limpieza exitosa! Se actualizaron ${updated} clientes con direcciones y se eliminaron ${deleted} duplicados.`);
+    } catch(e) {
+      console.error(e);
+      alert("Error limpiando duplicados");
+    } finally {
+      setImporting(false);
+    }
+  };
+  
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !companyId) return;
+    setImporting(true);
+    
+    import("papaparse").then((Papa) => {
+      Papa.default.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        encoding: "ISO-8859-1",
+        complete: async (results: any) => {
+          try {
+            const records = results.data;
+            const batches = [];
+            let currentBatch = writeBatch(db);
+            let count = 0;
+            
+            for (const record of records) {
+              const ref = doc(collection(db, "companies", companyId, "clients"));
+              currentBatch.set(ref, {
+                name: record["Razón Social"] || record["Nombre Comercial"] || record["Razn Social"] || "",
+                rfc: record.RFC || "",
+                email: record.Email || "",
+                phone: record["Teléfonos"] || record["Telfonos"] || "",
+                address: record.Calle ? `${record.Calle} ${record["No Ext"] || ''} ${record["No Interior"] || ''}`.trim() : "",
+                zipCode: record.CP || "",
+                city: record.Municipio || record.Ciudad || "",
+                state: record.Estado || "",
+                neighborhood: record.Colonia || "",
+              });
+              
+              count++;
+              if (count === 450) {
+                batches.push(currentBatch);
+                currentBatch = writeBatch(db);
+                count = 0;
+              }
+            }
+            if (count > 0) batches.push(currentBatch);
+            
+            for (const b of batches) {
+              await b.commit();
+            }
+            
+            alert(`¡Importación exitosa! Se importaron ${records.length} clientes con sus direcciones completas.`);
+          } catch (error) {
+            console.error(error);
+            alert("Error importando CSV");
+          } finally {
+            setImporting(false);
+            if (e.target) e.target.value = '';
+          }
+        }
+      });
+    });
+  };
+
+  const handleOpenForm = (client?: Client, viewMode = false) => {
     if (client) {
       setCurrentId(client.id);
-      setFormData(client);
+      setFormData({
+        ...client,
+        name: client.LegalName || client.CommercialName || client.name || "",
+        email: client.Email || client.email || "",
+        phone: client.Phone || client.phone || "",
+        rfc: client.RFC || client.rfc || "",
+      });
     } else {
       setCurrentId("");
       setFormData({ name: "", email: "", phone: "", rfc: "", zipCode: "", taxRegime: "", street: "", exteriorNumber: "", interiorNumber: "", neighborhood: "", city: "", state: "" });
@@ -69,6 +207,7 @@ export default function ClientesPage() {
 
   const handleCloseForm = () => {
     setIsEditing(false);
+      setIsViewing(false);
     setCurrentId("");
     setFormData({});
   };
@@ -115,9 +254,9 @@ export default function ClientesPage() {
   };
 
   const filteredClients = clients.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (c.rfc && c.rfc.toLowerCase().includes(searchTerm.toLowerCase()))
+    (c.LegalName || c.CommercialName || c.name).toLowerCase().includes(searchTerm.toLowerCase()) || 
+    ((c.Email || c.email) && (c.Email || c.email).toLowerCase().includes(searchTerm.toLowerCase())) ||
+    ((c.RFC || c.rfc) && (c.RFC || c.rfc).toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   if (loading) {
@@ -138,15 +277,27 @@ export default function ClientesPage() {
           </p>
         </div>
         {!isEditing && (
-          <Button onClick={() => handleOpenForm()} className="gap-2">
-            <Plus className="w-4 h-4" /> Nuevo Cliente
-          </Button>
-        )}
+            <div className="flex gap-2">
+              <input type="file" id="csv-upload" className="hidden" accept=".csv" onChange={handleImportCSV} />
+              <Button variant="outline" className="gap-2" onClick={() => document.getElementById('csv-upload')?.click()} disabled={importing}>
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {importing ? "Importando..." : "Importar CSV"}
+              </Button>
+              
+              <Button variant="outline" className="gap-2 text-orange-600 border-orange-200 hover:bg-orange-50" onClick={handleCleanup} disabled={importing}>
+                Limpiar Duplicados
+              </Button>
+              <Button onClick={() => handleOpenForm()} className="gap-2">
+
+                <Plus className="w-4 h-4" /> Nuevo Cliente
+              </Button>
+            </div>
+          )}
       </div>
 
       {isEditing ? (
         <div className="bg-card border rounded-lg p-6 max-w-3xl animate-in fade-in zoom-in duration-300">
-          <h2 className="text-xl font-bold mb-4">{currentId ? "Editar Cliente" : "Nuevo Cliente"}</h2>
+          <h2 className="text-xl font-bold mb-4">{currentId ? (isViewing ? "Ver Cliente" : "Editar Cliente") : "Nuevo Cliente"}</h2>
           <form onSubmit={handleSave} className="space-y-6">
             
             {/* DATOS GENERALES */}
@@ -155,7 +306,7 @@ export default function ClientesPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-sm font-medium">Nombre Completo o Razón Social</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     required 
                     value={formData.name || ""} 
                     onChange={e => setFormData({...formData, name: e.target.value})} 
@@ -166,7 +317,7 @@ export default function ClientesPage() {
                   <label className="text-sm font-medium flex items-center gap-2">
                     <Mail className="w-4 h-4 text-muted-foreground"/> Correo Electrónico
                   </label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     type="email"
                     value={formData.email || ""} 
                     onChange={e => setFormData({...formData, email: e.target.value})} 
@@ -177,7 +328,7 @@ export default function ClientesPage() {
                   <label className="text-sm font-medium flex items-center gap-2">
                     <Phone className="w-4 h-4 text-muted-foreground"/> Teléfono
                   </label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     type="tel"
                     value={formData.phone || ""} 
                     onChange={e => setFormData({...formData, phone: e.target.value})} 
@@ -195,7 +346,7 @@ export default function ClientesPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">RFC</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     value={formData.rfc || ""} 
                     onChange={e => setFormData({...formData, rfc: e.target.value.toUpperCase()})} 
                     placeholder="XAXX010101000" 
@@ -203,7 +354,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Código Postal</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     value={formData.zipCode || ""} 
                     onChange={e => setFormData({...formData, zipCode: e.target.value})} 
                     placeholder="00000" 
@@ -211,7 +362,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-sm font-medium">Régimen Fiscal</label>
-                  <select
+                  <select disabled={isViewing}
                     value={formData.taxRegime || ""}
                     onChange={e => setFormData({...formData, taxRegime: e.target.value})}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
@@ -230,7 +381,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-sm font-medium">Calle</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     value={formData.street || ""} 
                     onChange={e => setFormData({...formData, street: e.target.value})} 
                     placeholder="Ej. Av. Insurgentes Sur" 
@@ -238,7 +389,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Número Exterior</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     value={formData.exteriorNumber || ""} 
                     onChange={e => setFormData({...formData, exteriorNumber: e.target.value})} 
                     placeholder="Ej. 1234" 
@@ -246,7 +397,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Número Interior (Opcional)</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     value={formData.interiorNumber || ""} 
                     onChange={e => setFormData({...formData, interiorNumber: e.target.value})} 
                     placeholder="Ej. Piso 5 / Local A" 
@@ -254,7 +405,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-sm font-medium">Colonia</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     value={formData.neighborhood || ""} 
                     onChange={e => setFormData({...formData, neighborhood: e.target.value})} 
                     placeholder="Ej. Del Valle" 
@@ -262,7 +413,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Ciudad / Municipio</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     value={formData.city || ""} 
                     onChange={e => setFormData({...formData, city: e.target.value})} 
                     placeholder="Ej. Benito Juárez" 
@@ -270,7 +421,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Estado</label>
-                  <Input 
+                  <Input disabled={isViewing} 
                     value={formData.state || ""} 
                     onChange={e => setFormData({...formData, state: e.target.value})} 
                     placeholder="Ej. Ciudad de México" 
@@ -280,11 +431,13 @@ export default function ClientesPage() {
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-4 border-t">
-              <Button type="button" variant="ghost" onClick={handleCloseForm}>Cancelar</Button>
-              <Button type="submit" disabled={saving}>
-                {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Guardar Cliente
-              </Button>
+              <Button type="button" variant={isViewing ? "default" : "ghost"} onClick={handleCloseForm}>{isViewing ? "Cerrar" : "Cancelar"}</Button>
+              {!isViewing && (
+                <Button type="submit" disabled={saving}>
+                  {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Guardar Cliente
+                </Button>
+              )}
             </div>
           </form>
         </div>
@@ -293,7 +446,7 @@ export default function ClientesPage() {
           <div className="p-4 border-b">
              <div className="relative max-w-sm">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
+                <Input disabled={isViewing} 
                   placeholder="Buscar por nombre, correo o RFC..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -318,19 +471,22 @@ export default function ClientesPage() {
               <TableBody>
                 {filteredClients.map(c => (
                   <TableRow key={c.id}>
-                    <TableCell className="font-medium font-semibold">{c.name}</TableCell>
+                    <TableCell className="font-medium font-semibold">{(c.LegalName || c.CommercialName || c.name)}</TableCell>
                     <TableCell>
                       <div className="flex flex-col text-sm text-muted-foreground">
-                         {c.email && <span>{c.email}</span>}
-                         {c.phone && <span>{c.phone}</span>}
-                         {!c.email && !c.phone && <span>-</span>}
+                         {(c.Email || c.email) && <span>{(c.Email || c.email)}</span>}
+                         {(c.Phone || c.phone) && <span>{(c.Phone || c.phone)}</span>}
+                         {!(c.Email || c.email) && !(c.Phone || c.phone) && <span>-</span>}
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {c.rfc || <span className="text-xs italic text-muted-foreground/60">No registrado</span>}
+                      {(c.RFC || c.rfc) || <span className="text-xs italic text-muted-foreground/60">No registrado</span>}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenForm(c, true)} title="Ver Cliente">
+                          <Eye className="w-4 h-4" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => handleOpenForm(c)}>
                           <Edit2 className="w-4 h-4" />
                         </Button>
@@ -349,3 +505,4 @@ export default function ClientesPage() {
     </div>
   );
 }
+

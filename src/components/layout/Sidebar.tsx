@@ -157,7 +157,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
           return (
             <div key={idx} className="space-y-3">
               <div 
-                className={`flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground transition-colors ${isCollapsed ? 'justify-center' : 'justify-between'}`}
+                className={`flex items-center gap-2 px-2 text-xs font-bold uppercase tracking-wider text-foreground cursor-pointer hover:text-foreground/80 transition-colors ${isCollapsed ? 'justify-center' : 'justify-between'}`}
                 onClick={() => toggleCategory(cat.title)}
                 title={isCollapsed ? cat.title : undefined}
               >
@@ -176,7 +176,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
               
               {(isOpen || isCollapsed) && (
                 cat.items.length > 0 ? (
-                  <nav className="space-y-1">
+                  <nav className={`space-y-1 ${isCollapsed ? "" : "pl-3"}`}>
                     {cat.items.map((item: any) => {
                       const isActive = item.exact 
                         ? pathname === item.href 

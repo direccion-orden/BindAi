@@ -24,7 +24,7 @@ export function POSCatalogPanel() {
     try {
       if (!companyId) return;
       // Fetch the first 50 active products (using the new Shopify schema)
-      const q = query(collection(db, "companies", companyId, "products"), where("status", "==", "ACTIVE"), limit(50));
+      const q = query(collection(db, "companies", companyId, "products"), where("status", "==", "ACTIVE"));
       const snapshot = await getDocs(q);
       const fetched: Product[] = snapshot.docs.map(doc => {
         const data = doc.data() as ShopifyProduct;

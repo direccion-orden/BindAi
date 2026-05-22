@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { doc, getDoc, updateDoc, deleteDoc, serverTimestamp, collection, query, onSnapshot } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "@/lib/firebase/client";
 import { ArrowLeft, Save, Loader2, Image as ImageIcon, Sparkles, Trash2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,29 @@ export default function EditarProductoPage() {
   const [productType, setProductType] = useState("");
   const [status, setStatus] = useState<'ACTIVE' | 'DRAFT'>('DRAFT');
   const [inventoryRole, setInventoryRole] = useState<'PRODUCTO' | 'MATERIA_PRIMA' | 'AMBOS'>('PRODUCTO');
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>(
+    [],
+  );
+  const [availableTags, setAvailableTags] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [availableVendors, setAvailableVendors] = useState<
+    { id: string; name: string }[]
+  >([]);
+
+  // Modal State
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [savingCategory, setSavingCategory] = useState(false);
+
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [savingTag, setSavingTag] = useState(false);
+
+  const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
+  const [newVendorName, setNewVendorName] = useState("");
+  const [savingVendor, setSavingVendor] = useState(false);
   
   // SAT Configuration
   const [satProductCode, setSatProductCode] = useState("");
@@ -44,10 +68,51 @@ export default function EditarProductoPage() {
   const [barcode, setBarcode] = useState("");
   const [inventoryQuantity, setInventoryQuantity] = useState("0");
   const [cost, setCost] = useState("0");
+  const [initialCost, setInitialCost] = useState("0");
 
   const [originalProduct, setOriginalProduct] = useState<Partial<ShopifyProduct> | null>(null);
 
   // AI State
+  const [allImages, setAllImages] = useState<{id: string, file?: File, preview: string, isOriginal?: boolean, src?: string}[]>([]);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const added = Array.from(e.target.files).map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        preview: URL.createObjectURL(file),
+        isOriginal: false
+      }));
+      setAllImages((prev) => [...prev, ...added]);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedId(id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedId || draggedId === targetId) return;
+
+    const newImages = [...allImages];
+    const draggedIndex = newImages.findIndex((img) => img.id === draggedId);
+    const targetIndex = newImages.findIndex((img) => img.id === targetId);
+
+    const [draggedItem] = newImages.splice(draggedIndex, 1);
+    newImages.splice(targetIndex, 0, draggedItem);
+    setAllImages(newImages);
+    setDraggedId(null);
+  };
+
+
   const [generatingAi, setGeneratingAi] = useState(false);
 
   useEffect(() => {
@@ -55,6 +120,45 @@ export default function EditarProductoPage() {
       fetchProduct();
     }
   }, [productId, companyId]);
+
+  // Fetch Warehouses, Categories, Tags & Vendors
+  useEffect(() => {
+    if (!companyId) return;
+
+
+    // Categories
+    const qC = query(collection(db, "companies", companyId, "categories"));
+    const unsubC = onSnapshot(qC, (snap) => {
+      const c = snap.docs.map((doc) => {
+        const d = doc.data();
+        return { id: doc.id, name: d.name || d.Name || d.description || d.Description || "Sin nombre" };
+      });
+      console.log("Categories loaded:", c.length); setCategories(c);
+    });
+
+    // Tags
+    const qT = query(collection(db, "companies", companyId, "tags"));
+    const unsubT = onSnapshot(qT, (snap) => {
+      const t = snap.docs.map((doc) => ({ id: doc.id, name: doc.data().name }));
+      setAvailableTags(t);
+    });
+
+    // Vendors
+    const qV = query(collection(db, "companies", companyId, "vendors"));
+    const unsubV = onSnapshot(qV, (snap) => {
+      const v = snap.docs.map((doc) => {
+        const d = doc.data();
+        return { id: doc.id, name: d.name || d.Name || d.RazonSocial || d.NombreComercial || d.LegalName || d.ComercialName || "Sin nombre" };
+      });
+      setAvailableVendors(v);
+    });
+
+    return () => {
+            unsubC();
+      unsubT();
+      unsubV();
+    };
+  }, [companyId]);
 
   const fetchProduct = async () => {
     try {
@@ -70,6 +174,7 @@ export default function EditarProductoPage() {
 
       const data = docSnap.data() as ShopifyProduct;
       setOriginalProduct(data);
+      if (data.images) setAllImages(data.images.map((img:any) => ({ id: img.id || crypto.randomUUID(), preview: img.src, isOriginal: true, src: img.src })));
       
       setTitle(data.title || "");
       setDescription(data.bodyHtml || "");
@@ -81,6 +186,7 @@ export default function EditarProductoPage() {
       setSatProductName(data.satProductName || "");
       setSatUnitCode(data.satUnitCode || "");
       setSatUnitName(data.satUnitName || "");
+      setSelectedTags(data.tags || []);
 
       // Load first variant data if exists
       if (data.variants && data.variants.length > 0) {
@@ -90,6 +196,7 @@ export default function EditarProductoPage() {
         setSku(v.sku || "");
         setBarcode(v.barcode || "");
         setInventoryQuantity(v.inventoryQuantity?.toString() || "0");
+        setInitialCost(data.initialCost?.toString() || data.cost?.toString() || "0");
         setCost(v.cost?.toString() || "0");
       } else {
         // Fallback to legacy structure if any
@@ -175,7 +282,21 @@ export default function EditarProductoPage() {
         };
       }
 
+      
+      let finalImages = [];
+      for (const img of allImages) {
+        if (img.isOriginal) {
+          finalImages.push({ id: img.id, src: img.src, altText: title });
+        } else if (img.file) {
+          const imageRef = ref(storage, `companies/${companyId}/products/${productId}/${img.id}`);
+          await uploadBytes(imageRef, img.file);
+          const url = await getDownloadURL(imageRef);
+          finalImages.push({ id: img.id, src: url, altText: title });
+        }
+      }
+
       const updatedProduct: Partial<ShopifyProduct> = {
+        initialCost: parseFloat(initialCost) || 0,
         title,
         bodyHtml: description,
         vendor,
@@ -187,6 +308,7 @@ export default function EditarProductoPage() {
         satUnitCode,
         satUnitName,
         variants: updatedVariants,
+        images: finalImages,
         updatedAt: serverTimestamp()
       };
 
@@ -288,24 +410,43 @@ export default function EditarProductoPage() {
             </div>
           </div>
 
-          {/* Media (Placeholder) */}
+          {/* Media */}
           <div className="bg-card border rounded-xl p-5 shadow-sm">
             <h3 className="font-semibold mb-4">Elementos multimedia</h3>
-            {originalProduct?.images && originalProduct.images.length > 0 ? (
-              <div className="flex gap-4 overflow-x-auto">
-                {originalProduct.images.map((img: any, idx: number) => (
-                  <div key={idx} className="w-32 h-32 rounded-lg border overflow-hidden shrink-0">
-                    <img src={img.src} alt="Producto" className="w-full h-full object-cover" />
+            
+            {allImages.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                {allImages.map((img, idx) => (
+                  <div 
+                    key={img.id} 
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, img.id)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, img.id)}
+                    className={`relative aspect-square border rounded-lg overflow-hidden cursor-move group ${draggedId === img.id ? "opacity-50" : "opacity-100 hover:border-primary/50"}`}
+                  >
+                    <img src={img.preview} alt="Producto" className="w-full h-full object-cover" />
+                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="destructive" size="icon" className="h-6 w-6" onClick={(e) => { e.preventDefault(); setAllImages(prev => prev.filter(i => i.id !== img.id)); }}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    {idx === 0 && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-primary/80 text-primary-foreground text-[10px] text-center py-1">
+                        Principal
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center text-muted-foreground bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
-                <ImageIcon className="w-10 h-10 mb-3 text-muted-foreground/50" />
-                <p className="text-sm font-medium">Agrega archivos o arrastra y suelta</p>
-                <p className="text-xs mt-1">Imágenes de alta resolución recomendadas</p>
-              </div>
-            )}
+            ) : null}
+            
+            <label className="block border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center text-muted-foreground bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
+              <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageChange} />
+              <ImageIcon className="w-10 h-10 mb-3 text-muted-foreground/50" />
+              <p className="text-sm font-medium">Agrega archivos o arrastra y suelta</p>
+              <p className="text-xs mt-1">Imágenes de alta resolución recomendadas</p>
+            </label>
           </div>
 
           {/* Pricing */}
@@ -342,19 +483,27 @@ export default function EditarProductoPage() {
               </div>
             </div>
             
-            <div className="pt-4 border-t">
-              <label className="text-sm font-medium mb-1.5 block text-indigo-700">Costo Unitario Promedio</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                <Input 
-                  value={cost}
-                  disabled
-                  className="pl-7 bg-muted text-muted-foreground font-semibold"
-                />
+            <div className="pt-4 border-t grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Costo Inicial</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input 
+                    type="number"
+                    value={initialCost}
+                    onChange={(e) => setInitialCost(e.target.value)}
+                    className="pl-7"
+                    placeholder="0.00"
+                  />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5">
-                Calculado automáticamente mediante Costo Promedio Ponderado en las recepciones de mercancía.
-              </p>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block text-indigo-700">Costo Promedio</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input value={cost} disabled className="pl-7 bg-muted text-muted-foreground font-semibold" />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -460,24 +609,273 @@ export default function EditarProductoPage() {
           <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
             <h3 className="font-semibold">Organización del producto</h3>
             <div>
-              <label className="text-sm font-medium mb-1.5 block text-muted-foreground">Tipo de producto</label>
-              <Input 
-                placeholder="Ej. Ropa, Electrónica..." 
-                value={productType}
-                onChange={(e) => setProductType(e.target.value)}
-              />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Categoría
+                </label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-primary px-2"
+                  onClick={() => setIsCategoryModalOpen(true)}
+                >
+                  + Nueva
+                </Button>
+              </div>
+              {categories.length > 0 ? (
+                <select
+                  className="w-full border rounded-md p-2 text-sm bg-background"
+                  value={productType}
+                  onChange={(e) => setProductType(e.target.value)}
+                >
+                  <option value="">Seleccionar categoría...</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border border-dashed flex flex-col gap-2 items-start">
+                  <span>No hay categorías registradas.</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsCategoryModalOpen(true)}
+                  >
+                    Crear Categoría
+                  </Button>
+                </div>
+              )}
             </div>
             <div>
-              <label className="text-sm font-medium mb-1.5 block text-muted-foreground">Proveedor</label>
-              <Input 
-                placeholder="Ej. Nike, Apple..." 
-                value={vendor}
-                onChange={(e) => setVendor(e.target.value)}
-              />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Proveedor
+                </label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-primary px-2"
+                  onClick={() => setIsVendorModalOpen(true)}
+                >
+                  + Nuevo
+                </Button>
+              </div>
+              {availableVendors.length > 0 ? (
+                <select
+                  className="w-full border rounded-md p-2 text-sm bg-background"
+                  value={vendor}
+                  onChange={(e) => setVendor(e.target.value)}
+                >
+                  <option value="">Seleccionar proveedor...</option>
+                  {availableVendors.map((v) => (
+                    <option key={v.id} value={v.name}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border border-dashed flex flex-col gap-2 items-start">
+                  <span>No hay proveedores.</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsVendorModalOpen(true)}
+                  >
+                    Crear Proveedor
+                  </Button>
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Etiquetas
+                </label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-primary px-2"
+                  onClick={() => setIsTagModalOpen(true)}
+                >
+                  + Nueva
+                </Button>
+              </div>
+              <div className="space-y-3">
+                <select
+                  className="w-full border rounded-md p-2 text-sm bg-background"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val && !selectedTags.includes(val)) {
+                      setSelectedTags([...selectedTags, val]);
+                    }
+                    e.target.value = "";
+                  }}
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Agregar etiqueta...
+                  </option>
+                  {availableTags
+                    .filter((t) => !selectedTags.includes(t.name))
+                    .map((t) => (
+                      <option key={t.id} value={t.name}>
+                        {t.name}
+                      </option>
+                    ))}
+                </select>
+                {selectedTags.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground"
+                      >
+                        {tag}
+                        <button
+                          onClick={() =>
+                            setSelectedTags(
+                              selectedTags.filter((t) => t !== tag),
+                            )
+                          }
+                          className="hover:text-destructive transition-colors"
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-background rounded-lg shadow-lg w-full max-w-sm p-6 space-y-4 animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold">Nueva Categoría</h3>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Nombre de la Categoría
+              </label>
+              <Input
+                autoFocus
+                placeholder="Ej. Bebidas, Snacks..."
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateCategory();
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setIsCategoryModalOpen(false);
+                  setNewCategoryName("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateCategory}
+                disabled={!newCategoryName.trim() || savingCategory}
+              >
+                {savingCategory && (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                )}
+                Crear
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isTagModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-background rounded-lg shadow-lg w-full max-w-sm p-6 space-y-4 animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold">Nueva Etiqueta</h3>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Nombre de la Etiqueta
+              </label>
+              <Input
+                autoFocus
+                placeholder="Ej. Novedad, Verano, Descuento..."
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateTag();
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setIsTagModalOpen(false);
+                  setNewTagName("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateTag}
+                disabled={!newTagName.trim() || savingTag}
+              >
+                {savingTag && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Crear
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isVendorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-background rounded-lg shadow-lg w-full max-w-sm p-6 space-y-4 animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold">Nuevo Proveedor</h3>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Razón Social o Nombre
+              </label>
+              <Input
+                autoFocus
+                placeholder="Ej. Comercializadora S.A. de C.V."
+                value={newVendorName}
+                onChange={(e) => setNewVendorName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateVendor();
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setIsVendorModalOpen(false);
+                  setNewVendorName("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateVendor}
+                disabled={!newVendorName.trim() || savingVendor}
+              >
+                {savingVendor && (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                )}
+                Crear
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -251,8 +251,8 @@ export default function SucursalesPage() {
               <TableBody>
                 {locations.map(loc => (
                   <TableRow key={loc.id}>
-                    <TableCell className="font-medium">{loc.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{loc.address || "-"}</TableCell>
+                    <TableCell className="font-medium">{(loc.Name || loc.name)}</TableCell>
+                    <TableCell className="text-muted-foreground">{(loc.Address || loc.address) || "-"}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {loc.warehouses?.map(w => (
@@ -282,3 +282,4 @@ export default function SucursalesPage() {
     </div>
   );
 }
+

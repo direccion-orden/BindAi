@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Función auxiliar para validar si el usuario autenticado pertenece a la empresa
+    // FunciÃƒÆ’Ã‚Â³n auxiliar para validar si el usuario autenticado pertenece a la empresa
     function isUserOfCompany(companyId) {
       return request.auth != null && 
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId;
@@ -14,7 +14,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // REGLAS LEGACY (Para rehabilitar la aplicación actualmente en producción)
+    // REGLAS LEGACY (Para rehabilitar la aplicaciÃƒÆ’Ã‚Â³n actualmente en producciÃƒÆ’Ã‚Â³n)
     // =========================================================================
     match /anticipos/{anticipoId} {
       allow read, write: if request.auth != null && request.auth.token.email.matches(".*@ordendelascosas[.]com");
@@ -51,7 +51,7 @@ service cloud.firestore {
     // NUEVAS REGLAS SAAS MULTI-TENANT (Desarrollo actual)
     // =========================================================================
     
-    // Colección de Empresas (Tenants)
+    // ColecciÃƒÆ’Ã‚Â³n de Empresas (Tenants)
     match /companies/{companyId} {
       // Cualquier usuario logueado puede crear su empresa en el onboarding
       allow create: if request.auth != null;
@@ -94,6 +94,21 @@ service cloud.firestore {
         allow read, write: if isUserOfCompany(companyId);
       }
       match /bankAccounts/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /banks/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /providers/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /orders/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /invoices/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /remissions/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }
       match /warehouses/{docId} {
@@ -182,7 +197,7 @@ service cloud.firestore {
       }
     }
     
-    // Por seguridad, cualquier otra colección global queda bloqueada
+    // Por seguridad, cualquier otra colecciÃƒÆ’Ã‚Â³n global queda bloqueada
     match /{document=**} {
       allow read, write: if false;
     }

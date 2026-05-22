@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy, writeBatch, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2, Edit2, Search, Truck, Mail, Phone } from "lucide-react";
+import { Loader2, Plus, Trash2, Edit2, Search, Truck, Mail, Phone, Upload } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -40,10 +40,11 @@ export default function ProveedoresPage() {
   const [currentId, setCurrentId] = useState("");
   const [formData, setFormData] = useState<Partial<Vendor>>({});
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
-    const q = query(collection(db, "companies", companyId, "vendors"), orderBy("name"));
+    const q = query(collection(db, "companies", companyId, "vendors"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor));
       setVendors(data);
@@ -51,6 +52,137 @@ export default function ProveedoresPage() {
     });
     return () => unsubscribe();
   }, [companyId]);
+
+  
+  
+  const handleCleanup = async () => {
+    if (!companyId || !window.confirm("¿Seguro que deseas limpiar duplicados? Esto fusionará las direcciones importadas del CSV a los registros originales.")) return;
+    setImporting(true);
+    try {
+      const snap = await getDocs(query(collection(db, "companies", companyId, "vendors")));
+      const clients = snap.docs.map(d => ({ id: d.id, ...d.data() } as Vendor));
+      
+      const grouped: Record<string, Vendor[]> = {};
+      clients.forEach(c => {
+        const key = (c.name || "UNKNOWN").trim().toUpperCase();
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(c);
+      });
+
+      let updated = 0;
+      let deleted = 0;
+      const batches = [];
+      let currentBatch = writeBatch(db);
+      let operations = 0;
+
+      for (const key of Object.keys(grouped)) {
+        const group = grouped[key];
+        if (group.length > 1) {
+          const bindClient = group.find(c => c.id.length > 30);
+          const csvClient = group.find(c => c.id.length === 20 && c.address);
+
+          if (bindClient && csvClient) {
+            const ref = doc(db, "companies", companyId, "vendors", bindClient.id);
+            currentBatch.update(ref, {
+              address: csvClient.address || "",
+              zipCode: csvClient.zipCode || "",
+              city: csvClient.city || "",
+              state: csvClient.state || "",
+              neighborhood: csvClient.neighborhood || ""
+            });
+            operations++;
+            
+            for (const dup of group) {
+              if (dup.id !== bindClient.id) {
+                 const delRef = doc(db, "companies", companyId, "vendors", dup.id);
+                 currentBatch.delete(delRef);
+                 operations++;
+                 deleted++;
+              }
+            }
+            updated++;
+          }
+        }
+        
+        if (operations >= 450) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          operations = 0;
+        }
+      }
+      
+      if (operations > 0) batches.push(currentBatch);
+      for (const b of batches) {
+        await b.commit();
+      }
+      
+      alert(`¡Limpieza exitosa! Se actualizaron ${updated} proveedores con direcciones y se eliminaron ${deleted} duplicados.`);
+    } catch(e) {
+      console.error(e);
+      alert("Error limpiando duplicados");
+    } finally {
+      setImporting(false);
+    }
+  };
+  
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !companyId) return;
+    setImporting(true);
+    
+    import("papaparse").then((Papa) => {
+      Papa.default.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results: any) => {
+          try {
+            const records = results.data;
+            const batches = [];
+            let currentBatch = writeBatch(db);
+            let count = 0;
+            
+            for (const record of records) {
+              const ref = doc(collection(db, "companies", companyId, "vendors"));
+              currentBatch.set(ref, {
+                name: record.RazonSocial || record.NombreComercial || "",
+                rfc: record.RFC || "",
+                email: record.Email || "",
+                phone: record.Telefonos || "",
+                address: record.Calle ? `${record.Calle} ${record.NoExt || ''} ${record.IntExt || ''}`.trim() : "",
+                zipCode: record.CP || "",
+                city: record.Ciudad || "",
+                state: record.Estado || "",
+                neighborhood: record.Colonia || "",
+                creditDays: parseInt(record.DiasDeCredito) || 0,
+                creditLimit: parseFloat(record.MontoCredito) || 0,
+                comments: record.Comentarios || "",
+              });
+              
+              count++;
+              if (count === 450) {
+                batches.push(currentBatch);
+                currentBatch = writeBatch(db);
+                count = 0;
+              }
+            }
+            if (count > 0) batches.push(currentBatch);
+            
+            for (const b of batches) {
+              await b.commit();
+            }
+            
+            alert(`Â¡ImportaciÃ³n exitosa! Se importaron ${records.length} proveedores con sus direcciones completas.`);
+          } catch (error) {
+            console.error(error);
+            alert("Error importando CSV");
+          } finally {
+            setImporting(false);
+            if (e.target) e.target.value = '';
+          }
+        }
+      });
+    });
+  };
 
   const handleOpenForm = (vendor?: Vendor) => {
     if (vendor) {
@@ -99,7 +231,7 @@ export default function ProveedoresPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!companyId || !window.confirm("¿Seguro que deseas eliminar este proveedor?")) return;
+    if (!companyId || !window.confirm("Â¿Seguro que deseas eliminar este proveedor?")) return;
     try {
       await deleteDoc(doc(db, "companies", companyId, "vendors", id));
     } catch (error) {
@@ -109,8 +241,8 @@ export default function ProveedoresPage() {
   };
 
   const filteredVendors = vendors.filter(v => 
-    v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (v.email && v.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    (v.LegalName || v.name).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ((v.Email || v.email) && (v.Email || v.email).toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   if (loading) {
@@ -129,9 +261,23 @@ export default function ProveedoresPage() {
           <p className="text-muted-foreground">Administra tus contactos y proveedores.</p>
         </div>
         {!isEditing && (
-          <Button onClick={() => handleOpenForm()} className="gap-2">
-            <Plus className="w-4 h-4" /> Nuevo Proveedor
-          </Button>
+          
+            <div className="flex gap-2">
+              <input type="file" id="csv-upload" className="hidden" accept=".csv" onChange={handleImportCSV} />
+              <Button variant="outline" className="gap-2" onClick={() => document.getElementById('csv-upload')?.click()} disabled={importing}>
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {importing ? "Importando..." : "Importar CSV"}
+              </Button>
+              
+              <Button variant="outline" className="gap-2 text-orange-600 border-orange-200 hover:bg-orange-50" onClick={handleCleanup} disabled={importing}>
+                Limpiar Duplicados
+              </Button>
+              <Button onClick={() => handleOpenForm()} className="gap-2">
+
+                <Plus className="w-4 h-4" /> Nuevo Proveedor
+              </Button>
+            </div>
+
         )}
       </div>
 
@@ -148,13 +294,13 @@ export default function ProveedoresPage() {
                 <h3 className="font-semibold text-lg border-b pb-2">Datos Generales</h3>
                 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Nombre / Razón Social <span className="text-destructive">*</span></label>
+                  <label className="text-sm font-medium">Nombre / RazÃ³n Social <span className="text-destructive">*</span></label>
                   <Input 
                     required 
                     autoFocus
                     value={formData.name || ""} 
                     onChange={e => setFormData({...formData, name: e.target.value})} 
-                    placeholder="Ej. Nike de México S.A. de C.V." 
+                    placeholder="Ej. Nike de MÃ©xico S.A. de C.V." 
                   />
                 </div>
 
@@ -169,7 +315,7 @@ export default function ProveedoresPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Correo Electrónico</label>
+                    <label className="text-sm font-medium">Correo ElectrÃ³nico</label>
                     <Input 
                       type="email"
                       value={formData.email || ""} 
@@ -178,7 +324,7 @@ export default function ProveedoresPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Teléfono</label>
+                    <label className="text-sm font-medium">TelÃ©fono</label>
                     <Input 
                       value={formData.phone || ""} 
                       onChange={e => setFormData({...formData, phone: e.target.value})} 
@@ -189,7 +335,7 @@ export default function ProveedoresPage() {
               </div>
 
               <div className="space-y-6">
-                <h3 className="font-semibold text-lg border-b pb-2">Dirección (Opcional)</h3>
+                <h3 className="font-semibold text-lg border-b pb-2">DirecciÃ³n (Opcional)</h3>
                 
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -232,7 +378,7 @@ export default function ProveedoresPage() {
                       <Input 
                         value={formData.city || ""} 
                         onChange={e => setFormData({...formData, city: e.target.value})} 
-                        placeholder="Cuauhtémoc" 
+                        placeholder="CuauhtÃ©moc" 
                       />
                     </div>
                     <div className="space-y-2">
@@ -272,7 +418,7 @@ export default function ProveedoresPage() {
           </div>
           {filteredVendors.length === 0 ? (
             <div className="p-10 text-center text-muted-foreground">
-              {searchTerm ? "No se encontraron proveedores." : "Aún no tienes proveedores registrados."}
+              {searchTerm ? "No se encontraron proveedores." : "AÃºn no tienes proveedores registrados."}
             </div>
           ) : (
             <Table>
@@ -289,23 +435,23 @@ export default function ProveedoresPage() {
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <Truck className="w-4 h-4 text-muted-foreground/50" />
-                        {v.name}
+                        {(v.LegalName || v.name)}
                       </div>
                       {v.rfc && <div className="text-xs text-muted-foreground mt-1 ml-6">{v.rfc}</div>}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
-                        {v.email && (
+                        {(v.Email || v.email) && (
                           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Mail className="w-3 h-3" /> {v.email}
+                            <Mail className="w-3 h-3" /> {(v.Email || v.email)}
                           </div>
                         )}
-                        {v.phone && (
+                        {(v.Phone || v.phone) && (
                           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Phone className="w-3 h-3" /> {v.phone}
+                            <Phone className="w-3 h-3" /> {(v.Phone || v.phone)}
                           </div>
                         )}
-                        {!v.email && !v.phone && <span className="text-sm text-muted-foreground/50">Sin contacto</span>}
+                        {!(v.Email || v.email) && !(v.Phone || v.phone) && <span className="text-sm text-muted-foreground/50">Sin contacto</span>}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -328,3 +474,5 @@ export default function ProveedoresPage() {
     </div>
   );
 }
+
+

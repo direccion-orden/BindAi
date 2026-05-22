@@ -2,54 +2,22 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, doc, writeBatch, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { ArrowLeft, Upload, FileDown, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { ShopifyProduct, ShopifyProductVariant, ShopifyProductOption } from "@/types/product";
 
 export default function ImportarProductosPage() {
   const router = useRouter();
   const { companyId } = useAuth();
-  const [warehouses, setWarehouses] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   
   const [successCount, setSuccessCount] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
   const [isDone, setIsDone] = useState(false);
-
-  useEffect(() => {
-    if (!companyId) return;
-    const q = query(collection(db, "companies", companyId, "warehouses"));
-    const unsub = onSnapshot(q, (snap) => {
-      const w = snap.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
-      setWarehouses(w);
-    });
-    return () => unsub();
-  }, [companyId]);
-
-  const downloadTemplate = () => {
-    let csv = "Title,Description,Price,SKU,Barcode";
-    warehouses.forEach(w => {
-      csv += `,Stock_${w.name}`;
-    });
-    csv += "\n";
-    csv += "Producto Ejemplo,Descripción genial,150.00,SKU-001,123456789";
-    warehouses.forEach(() => {
-      csv += `,10`;
-    });
-    
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'plantilla_productos.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   const handleFileUpload = async () => {
     if (!file || !companyId) return;
@@ -58,98 +26,149 @@ export default function ImportarProductosPage() {
     setErrorCount(0);
     setIsDone(false);
 
-    try {
-      const text = await file.text();
-      const lines = text.split('\n').filter(line => line.trim());
-      if (lines.length < 2) throw new Error("El archivo está vacío o no tiene datos.");
+    import("papaparse").then((Papa) => {
+      Papa.default.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        encoding: "ISO-8859-1",
+        complete: async (results: any) => {
+          try {
+            const records = results.data;
+            if (!records || records.length === 0) throw new Error("Archivo vacío");
 
-      const headers = lines[0].split(',').map(h => h.trim());
-      
-      let success = 0;
-      let errors = 0;
+            const isPriceList = records[0].hasOwnProperty("P-A") && records[0].hasOwnProperty("Código");
+            
+            const batches = [];
+            let currentBatch = writeBatch(db);
+            let count = 0;
+            let success = 0;
 
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        
-        try {
-          const title = values[headers.indexOf('Title')];
-          if (!title) continue; // Skip empty rows
+            // ALWAYS fetch products to prevent overwriting images and prices
+            const q = query(collection(db, "companies", companyId, "products"));
+            const snapshot = await getDocs(q);
+            const productMap = new Map();
+            const productByIdMap = new Map();
+            
+            snapshot.docs.forEach(d => {
+              const p = { id: d.id, ...d.data() };
+              productByIdMap.set(d.id, p);
+              if (p.variants && p.variants[0]) {
+                if (p.variants[0].barcode) productMap.set(String(p.variants[0].barcode).trim(), p);
+                if (p.variants[0].sku) productMap.set(String(p.variants[0].sku).trim(), p);
+              }
+            });
 
-          const description = headers.includes('Description') ? values[headers.indexOf('Description')] : "";
-          const price = headers.includes('Price') ? parseFloat(values[headers.indexOf('Price')]) : 0;
-          const sku = headers.includes('SKU') ? values[headers.indexOf('SKU')] : "";
-          const barcode = headers.includes('Barcode') ? values[headers.indexOf('Barcode')] : "";
+            if (isPriceList) {
+              // MODO LISTA DE PRECIOS
+              for (const record of records) {
+                if (!record.Código) continue;
+                const code = String(record.Código).trim();
+                const product = productMap.get(code);
+                if (!product) continue;
 
-          // Parse Inventory
-          const inventoryByWarehouse: Record<string, number> = {};
-          warehouses.forEach(w => {
-            const headerName = `Stock_${w.name}`;
-            const idx = headers.indexOf(headerName);
-            if (idx !== -1) {
-              inventoryByWarehouse[w.id] = parseInt(values[idx]) || 0;
+                const rawPrice = record["P-A"];
+                if (!rawPrice) continue;
+                const parsedPrice = parseFloat(String(rawPrice).replace(/[^0-9.-]+/g, ""));
+                if (isNaN(parsedPrice)) continue;
+
+                const updatedVariants = [...(product.variants || [])];
+                if (updatedVariants.length > 0) {
+                  updatedVariants[0] = { ...updatedVariants[0], price: parsedPrice };
+                }
+                
+                currentBatch.update(doc(db, "companies", companyId, "products", product.id), {
+                  variants: updatedVariants,
+                  updatedAt: new Date()
+                });
+
+                count++;
+                success++;
+                if (count === 400) {
+                  batches.push(currentBatch);
+                  currentBatch = writeBatch(db);
+                  count = 0;
+                }
+              }
+
+            } else {
+              // MODO PRODUCTOS NORMAL
+              for (const record of records) {
+                const productId = record.ID && record.ID.length > 20 ? record.ID : (record.Codigo || record.SKU);
+                if (!productId) continue;
+
+                const existingProduct = productByIdMap.get(productId);
+                
+                const ref = doc(db, "companies", companyId, "products", productId);
+                
+                const title = record.Titulo || record.Codigo || "Sin título";
+                const handle = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+                const cost = parseFloat(record.Costo) || 0;
+                
+                // Preserve existing data if present
+                const existingImages = existingProduct?.images || [];
+                const existingVariants = existingProduct?.variants || [];
+                let variant = existingVariants.length > 0 ? { ...existingVariants[0] } : {
+                  id: `var-${productId}`,
+                  title: "Default Title",
+                  inventoryQuantity: 0,
+                };
+                
+                variant.sku = record.SKU || record.Codigo || variant.sku || "";
+                variant.barcode = record.Codigo || variant.barcode || "";
+                variant.weight = parseFloat(record.Peso) || variant.weight || 0;
+                // DO NOT overwrite price if it exists (price list handles it)
+                variant.price = variant.price !== undefined ? variant.price : cost;
+
+                currentBatch.set(ref, {
+                  title: title,
+                  handle: handle,
+                  bodyHtml: record.Descripcion || existingProduct?.bodyHtml || "",
+                  vendor: "Bind ERP",
+                  productType: record["Categoria 1"] || existingProduct?.productType || "",
+                  status: existingProduct?.status || 'ACTIVE',
+                  tags: [record["Categoria 2"], record["Categoria 3"]].filter(Boolean),
+                  currency: record.Moneda || "MXN",
+                  initialCost: cost,
+                  cost: existingProduct?.cost || cost,
+                  iva: record["Tipo de IVA."] ? parseFloat(record["Tipo de IVA."].replace("%", "")) : (existingProduct?.iva || 0),
+                  satProductCode: record["Clave CFDI"] || existingProduct?.satProductCode || "",
+                  satUnitCode: record["Unidad CFDI"] || existingProduct?.satUnitCode || "",
+                  variants: [variant],
+                  options: existingProduct?.options || [{ id: "opt-1", name: "Title", values: ["Default Title"] }],
+                  images: existingImages, // PRESERVE IMAGES!
+                  updatedAt: new Date()
+                }, { merge: true });
+                
+                count++;
+                success++;
+                if (count === 400) {
+                  batches.push(currentBatch);
+                  currentBatch = writeBatch(db);
+                  count = 0;
+                }
+              }
             }
-          });
 
-          const handle = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-
-          const defaultVariant: ShopifyProductVariant = {
-            id: crypto.randomUUID(),
-            title: "Default Title",
-            price: price || 0,
-            sku: sku,
-            position: 1,
-            compareAtPrice: null,
-            option1: "Default Title",
-            option2: null,
-            option3: null,
-            taxable: true,
-            barcode: barcode,
-            weight: 0,
-            weightUnit: 'kg',
-            inventoryByWarehouse
-          };
-
-          const defaultOption: ShopifyProductOption = {
-            name: "Title",
-            values: ["Default Title"]
-          };
-
-          const newProduct: Partial<ShopifyProduct> = {
-            title,
-            bodyHtml: description,
-            vendor: "Importado",
-            productType: "General",
-            handle,
-            tags: [],
-            status: 'ACTIVE',
-            options: [defaultOption],
-            variants: [defaultVariant],
-            images: [],
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          };
-
-          await addDoc(collection(db, "companies", companyId, "products"), newProduct);
-          success++;
-        } catch (err) {
-          console.error("Error en fila", i, err);
-          errors++;
+            if (count > 0) batches.push(currentBatch);
+            for (const b of batches) {
+              await b.commit();
+            }
+            
+            setSuccessCount(success);
+            setIsDone(true);
+          } catch (error) {
+            console.error(error);
+            setErrorCount(1);
+          } finally {
+            setLoading(false);
+          }
         }
-      }
-
-      setSuccessCount(success);
-      setErrorCount(errors);
-      setIsDone(true);
-
-    } catch (e: any) {
-      alert("Error leyendo el archivo: " + e.message);
-    } finally {
-      setLoading(false);
-    }
+      });
+    });
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 max-w-4xl mx-auto space-y-8">
       <div className="flex items-center gap-4">
         <Link href="/productos">
           <Button variant="ghost" size="icon">
@@ -157,79 +176,64 @@ export default function ImportarProductosPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Importación Masiva de Productos</h1>
-          <p className="text-muted-foreground">Sube un archivo CSV para crear múltiples productos a la vez.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Importar Productos desde Bind ERP</h1>
+          <p className="text-muted-foreground mt-1">
+            Sube tu archivo CSV de productos exportado de Bind para actualizar el catálogo. Las actualizaciones son progresivas (Upsert), no borrarán tu información previa.
+          </p>
         </div>
       </div>
 
-      {!isDone ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Step 1: Template */}
-          <div className="bg-card border rounded-xl p-6 shadow-sm space-y-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm">1</span>
-              Descargar Plantilla
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Descarga la plantilla CSV pre-generada. Esta plantilla incluye columnas para el inventario inicial de cada uno de tus <b>{warehouses.length} almacenes actuales</b>.
-            </p>
-            <Button variant="outline" onClick={downloadTemplate} className="w-full gap-2">
-              <FileDown className="w-4 h-4" />
-              Descargar CSV
-            </Button>
-          </div>
-
-          {/* Step 2: Upload */}
-          <div className="bg-card border rounded-xl p-6 shadow-sm space-y-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm">2</span>
-              Subir Archivo
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Llena la plantilla, guárdala como CSV y súbela aquí.
-            </p>
-            
-            <div className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center">
-              <input 
-                type="file" 
-                accept=".csv"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
-              />
-            </div>
-            
+      <div className="bg-card border rounded-xl p-8 space-y-6">
+        <div className="space-y-4">
+          <label className="block text-sm font-medium">Archivo CSV de Bind ERP</label>
+          <div className="flex items-center gap-4">
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-muted-foreground
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-primary/10 file:text-primary
+                hover:file:bg-primary/20
+                transition-colors cursor-pointer"
+            />
             <Button 
               onClick={handleFileUpload} 
-              disabled={!file || loading} 
-              className="w-full gap-2"
+              disabled={!file || loading}
+              className="gap-2 min-w-[140px]"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {loading ? "Importando..." : "Importar Productos"}
+              {loading ? "Importando..." : "Subir Archivo"}
             </Button>
           </div>
         </div>
-      ) : (
-        <div className="bg-card border rounded-xl p-8 shadow-sm text-center space-y-6 max-w-md mx-auto">
-          <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto" />
-          <div>
-            <h2 className="text-2xl font-bold">Importación Completada</h2>
-            <p className="text-muted-foreground mt-2">Los productos han sido procesados.</p>
-          </div>
-          <div className="flex justify-center gap-6">
-            <div className="text-center">
-              <span className="block text-3xl font-bold text-green-600">{successCount}</span>
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">Exitosos</span>
-            </div>
-            <div className="text-center">
-              <span className="block text-3xl font-bold text-destructive">{errorCount}</span>
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">Errores</span>
+
+        {isDone && (
+          <div className="mt-8 p-6 bg-green-50 border border-green-200 rounded-xl flex items-start gap-4">
+            <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-green-900">¡Importación Completada!</h3>
+              <p className="text-green-700 mt-1">
+                Se actualizaron {successCount} productos correctamente. Ningún registro existente fue duplicado, sólo se combinó la información con el UUID original.
+              </p>
             </div>
           </div>
-          <Link href="/productos" className="block mt-4">
-            <Button className="w-full">Volver a Productos</Button>
-          </Link>
-        </div>
-      )}
+        )}
+
+        {errorCount > 0 && (
+          <div className="mt-8 p-6 bg-red-50 border border-red-200 rounded-xl flex items-start gap-4">
+            <AlertCircle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-red-900">Error en la Importación</h3>
+              <p className="text-red-700 mt-1">
+                Ocurrió un error inesperado al procesar el archivo. Revisa el formato y asegúrate de que sea un CSV válido de Bind ERP.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

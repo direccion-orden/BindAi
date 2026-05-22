@@ -53,9 +53,9 @@ export default function CuentasPage() {
   const handleOpenForm = (acc?: BankAccount) => {
     if (acc) {
       setCurrentId(acc.id);
-      setName(acc.name);
+      setName((acc.Name || acc.name));
       setType(acc.type);
-      setCurrency(acc.currency || "MXN");
+      setCurrency((acc.CurrencyCode || acc.currency || 'MXN') || "MXN");
       setInitialBalance(acc.initialBalance || 0);
     } else {
       setCurrentId("");
@@ -265,16 +265,16 @@ export default function CuentasPage() {
               <TableBody>
                 {accounts.map(acc => (
                   <TableRow key={acc.id}>
-                    <TableCell className="font-medium font-semibold">{acc.name}</TableCell>
+                    <TableCell className="font-medium font-semibold">{(acc.Name || acc.name)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {getTypeIcon(acc.type)}
                         <span className="text-sm">{getTypeLabel(acc.type)}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{acc.currency}</TableCell>
+                    <TableCell className="text-muted-foreground">{(acc.CurrencyCode || acc.currency || 'MXN')}</TableCell>
                     <TableCell className="text-muted-foreground font-medium text-right">
-                      {new Intl.NumberFormat('es-MX', { style: 'currency', currency: acc.currency || 'MXN' }).format(acc.initialBalance || 0)}
+                      {new Intl.NumberFormat('es-MX', { style: 'currency', currency: (acc.CurrencyCode || acc.currency || 'MXN') || 'MXN' }).format(acc.initialBalance || 0)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">
@@ -296,3 +296,4 @@ export default function CuentasPage() {
     </div>
   );
 }
+

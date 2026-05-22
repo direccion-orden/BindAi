@@ -35,7 +35,7 @@ export default function CategoriasPage() {
 
   useEffect(() => {
     if (!companyId) return;
-    const q = query(collection(db, "companies", companyId, "categories"), orderBy("name"));
+    const q = query(collection(db, "companies", companyId, "categories"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
       setCategories(data);
@@ -92,7 +92,7 @@ export default function CategoriasPage() {
   };
 
   const filteredCategories = categories.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (c.Description || c.Name || c.name || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -174,7 +174,7 @@ export default function CategoriasPage() {
                   <TableRow key={c.id}>
                     <TableCell className="font-medium flex items-center gap-2">
                       <Tags className="w-4 h-4 text-muted-foreground/50" />
-                      {c.name}
+                      {(c.Description || c.Name || c.name)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">

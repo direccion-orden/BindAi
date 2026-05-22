@@ -128,7 +128,7 @@ export default function BancosPage() {
                   >
                       {accounts.length === 0 && <option value="">Sin cuentas...</option>}
                       {accounts.map(acc => (
-                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.currency})</option>
+                          <option key={acc.id} value={acc.id}>{(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})</option>
                       ))}
                   </select>
               </div>
@@ -231,3 +231,4 @@ export default function BancosPage() {
     </div>
   );
 }
+

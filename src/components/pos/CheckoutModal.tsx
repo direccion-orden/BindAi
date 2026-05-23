@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { collection, addDoc, serverTimestamp, doc, updateDoc, increment, query, getDocs, where, runTransaction } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, increment, query, getDocs, where, runTransaction } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { usePOS } from "@/context/POSContext";
 import { useAuth } from "@/context/AuthContext";
@@ -43,6 +43,23 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const [savedSaleId, setSavedSaleId] = useState<string | null>(null);
   const [savedSaleData, setSavedSaleData] = useState<any>(null);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [companySettings, setCompanySettings] = useState<any>(null);
+
+  useEffect(() => {
+    if (!companyId) return;
+    const fetchCompanySettings = async () => {
+      try {
+        const snap = await getDoc(doc(db, "companies", companyId));
+        if (snap.exists()) {
+          setCompanySettings(snap.data());
+          console.log("[POS Checkout] Company settings loaded:", snap.data().name);
+        }
+      } catch (e) {
+        console.error("Error loading company settings in POS:", e);
+      }
+    };
+    fetchCompanySettings();
+  }, [companyId]);
 
   // Recycler states
   const [recyclerStatus, setRecyclerStatus] = useState<'idle'|'waiting'|'completed'|'error'>('idle');
@@ -548,7 +565,17 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         alert("El cliente no tiene un teléfono registrado.");
         return;
     }
-    const text = `¡Hola ${activeAccount.selectedClient.name}! 👋\n\nGracias por tu compra por *${formatMoney(total)}*.\nCon esta compra acumulaste *${pointsEarned} puntos* de lealtad. 🎁\n\nTicket: ${savedSaleId}`;
+    let text = `¡Hola ${activeAccount.selectedClient.name}! 👋\n\nGracias por tu compra por *${formatMoney(total)}*.`;
+    if (pointsEarned > 0) {
+        text += `\nCon esta compra acumulaste *${pointsEarned} puntos* de lealtad. 🎁`;
+    }
+    text += `\n\nTicket: ${savedSaleId}`;
+    if (companySettings?.name) {
+        text += `\n\nAtentamente,\n*${companySettings.name}*`;
+    }
+    if (companySettings?.whatsappPhone) {
+        text += `\nWhatsApp de contacto: ${companySettings.whatsappPhone}`;
+    }
     const url = `https://wa.me/52${activeAccount.selectedClient.phone}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
@@ -564,7 +591,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           const res = await fetch('/api/notifications/send-ticket', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ saleId: savedSaleId, saleData: savedSaleData })
+              body: JSON.stringify({ 
+                  saleId: savedSaleId, 
+                  saleData: savedSaleData,
+                  companyId: companyId
+              })
           });
           
           if (!res.ok) throw new Error('Error al enviar correo');

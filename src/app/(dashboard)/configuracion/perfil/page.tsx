@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Save, Building2, ShieldCheck, Mail, MapPin, KeyRound, UploadCloud, CheckCircle2 } from "lucide-react";
+import { Loader2, Save, Building2, ShieldCheck, Mail, MapPin, KeyRound, UploadCloud, CheckCircle2, MessageCircle, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -29,7 +29,12 @@ export default function CompanyProfilePage() {
     zipCode: "",
     email: "",
     phone: "",
-    address: ""
+    address: "",
+    whatsappPhone: "",
+    smtpHost: "",
+    smtpPort: "",
+    smtpUser: "",
+    smtpPass: ""
   });
 
   useEffect(() => {
@@ -48,7 +53,12 @@ export default function CompanyProfilePage() {
           zipCode: data.zipCode || "",
           email: data.email || "",
           phone: data.phone || "",
-          address: data.address || ""
+          address: data.address || "",
+          whatsappPhone: data.whatsappPhone || "",
+          smtpHost: data.smtpHost || "",
+          smtpPort: data.smtpPort || "",
+          smtpUser: data.smtpUser || "",
+          smtpPass: data.smtpPass || ""
         });
       }
 
@@ -288,6 +298,86 @@ export default function CompanyProfilePage() {
               onChange={handleChange} 
               placeholder="Calle, Número, Colonia, Ciudad, Estado" 
             />
+          </div>
+        </div>
+
+        {/* Notification Settings */}
+        <div className="bg-card border rounded-xl p-6 shadow-sm space-y-4">
+          <h3 className="font-semibold flex items-center gap-2 border-b pb-3 text-indigo-600">
+            <MessageCircle className="w-5 h-5 text-indigo-600" />
+            Configuración de Notificaciones (WhatsApp y Correo)
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Configura las credenciales personalizadas desde las cuales tus clientes recibirán los tickets de venta.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* WhatsApp Config */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold flex items-center gap-2 text-slate-700">
+                Canal de WhatsApp
+              </h4>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">WhatsApp de Contacto de la Empresa</label>
+                <Input 
+                  name="whatsappPhone" 
+                  value={formData.whatsappPhone} 
+                  onChange={handleChange} 
+                  placeholder="Ej. 525512345678" 
+                />
+                <p className="text-xs text-muted-foreground">Número de WhatsApp (con código de país, ej. 52 para México) que aparecerá en los enlaces de contacto y firmas de ticket.</p>
+              </div>
+            </div>
+
+            {/* SMTP Config */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold flex items-center gap-2 text-slate-700">
+                <Server className="w-4 h-4 text-slate-500" />
+                Servidor de Correo (SMTP)
+              </h4>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2 space-y-2">
+                    <label className="text-xs font-medium">Servidor Host</label>
+                    <Input 
+                      name="smtpHost" 
+                      value={formData.smtpHost} 
+                      onChange={handleChange} 
+                      placeholder="smtp.gmail.com" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium">Puerto</label>
+                    <Input 
+                      name="smtpPort" 
+                      value={formData.smtpPort} 
+                      onChange={handleChange} 
+                      placeholder="465" 
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">Usuario / Correo Emisor</label>
+                  <Input 
+                    name="smtpUser" 
+                    type="email" 
+                    value={formData.smtpUser} 
+                    onChange={handleChange} 
+                    placeholder="contacto@tuempresa.com" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">Contraseña (o Token de Aplicación)</label>
+                  <Input 
+                    name="smtpPass" 
+                    type="password" 
+                    value={formData.smtpPass} 
+                    onChange={handleChange} 
+                    placeholder="••••••••••••" 
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

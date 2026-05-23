@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
+import { adminDb } from '@/lib/firebase/admin';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { saleId, saleData } = body;
+    const { saleId, saleData, companyId } = body;
 
     if (!saleId || !saleData) {
       return NextResponse.json({ error: 'Falta la información de la venta' }, { status: 400 });
@@ -28,16 +29,42 @@ export async function POST(request: Request) {
       console.error("Error reading logo.svg for email:", e);
     }
 
-    // Configurar transporte SMTP
-    const transporter = nodemailer.createTransport({
+    // Configurar transporte SMTP (dinámico o fallback a env)
+    let smtpConfig: any = null;
+    if (companyId) {
+      try {
+        const companySnap = await adminDb.collection('companies').doc(companyId).get();
+        if (companySnap.exists) {
+          const data = companySnap.data();
+          if (data && data.smtpHost && data.smtpPort && data.smtpUser && data.smtpPass) {
+            smtpConfig = {
+              host: data.smtpHost,
+              port: parseInt(data.smtpPort),
+              secure: parseInt(data.smtpPort) === 465,
+              auth: {
+                user: data.smtpUser,
+                pass: data.smtpPass,
+              }
+            };
+            console.log(`[Send Ticket API] Loaded custom SMTP configuration for company: ${companyId} (${data.smtpUser})`);
+          }
+        }
+      } catch (e: any) {
+        console.error("[Send Ticket API] Error loading dynamic SMTP config from Firestore:", e.message);
+      }
+    }
+
+    const transporter = smtpConfig ? nodemailer.createTransport(smtpConfig) : nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.SMTP_PORT || '465'),
-      secure: true,
+      secure: parseInt(process.env.SMTP_PORT || '465') === 465,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
     });
+
+    const senderEmail = smtpConfig ? smtpConfig.auth.user : process.env.SMTP_USER;
 
     // Formatear dinero
     const formatMoney = (amount: number) => {
@@ -118,7 +145,7 @@ export async function POST(request: Request) {
 
     // Enviar el correo
     await transporter.sendMail({
-      from: `"Punto de Venta" <${process.env.SMTP_USER}>`,
+      from: `"Punto de Venta" <${senderEmail}>`,
       to: client.email,
       subject: `Tu Ticket de Compra - ${formatMoney(saleData.financials.total)}`,
       html: htmlContent,

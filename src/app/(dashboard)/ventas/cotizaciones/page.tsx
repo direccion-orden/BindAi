@@ -4,8 +4,9 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package, Table, LayoutGrid } from "lucide-react";
+import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package, Table, LayoutGrid, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { QuoteModal } from "./QuoteModal";
@@ -55,6 +56,12 @@ export default function CotizacionesCRMPage() {
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
   const router = useRouter();
 
+  // Filters state
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   useEffect(() => {
     if (!companyId) return;
 
@@ -65,6 +72,30 @@ export default function CotizacionesCRMPage() {
 
     return () => unsubQ();
   }, [companyId]);
+
+  const filteredQuotes = quotes.filter(quote => {
+    // 1. Search text
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      const matchesFolio = quote.quoteNumber?.toLowerCase().includes(term);
+      const matchesClient = quote.clientName?.toLowerCase().includes(term);
+      if (!matchesFolio && !matchesClient) return false;
+    }
+    // 2. Status filter
+    if (statusFilter !== "all" && quote.status !== statusFilter) {
+      return false;
+    }
+    // 3. Date range
+    if (dateFrom) {
+      const quoteDate = quote.createdAt.substring(0, 10);
+      if (quoteDate < dateFrom) return false;
+    }
+    if (dateTo) {
+      const quoteDate = quote.createdAt.substring(0, 10);
+      if (quoteDate > dateTo) return false;
+    }
+    return true;
+  });
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedQuoteId(id);
@@ -215,11 +246,67 @@ export default function CotizacionesCRMPage() {
         </div>
       </div>
 
+      {/* Modern Filter Panel */}
+      <div className="flex flex-col md:flex-row gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
+        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1 w-full">
+          <div className="space-y-1 w-full sm:w-64">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Buscar
+            </span>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-9 h-9"
+                placeholder="Folio o nombre del cliente..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Estatus
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">Todos</option>
+              {CRM_STAGES.map(stage => (
+                <option key={stage.id} value={stage.id}>{stage.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1 w-full sm:w-36">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
+            <Input
+              type="date"
+              className="h-9"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1 w-full sm:w-36">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
+            <Input
+              type="date"
+              className="h-9"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
       {viewMode === "kanban" ? (
         <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div className="flex h-full gap-4 pb-4 px-1" style={{ width: 'max-content', minWidth: '100%' }}>
             {CRM_STAGES.map((stage) => {
-              const stageQuotes = quotes.filter(q => q.status === stage.id);
+              const stageQuotes = filteredQuotes.filter(q => q.status === stage.id);
               const totalStageAmount = stageQuotes.reduce((sum, q) => sum + q.totalAmount, 0);
 
               return (
@@ -273,15 +360,15 @@ export default function CotizacionesCRMPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {quotes.length === 0 ? (
+                {filteredQuotes.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
                       <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                      No hay cotizaciones registradas actualmente.
+                      No se encontraron cotizaciones con los filtros aplicados.
                     </td>
                   </tr>
                 ) : (
-                  quotes.map((quote) => {
+                  filteredQuotes.map((quote) => {
                     const stage = CRM_STAGES.find(s => s.id === quote.status);
                     return (
                       <tr key={quote.id} className="hover:bg-slate-50 transition-colors">

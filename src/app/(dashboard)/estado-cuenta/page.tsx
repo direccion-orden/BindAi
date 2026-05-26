@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { collection, query as firestoreQuery, where, getDocs } from "firebase/firestore";
+import React, { useState, useEffect } from "react";
+import { collection, query as firestoreQuery, where, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,32 @@ import {
   DollarSign,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { ErpClient } from "@/app/actions/erp";
-import type { AccountStatement, AccountStatementLine } from "@/app/actions/erp";
+
+interface ErpClient {
+  id: string;
+  legalName: string;
+}
+
+interface AccountStatementLine {
+  date: string;
+  type: 'Order' | 'Remission' | 'Invoice' | 'Payment' | 'Anticipo';
+  number: string;
+  description: string;
+  cargo: number;
+  abono: number;
+  runningBalance: number;
+}
+
+interface AccountStatement {
+  client: { id: string; legalName: string };
+  generatedAt: string;
+  lines: AccountStatementLine[];
+  summary: {
+    totalCargos: number;
+    totalAbonos: number;
+    saldoTotal: number;
+  };
+}
 
 const TYPE_LABELS: Record<string, string> = {
   Order: "Pedido",
@@ -71,8 +95,10 @@ function formatDate(dateStr: string): string {
 
 export default function EstadoCuentaPage() {
   const { companyId } = useAuth();
+  
   // Client search
   const [query, setQuery] = useState("");
+  const [allClients, setAllClients] = useState<ErpClient[]>([]);
   const [clients, setClients] = useState<ErpClient[]>([]);
   const [selectedClient, setSelectedClient] = useState<ErpClient | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -87,20 +113,55 @@ export default function EstadoCuentaPage() {
   const [dateTo, setDateTo] = useState("");
   const [docSearch, setDocSearch] = useState("");
 
-  const handleSearch = async () => {
-    if (!query) return;
-    setIsSearching(true);
-    try {
-      const res = await fetch(
-        `/api/erp/clients?q=${encodeURIComponent(query)}`
-      );
-      const results = await res.json();
-      setClients(results || []);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsSearching(false);
+  // Helper to extract YYYY-MM-DD from various date formats
+  const extractDate = (val: any): string => {
+    if (!val) return "";
+    if (typeof val === "string") {
+      return val.substring(0, 10);
     }
+    if (val.seconds || val._seconds) {
+      const secs = val.seconds || val._seconds;
+      return new Date(secs * 1000).toISOString().split("T")[0];
+    }
+    if (val instanceof Date) {
+      return val.toISOString().split("T")[0];
+    }
+    return "";
+  };
+
+  useEffect(() => {
+    if (!companyId) return;
+
+    // Listen to local clients for reactive, fast search
+    const q = firestoreQuery(collection(db, "companies", companyId, "clients"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(docSnap => {
+        const d = docSnap.data();
+        return {
+          id: docSnap.id,
+          legalName: d.legalName || d.name || d.razonSocial || "Cliente sin nombre"
+        };
+      });
+      setAllClients(list);
+    }, (error) => {
+      console.error("Error cargando clientes locales:", error);
+    });
+
+    return () => unsubscribe();
+  }, [companyId]);
+
+  const handleSearch = () => {
+    if (!query.trim()) {
+      setClients([]);
+      return;
+    }
+    setIsSearching(true);
+    const term = query.toLowerCase();
+    const results = allClients.filter(c => 
+      c.legalName.toLowerCase().includes(term)
+    );
+    setClients(results);
+    setIsSearching(false);
   };
 
   const handleSelectClient = async (client: ErpClient) => {
@@ -110,24 +171,146 @@ export default function EstadoCuentaPage() {
     setIsLoading(true);
     try {
       if (!companyId) throw new Error("No company ID");
-      // Fetch anticipos from Firestore client-side
-      const q = firestoreQuery(collection(db, "companies", companyId, "anticipos"), where("clientId", "==", client.id));
-      const snapshot = await getDocs(q);
-      const anticipos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      // POST to API with anticipos data
-      const res = await fetch('/api/erp/account-statement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId: client.id,
-          clientName: client.legalName,
-          anticipos
-        })
+      // 1. Fetch all financial entities from local Firestore in parallel
+      const [pedidosSnap, remisionesSnap, facturasSnap, paymentsSnap, anticiposSnap] = await Promise.all([
+        getDocs(firestoreQuery(collection(db, "companies", companyId, "pedidos"), where("clientId", "==", client.id))),
+        getDocs(firestoreQuery(collection(db, "companies", companyId, "remisiones"), where("clientId", "==", client.id))),
+        getDocs(firestoreQuery(collection(db, "companies", companyId, "facturas"), where("clientId", "==", client.id))),
+        getDocs(firestoreQuery(collection(db, "companies", companyId, "payments"), where("clientId", "==", client.id))),
+        getDocs(firestoreQuery(collection(db, "companies", companyId, "anticipos"), where("clientId", "==", client.id)))
+      ]);
+
+      const lines: AccountStatementLine[] = [];
+
+      // Consolidate Orders (Pedidos)
+      pedidosSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.status !== "cancelado" && d.status !== "cancelada") {
+          lines.push({
+            date: extractDate(d.createdAt),
+            type: "Order",
+            number: d.orderNumber || d.number || `PED-${docSnap.id.substring(0, 6)}`,
+            description: "Pedido de Venta",
+            cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
+            abono: 0,
+            runningBalance: 0
+          });
+        }
       });
-      if (!res.ok) throw new Error("Error al obtener estado de cuenta");
-      const data: AccountStatement = await res.json();
-      setStatement(data);
+
+      // Consolidate Remissions (Remisiones)
+      remisionesSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.status !== "cancelada" && d.status !== "cancelado") {
+          lines.push({
+            date: extractDate(d.createdAt),
+            type: "Remission",
+            number: d.remissionNumber || d.number || `REM-${docSnap.id.substring(0, 6)}`,
+            description: "Remisión de Mercancía",
+            cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
+            abono: 0,
+            runningBalance: 0
+          });
+        }
+      });
+
+      // Consolidate Invoices (Facturas)
+      facturasSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.status !== "cancelada" && d.status !== "cancelado") {
+          lines.push({
+            date: extractDate(d.createdAt),
+            type: "Invoice",
+            number: d.invoiceNumber ? `FAC-${d.invoiceNumber}` : `FAC-${docSnap.id.substring(0, 6)}`,
+            description: "Factura de Venta",
+            cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
+            abono: 0,
+            runningBalance: 0
+          });
+        }
+      });
+
+      // Consolidate Payments (Pagos Directos)
+      paymentsSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        const amt = parseFloat(d.amount) || 0;
+        if (amt > 0.01) {
+          lines.push({
+            date: extractDate(d.createdAt),
+            type: "Payment",
+            number: d.reference ? `PAG | ${d.reference}` : `PAG-${docSnap.id.substring(0, 6)}`,
+            description: `Pago aplicado a ${(d.documentType || "Documento").toUpperCase()} - ${d.documentNumber || ""}`,
+            cargo: 0,
+            abono: amt,
+            runningBalance: 0
+          });
+        }
+      });
+
+      // Extract local Anticipo applications (amortizaciones)
+      const anticiposList = anticiposSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+      
+      // Consolidate Anticipos
+      anticiposList.forEach(ant => {
+        const folio = ant.folio ? `ANT-${String(ant.folio).padStart(4, "0")}` : `ANT-${ant.id?.substring(0, 5).toUpperCase()}`;
+        const date = extractDate(ant.receivedAt) || extractDate(ant.createdAt);
+
+        lines.push({
+          date,
+          type: "Anticipo",
+          number: folio,
+          description: `Anticipo - ${ant.paymentTermName || "Pago"}${ant.reference ? " | Ref: " + ant.reference : ""}`,
+          cargo: 0,
+          abono: parseFloat(ant.amount) || ant.amount || 0,
+          runningBalance: 0
+        });
+
+        // If anticipo was applied locally (amortizaciones), show them as information lines (0 abono/cargo)
+        if (ant.applications) {
+          ant.applications.forEach((app: any) => {
+            lines.push({
+              date: extractDate(app.appliedAt) || date,
+              type: "Anticipo",
+              number: `AMORT-${folio}`,
+              description: `(Amortizado con ${app.erpDocumentNumber || "Documento"} por $${(app.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+              cargo: 0,
+              abono: 0,
+              runningBalance: 0
+            });
+          });
+        }
+      });
+
+      // 2. Sort by date ASC
+      lines.sort((a, b) => {
+        const da = a.date || "0000-00-00";
+        const db2 = b.date || "0000-00-00";
+        return da.localeCompare(db2);
+      });
+
+      // 3. Compute runningBalance and totals
+      let totalCargos = 0;
+      let totalAbonos = 0;
+      let runningBalance = 0;
+
+      for (const line of lines) {
+        totalCargos += line.cargo;
+        totalAbonos += line.abono;
+        runningBalance += line.abono - line.cargo;
+        line.runningBalance = runningBalance;
+      }
+
+      setStatement({
+        client: { id: client.id, legalName: client.legalName },
+        generatedAt: new Date().toISOString(),
+        lines,
+        summary: {
+          totalCargos,
+          totalAbonos,
+          saldoTotal: totalCargos - totalAbonos
+        }
+      });
     } catch (error) {
       console.error(error);
       alert("Error al obtener el estado de cuenta.");
@@ -144,6 +327,7 @@ export default function EstadoCuentaPage() {
     setDateTo("");
     setDocSearch("");
   };
+
 
   // Filter lines
   const filteredLines: AccountStatementLine[] = (statement?.lines || []).filter(
@@ -381,13 +565,13 @@ export default function EstadoCuentaPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Estado de Cuenta</h1>
         <p className="text-muted-foreground">
-          Consulta el saldo consolidado de un cliente con información del ERP y anticipos locales.
+          Consulta el saldo consolidado de un cliente con información de ventas, cobros y anticipos locales.
         </p>
       </div>
 
       {/* Client Selector */}
       <div className="bg-card p-5 rounded-lg border shadow-sm space-y-3">
-        <label className="text-sm font-medium">Buscar Cliente (ERP)</label>
+        <label className="text-sm font-medium">Buscar Cliente</label>
         {selectedClient ? (
           <div className="flex items-center justify-between p-3 border rounded-md bg-muted/30">
             <span className="font-medium text-primary">

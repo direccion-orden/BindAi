@@ -13,6 +13,57 @@ interface ReturnsModalProps {
   onClose: () => void;
 }
 
+function sanitizeFirestoreData<T>(data: T): T {
+  if (data === undefined) {
+    return null as any;
+  }
+  if (data === null) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeFirestoreData(item)) as any;
+  }
+  if (typeof data === "object") {
+    const proto = Object.getPrototypeOf(data);
+    const isPlain = proto === null || proto === Object.prototype;
+    if (!isPlain) {
+      return data;
+    }
+    const cleanObj: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      cleanObj[key] = sanitizeFirestoreData(value);
+    }
+    return cleanObj;
+  }
+  return data;
+}
+
+const mapRemissionToSale = (r: any) => {
+  if (!r) return null;
+  return {
+    ...r,
+    folio: r.orderNumber?.replace("POS-", "") || r.remissionNumber,
+    client: { 
+      id: r.clientId || "public",
+      name: r.clientName || "Público en General"
+    },
+    financials: {
+      subtotal: r.subtotal || 0,
+      tax: r.tax || 0,
+      total: r.totalAmount || 0,
+      refundedAmount: r.refundedAmount || 0
+    },
+    items: r.items?.map((item: any) => ({
+      id: item.variantId || item.productId || "",
+      title: item.productName || item.title || "",
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      discountPercentage: item.discountPercentage || 0,
+      returnedQuantity: item.returnedQuantity || 0
+    })) || []
+  };
+};
+
 export function ReturnsModal({ onClose }: ReturnsModalProps) {
   const { user, companyId } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,43 +100,44 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
       
       if (!companyId) throw new Error("No company ID");
       
-      // Intentar búsqueda directa por ID si parece un ID de Firebase válido (sin espacios y largo)
+      // Intentar búsqueda directa por ID de Remisión
       if (term.length > 15 && !term.includes(" ")) {
-        const saleRef = doc(db, "companies", companyId, "sales", searchTerm.trim());
-        const saleSnap = await getDoc(saleRef);
+        const remissionRef = doc(db, "companies", companyId, "remisiones", searchTerm.trim());
+        const remissionSnap = await getDoc(remissionRef);
         
-        if (saleSnap.exists()) {
-          setSale({ id: saleSnap.id, ...saleSnap.data() });
+        if (remissionSnap.exists() && remissionSnap.data().isPosSale) {
+          setSale(mapRemissionToSale({ id: remissionSnap.id, ...remissionSnap.data() }));
           setLoading(false);
           return;
         }
       }
 
-      // Intentar búsqueda directa por Folio Consecutivo (si es puramente numérico)
-      if (/^\d+$/.test(term)) {
-        const folioQuery = query(collection(db, "companies", companyId, "sales"), where("folio", "==", term));
-        const folioSnap = await getDocs(folioQuery);
-        
-        if (!folioSnap.empty) {
-          setSale({ id: folioSnap.docs[0].id, ...folioSnap.docs[0].data() });
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Si no es un ID/Folio directo o no se encontró, buscar en los últimos 100 tickets por cliente
-      const q = query(collection(db, "companies", companyId, "sales"), orderBy("createdAt", "desc"), limit(100));
+      // Buscar en las últimas 100 remisiones del POS
+      const formattedTerm = term.startsWith("rem-") ? term.toUpperCase() : term;
+      const formattedPosTerm = term.startsWith("pos-") ? term.toUpperCase() : `POS-${term.toUpperCase()}`;
+      
+      const q = query(collection(db, "companies", companyId, "remisiones"), orderBy("createdAt", "desc"), limit(100));
       const snap = await getDocs(q);
       
-      const matches = snap.docs.map(d => ({ id: d.id, ...d.data() }) as any).filter(s => {
-         const name = (s.client?.name || "").toLowerCase();
-         const email = (s.client?.email || "").toLowerCase();
-         const phone = (s.client?.phone || "");
-         return s.folio === term || s.id.toLowerCase() === term || name.includes(term) || email.includes(term) || phone.includes(term);
-      });
+      const matches = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }) as any)
+        .filter(r => r.isPosSale === true)
+        .map(mapRemissionToSale)
+        .filter((s: any) => {
+          const folio = (s.folio || "").toUpperCase();
+          const remNum = (s.remissionNumber || "").toUpperCase();
+          const orderNum = (s.orderNumber || "").toUpperCase();
+          const name = (s.client?.name || "").toLowerCase();
+          
+          return folio === term.toUpperCase() || 
+                 remNum === formattedTerm || 
+                 orderNum === formattedPosTerm ||
+                 s.id.toLowerCase() === term || 
+                 name.includes(term);
+        });
 
       if (matches.length === 0) {
-        setError("No se encontraron ventas para esta búsqueda en los registros recientes.");
+        setError("No se encontraron remisiones de POS recientes para esta búsqueda.");
       } else if (matches.length === 1) {
         setSale(matches[0]);
       } else {
@@ -147,33 +199,62 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
 
     setProcessing(true);
     try {
-      // 1. Actualizar Venta Original
-      const updatedItems = sale.items.map((item: any) => {
-        const returning = returnQuantities[item.id] || 0;
+      if (!companyId) throw new Error("No company ID");
+      
+      // 1. Obtener Remisión Original y Actualizarla
+      const remissionRef = doc(db, "companies", companyId, "remisiones", sale.id);
+      const remissionSnap = await getDoc(remissionRef);
+      if (!remissionSnap.exists()) throw new Error("Remisión no encontrada en la base de datos");
+      
+      const remissionData = remissionSnap.data();
+      const updatedRemissionItems = remissionData.items.map((item: any) => {
+        const itemId = item.variantId || item.productId || "";
+        const returning = returnQuantities[itemId] || 0;
         return {
           ...item,
           returnedQuantity: (item.returnedQuantity || 0) + returning
         };
       });
 
-      if (!companyId) throw new Error("No company ID");
-      const saleRef = doc(db, "companies", companyId, "sales", sale.id);
-      await updateDoc(saleRef, {
-        items: updatedItems,
-        "financials.refundedAmount": increment(totalRefund),
-        status: totalRefund >= sale.financials.total ? 'refunded' : 'partially_refunded'
-      });
+      const isFullyRefunded = (remissionData.refundedAmount || 0) + totalRefund >= remissionData.totalAmount - 0.01;
 
-      // 2. Afectar Inventario
+      await updateDoc(remissionRef, sanitizeFirestoreData({
+        items: updatedRemissionItems,
+        refundedAmount: increment(totalRefund),
+        status: isFullyRefunded ? 'cancelada' : 'activa'
+      }));
+
+      // 2. Afectar Inventario Físico (Sumar Stock Devuelto en la Variante Correcta)
       for (const item of sale.items) {
         const returning = returnQuantities[item.id] || 0;
         if (returning > 0) {
-          const productRef = doc(db, "companies", companyId, "products", item.id);
-          const pSnap = await getDoc(productRef);
-          if (pSnap.exists()) {
-             await updateDoc(productRef, {
-               bindCurrentInventory: increment(returning)
-             });
+          const origItem = remissionData.items.find((oi: any) => (oi.variantId || oi.productId) === item.id);
+          if (origItem) {
+            const productRef = doc(db, "companies", companyId, "products", origItem.productId);
+            const pSnap = await getDoc(productRef);
+            if (pSnap.exists()) {
+              const productData = pSnap.data();
+              const updatedVariants = productData.variants?.map((v: any) => {
+                if (v.id === origItem.variantId) {
+                  return { ...v, stock: (v.stock || 0) + returning };
+                }
+                return v;
+              });
+              await updateDoc(productRef, { variants: updatedVariants });
+              
+              // Registrar movimiento de Entrada (IN) al Kárdex
+              const movId = crypto.randomUUID();
+              await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), sanitizeFirestoreData({
+                id: movId,
+                productId: origItem.productId,
+                variantId: origItem.variantId,
+                type: "IN",
+                quantity: returning,
+                reason: `Devolución POS (Remisión ${sale.remissionNumber})`,
+                referenceId: sale.id,
+                createdAt: new Date().toISOString()
+              }));
+            }
           }
         }
       }
@@ -182,11 +263,11 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
       if (refundMethod === 'efectivo') {
         let sessionId = null;
         
-        // Find open session for the sale's branch
+        // Buscar turno de caja abierto en la sucursal de la remisión
         const sessionQuery = query(
           collection(db, "companies", companyId, "cash_sessions"),
           where("status", "==", "open"),
-          where("locationId", "==", sale.branchId)
+          where("locationId", "==", sale.locationId || "")
         );
         const sessionSnap = await getDocs(sessionQuery);
         
@@ -202,17 +283,17 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
         }
 
         if (sessionId) {
-          await addDoc(collection(db, "companies", companyId, "cash_transactions"), {
+          await addDoc(collection(db, "companies", companyId, "cash_transactions"), sanitizeFirestoreData({
             sessionId,
             type: "EXPENSE",
             category: "RETIRO_CANCELACION",
             amount: totalRefund,
-            reference: `Devolución Ticket ${sale.id}`,
+            reference: `Devolución Ticket ${sale.remissionNumber}`,
             paymentMethod: "CASH",
             denominations: denominationsOut,
             createdAt: serverTimestamp(),
-            createdBy: user?.email,
-          });
+            createdBy: user?.email || null,
+          }));
         } else {
            throw new Error("No hay un turno de caja abierto para registrar la salida de efectivo.");
         }

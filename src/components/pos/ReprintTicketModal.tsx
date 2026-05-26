@@ -30,12 +30,30 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
     try {
       if (!companyId) return;
       const q = query(
-        collection(db, "companies", companyId, "sales"),
+        collection(db, "companies", companyId, "remisiones"),
         orderBy("createdAt", "desc"),
-        limit(50)
+        limit(100)
       );
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .filter(r => r.isPosSale === true)
+        .map(r => ({
+          ...r,
+          folio: r.orderNumber?.replace("POS-", "") || r.remissionNumber,
+          client: { name: r.clientName },
+          financials: {
+            subtotal: r.subtotal || 0,
+            tax: r.tax || 0,
+            total: r.totalAmount || 0
+          },
+          items: r.items?.map((item: any) => ({
+            title: item.productName || item.title || "",
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discountPercentage: item.discountPercentage || 0
+          })) || []
+        }));
       setSales(data);
       setFilteredSales(data);
     } catch (error) {

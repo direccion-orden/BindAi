@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, increment, query, getDocs, where, runTransaction } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, increment, query, getDocs, where, runTransaction, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { usePOS } from "@/context/POSContext";
+import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { X, Banknote, CreditCard, Landmark, Loader2, CheckCircle2, MessageCircle, Mail, Gift, Wallet, Trash2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,31 @@ interface PaymentEntry {
   amount: number;
   denominationsIn?: DenominationCounts;
   denominationsOut?: DenominationCounts; // Para el cambio
+}
+
+function sanitizeFirestoreData<T>(data: T): T {
+  if (data === undefined) {
+    return null as any;
+  }
+  if (data === null) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeFirestoreData(item)) as any;
+  }
+  if (typeof data === "object") {
+    const proto = Object.getPrototypeOf(data);
+    const isPlain = proto === null || proto === Object.prototype;
+    if (!isPlain) {
+      return data;
+    }
+    const cleanObj: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      cleanObj[key] = sanitizeFirestoreData(value);
+    }
+    return cleanObj;
+  }
+  return data;
 }
 
 export function CheckoutModal({ onClose }: CheckoutModalProps) {
@@ -414,68 +440,105 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         }
       }
 
-      const saleData = {
-        branchId,
-        accountId: activeAccount.id,
-        accountName: activeAccount.name,
-        client: activeAccount.selectedClient,
-        pointsEarned,
-        cashier: {
-            uid: user?.uid,
-            email: user?.email
-        },
-        items: activeAccount.items.map(item => ({
-            id: item.product.id,
-            title: item.product.title,
-            sku: item.product.sku,
-            quantity: item.quantity,
+      // 1. Generar Remisión a partir de la Venta del POS e impactar Inventario
+      const remId = crypto.randomUUID();
+      const remNumber = await getNextSequence(companyId, 'remisiones');
+      
+      const remissionData = sanitizeFirestoreData({
+        id: remId,
+        remissionNumber: remNumber,
+        orderId: null,
+        orderNumber: `POS-${remNumber}`,
+        clientId: client?.id || "public",
+        clientName: client?.name || "Público en General",
+        items: activeAccount.items.map(item => {
+          const matchingVariant = item.product.variants?.find((v: any) => v.sku === item.product.sku) || item.product.variants?.[0];
+          const variantId = matchingVariant?.id || item.product.id || "";
+          const variantTitle = matchingVariant?.title && matchingVariant.title !== "Default Title" ? matchingVariant.title : "";
+          
+          return {
+            productId: item.product.id || "",
+            variantId: variantId,
+            productName: item.product.title || "",
+            variantTitle: variantTitle,
+            quantity: item.quantity || 1,
             unitPrice: item.product.price || 0,
-            discountPercentage: item.discountPercentage,
-            cost: item.product.cost || 0
-        })),
-        financials: {
-            subtotal,
-            totalDiscount,
-            tax,
-            total,
+            discountPercentage: item.discountPercentage || 0,
+            imageUrl: item.product.images?.[0]?.src || item.product.imageUrl || "",
+            categoryIds: [
+              ...(item.product.productType ? [item.product.productType] : []),
+              ...(item.product.tags || [])
+            ]
+          };
+        }),
+        totalAmount: total || 0,
+        subtotal: subtotal || 0,
+        tax: tax || 0,
+        paidAmount: total || 0,
+        projectId: null,
+        projectName: null,
+        locationId: branchId || null,
+        status: 'activa',
+        createdAt: new Date().toISOString(),
+        createdBy: user?.email || "POS",
+        isPosSale: true,
+        posSaleId: remId,
+        cashier: {
+            uid: user?.uid || null,
+            email: user?.email || null
         },
-        payments, // Array de pagos divididos
-        status: 'completed',
-        createdAt: serverTimestamp()
-      };
-
-      // 1. Guardar la Venta y Generar Folio
-      const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
-      let finalSaleData = { ...saleData };
-
-      await runTransaction(db, async (transaction) => {
-        const counterRef = doc(db, "companies", companyId, "counters", "sales");
-        const counterDoc = await transaction.get(counterRef);
-        
-        let currentFolio = 0;
-        if (counterDoc.exists()) {
-          currentFolio = counterDoc.data().current || 0;
-        }
-        
-        const nextFolio = currentFolio + 1;
-        const formattedFolio = nextFolio.toString().padStart(7, '0');
-        
-        // Update counter
-        transaction.set(counterRef, { current: nextFolio }, { merge: true });
-        
-        // Add folio to sale data
-        finalSaleData = {
-          ...saleData,
-          folio: formattedFolio
-        };
-        
-        transaction.set(newSaleRef, finalSaleData);
+        financials: {
+            subtotal: subtotal || 0,
+            totalDiscount: totalDiscount || 0,
+            tax: tax || 0,
+            total: total || 0,
+        },
+        payments: payments.map(p => ({
+            method: p.method || "",
+            amount: p.amount || 0,
+            denominationsIn: p.denominationsIn || null,
+            denominationsOut: p.denominationsOut || null
+        }))
       });
 
-      setSavedSaleId(newSaleRef.id);
-      setSavedSaleData(finalSaleData);
-      
-      const saleRef = newSaleRef; // para mantener compatibilidad con el código de abajo
+      await setDoc(doc(db, "companies", companyId, "remisiones", remId), remissionData);
+
+      setSavedSaleId(remId);
+      setSavedSaleData(remissionData);
+
+      // Descontar Inventario físico de los productos vendidos
+      for (const item of activeAccount.items) {
+        const productRef = doc(db, "companies", companyId, "products", item.product.id);
+        const productDoc = await getDoc(productRef);
+        if (productDoc.exists()) {
+          const productData = productDoc.data();
+          const updatedVariants = productData.variants?.map((v: any) => {
+            const isMatch = v.sku === item.product.sku || v.id === item.product.id || productData.variants.length === 1;
+            if (isMatch) {
+              return { ...v, stock: Math.max(0, (v.stock || 0) - item.quantity) };
+            }
+            return v;
+          });
+          
+          await updateDoc(productRef, { variants: updatedVariants });
+          
+          // Registrar movimiento de salida del kárdex
+          const matchingVariant = productData.variants?.find((v: any) => v.sku === item.product.sku || v.id === item.product.id || productData.variants.length === 1);
+          const variantId = matchingVariant?.id || item.product.id;
+          
+          const movId = crypto.randomUUID();
+          await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), sanitizeFirestoreData({
+            id: movId,
+            productId: item.product.id,
+            variantId: variantId,
+            type: "OUT",
+            quantity: item.quantity,
+            reason: `Venta POS ${remNumber}`,
+            referenceId: remId,
+            createdAt: new Date().toISOString()
+          }));
+        }
+      }
 
       // 2. Registrar Movimientos de Caja (Solo Efectivo)
       for (const p of payments) {
@@ -484,50 +547,50 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           // Monto original sin restar el cambio
           const cashReceived = p.amount + (p.denominationsOut ? Object.entries(p.denominationsOut).reduce((acc, [k,v])=>acc+parseFloat(k)*v,0) : 0);
           
-          await addDoc(collection(db, "companies", companyId, "cash_transactions"), {
+          await addDoc(collection(db, "companies", companyId, "cash_transactions"), sanitizeFirestoreData({
             sessionId,
             type: "INCOME",
             category: "VENTA_EFECTIVO",
             amount: cashReceived,
-            reference: `Venta ${saleRef.id}`,
+            reference: `Venta ${remNumber}`,
             paymentMethod: "CASH",
             denominations: p.denominationsIn || {},
             createdAt: serverTimestamp(),
-            createdBy: user?.email,
-          });
+            createdBy: user?.email || null,
+          }));
 
           // Movimiento de salida (el cambio)
           if (p.denominationsOut && Object.keys(p.denominationsOut).length > 0) {
             const changeAmount = Object.entries(p.denominationsOut).reduce((acc, [k,v])=>acc+parseFloat(k)*v,0);
             if (changeAmount > 0) {
-              await addDoc(collection(db, "companies", companyId, "cash_transactions"), {
+              await addDoc(collection(db, "companies", companyId, "cash_transactions"), sanitizeFirestoreData({
                 sessionId,
                 type: "EXPENSE",
                 category: "CAMBIO_VENTA",
                 amount: changeAmount,
-                reference: `Cambio Venta ${saleRef.id}`,
+                reference: `Cambio Venta ${remNumber}`,
                 paymentMethod: "CASH",
                 denominations: p.denominationsOut,
                 createdAt: serverTimestamp(),
-                createdBy: user?.email,
-              });
+                createdBy: user?.email || null,
+              }));
             }
           }
         }
 
         // Registrar pago en la colección global de Ingresos (payments)
-        await addDoc(collection(db, "companies", companyId, "payments"), {
+        await addDoc(collection(db, "companies", companyId, "payments"), sanitizeFirestoreData({
           amount: p.amount,
           date: new Date().toISOString().split("T")[0],
           method: p.method === 'efectivo' ? 'Efectivo' : p.method === 'tarjeta' ? 'Tarjeta' : p.method === 'transferencia' ? 'Transferencia' : p.method,
-          reference: `Venta POS ${finalSaleData.folio}`,
-          documentId: saleRef.id,
-          documentType: "pos",
-          documentNumber: finalSaleData.folio,
+          reference: `Venta POS ${remNumber}`,
+          documentId: remId,
+          documentType: "remision",
+          documentNumber: remNumber,
           clientId: client?.id || "public",
           clientName: client?.name || "Público en General",
           createdAt: new Date().toISOString()
-        });
+        }));
       }
 
       // 3. Actualizar Perfil del Cliente

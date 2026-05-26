@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package } from "lucide-react";
+import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package, Table, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -34,6 +34,8 @@ interface Quote {
   subtotal?: number;
   tax?: number;
   notes?: string;
+  projectId?: string | null;
+  projectName?: string | null;
 }
 
 const CRM_STAGES = [
@@ -50,6 +52,7 @@ export default function CotizacionesCRMPage() {
   const [loading, setLoading] = useState(true);
   const [draggedQuoteId, setDraggedQuoteId] = useState<string | null>(null);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
   const router = useRouter();
 
   useEffect(() => {
@@ -176,64 +179,163 @@ export default function CotizacionesCRMPage() {
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 border-b pb-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Cotizaciones (CRM)</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl font-extrabold tracking-tight">Cotizaciones (CRM)</h1>
+          <p className="text-muted-foreground text-sm mt-1">
             Gestiona el embudo de ventas y da seguimiento a prospectos.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 border rounded-lg p-1 bg-slate-50 shrink-0">
+            <Button
+              variant={viewMode === "table" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 gap-1.5 text-xs font-semibold px-3 shadow-none transition-all"
+              onClick={() => setViewMode("table")}
+            >
+              <Table className="w-4 h-4 text-slate-500" />
+              Tabla
+            </Button>
+            <Button
+              variant={viewMode === "kanban" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 gap-1.5 text-xs font-semibold px-3 shadow-none transition-all"
+              onClick={() => setViewMode("kanban")}
+            >
+              <LayoutGrid className="w-4 h-4 text-slate-500" />
+              Tablero Kanban
+            </Button>
+          </div>
           <Link href="/ventas/cotizaciones/nueva">
-            <Button className="gap-2 bg-blue-600 hover:bg-blue-700">
+            <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold h-10 px-4 text-xs shadow-md">
               <Plus className="w-4 h-4" /> Nueva Cotización
             </Button>
           </Link>
         </div>
       </div>
 
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        <div className="flex h-full gap-4 pb-4 px-1" style={{ width: 'max-content', minWidth: '100%' }}>
-          {CRM_STAGES.map((stage) => {
-            const stageQuotes = quotes.filter(q => q.status === stage.id);
-            const totalStageAmount = stageQuotes.reduce((sum, q) => sum + q.totalAmount, 0);
+      {viewMode === "kanban" ? (
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div className="flex h-full gap-4 pb-4 px-1" style={{ width: 'max-content', minWidth: '100%' }}>
+            {CRM_STAGES.map((stage) => {
+              const stageQuotes = quotes.filter(q => q.status === stage.id);
+              const totalStageAmount = stageQuotes.reduce((sum, q) => sum + q.totalAmount, 0);
 
-            return (
-              <div 
-                key={stage.id} 
-                className={`flex flex-col w-80 shrink-0 border rounded-xl overflow-hidden shadow-sm h-full ${stage.id === 'ganada' ? 'bg-emerald-50/50 border-emerald-200' : stage.id === 'perdida' ? 'bg-red-50/50 border-red-200' : 'bg-slate-50 border-slate-200'}`}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, stage.id)}
-              >
+              return (
                 <div 
-                  className="p-3 border-b bg-white flex flex-col gap-2 sticky top-0"
-                  style={{ borderTop: `4px solid ${stage.color}` }}
+                  key={stage.id} 
+                  className={`flex flex-col w-80 shrink-0 border rounded-xl overflow-hidden shadow-sm h-full ${stage.id === 'ganada' ? 'bg-emerald-50/50 border-emerald-200' : stage.id === 'perdida' ? 'bg-red-50/50 border-red-200' : 'bg-slate-50 border-slate-200'}`}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, stage.id)}
                 >
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-bold text-sm text-slate-800 uppercase tracking-wider">{stage.name}</h3>
-                    <div className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                      {stageQuotes.length}
+                  <div 
+                    className="p-3 border-b bg-white flex flex-col gap-2 sticky top-0"
+                    style={{ borderTop: `4px solid ${stage.color}` }}
+                  >
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-sm text-slate-800 uppercase tracking-wider">{stage.name}</h3>
+                      <div className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                        {stageQuotes.length}
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-muted-foreground">
+                      <span>Valor del embudo:</span>
+                      <span className="font-bold text-slate-700">${totalStageAmount.toLocaleString('es-MX')}</span>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center text-xs text-muted-foreground">
-                    <span>Valor del embudo:</span>
-                    <span className="font-bold text-slate-700">${totalStageAmount.toLocaleString('es-MX')}</span>
-                  </div>
-                </div>
 
-                <div className="flex-1 p-3 overflow-y-auto space-y-3 custom-scrollbar">
-                  {stageQuotes.map(renderOrderCard => renderQuoteCard(renderOrderCard))}
-                  {stageQuotes.length === 0 && (
-                    <div className="h-24 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-xs text-slate-400 font-medium">
-                      Arrastra cotizaciones aquí
-                    </div>
-                  )}
+                  <div className="flex-1 p-3 overflow-y-auto space-y-3 custom-scrollbar">
+                    {stageQuotes.map(renderOrderCard => renderQuoteCard(renderOrderCard))}
+                    {stageQuotes.length === 0 && (
+                      <div className="h-24 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-xs text-slate-400 font-medium">
+                        Arrastra cotizaciones aquí
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white border rounded-2xl shadow-sm overflow-hidden flex-1 flex flex-col">
+          <div className="overflow-x-auto flex-1 custom-scrollbar">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold sticky top-0 z-10">
+                <tr>
+                  <th className="px-6 py-4">No. Cotización</th>
+                  <th className="px-6 py-4">Fecha</th>
+                  <th className="px-6 py-4">Cliente</th>
+                  <th className="px-6 py-4 text-right">Total</th>
+                  <th className="px-6 py-4">Estatus</th>
+                  <th className="px-6 py-4 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {quotes.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                      No hay cotizaciones registradas actualmente.
+                    </td>
+                  </tr>
+                ) : (
+                  quotes.map((quote) => {
+                    const stage = CRM_STAGES.find(s => s.id === quote.status);
+                    return (
+                      <tr key={quote.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 font-bold text-indigo-700">{quote.quoteNumber}</td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {new Date(quote.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-900">
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-slate-400" />
+                            {quote.clientName}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right font-bold text-emerald-700">
+                          ${quote.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span 
+                            className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border"
+                            style={{ 
+                              backgroundColor: `${stage?.color}15`, 
+                              color: stage?.color,
+                              borderColor: `${stage?.color}35`
+                            }}
+                          >
+                            {stage?.name || quote.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Link href={`/pdf/cotizacion/${quote.id}`} target="_blank">
+                              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 hover:bg-slate-50">
+                                PDF
+                              </Button>
+                            </Link>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-8 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 font-semibold"
+                              onClick={() => setSelectedQuote(quote)}
+                            >
+                              Ver Detalles
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {selectedQuote && (
         <QuoteModal 

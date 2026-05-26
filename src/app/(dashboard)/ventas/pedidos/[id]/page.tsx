@@ -71,7 +71,9 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     if (!companyId) return;
     setSaving(true);
     try {
-      const subtotal = order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0);
+      const subtotal = order.items && Array.isArray(order.items)
+        ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0)
+        : (order.subtotal || 0);
       const tax = subtotal * 0.16;
       const totalAmount = subtotal + tax;
 
@@ -163,9 +165,9 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     }
   };
 
-  const displaySubtotal = isEditing 
+  const displaySubtotal = isEditing && order.items && Array.isArray(order.items)
     ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0)
-    : order.subtotal;
+    : (order.subtotal || 0);
   const displayTax = displaySubtotal * 0.16;
   const displayTotal = displaySubtotal + displayTax;
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, addDoc, serverTimestamp, query, getDocs, where } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, getDocs, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -33,22 +33,36 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
   const [loadingLocs, setLoadingLocs] = useState(false);
 
   useEffect(() => {
-    async function fetchLocations() {
-      if (!companyId) return;
-      setLoadingLocs(true);
+    if (!companyId) {
+      setLoadingLocs(false);
+      return;
+    }
+
+    setLoadingLocs(true);
+    const q = query(collection(db, "companies", companyId, "locations"));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       try {
-        const q = query(collection(db, "companies", companyId, "locations"));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+        const data = snapshot.docs.map(doc => {
+          const d = doc.data();
+          return { 
+            id: doc.id, 
+            name: d.name || d.Name || "Sucursal sin nombre" 
+          };
+        });
         setLocations(data);
       } catch (e) {
         console.error("Error cargando sucursales:", e);
       } finally {
         setLoadingLocs(false);
       }
-    }
-    fetchLocations();
-  }, []);
+    }, (error) => {
+      console.error("Error en subscripción de sucursales:", error);
+      setLoadingLocs(false);
+    });
+
+    return () => unsubscribe();
+  }, [companyId]);
 
   const handleCountChange = (valStr: string, qtyStr: string) => {
     const qty = parseInt(qtyStr, 10) || 0;

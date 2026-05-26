@@ -57,6 +57,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/ventas/remisiones", label: "Remisiones (Entregas)", icon: Truck },
         { href: "/ventas/facturas", label: "Facturación (CFDI)", icon: Receipt },
         { href: "/ventas/descuentos", label: "Descuentos", icon: Tag },
+        { href: "/ventas/importar", label: "Importar Historial (Bind)", icon: ArrowRightLeft },
         { href: "/punto-de-venta", label: "Punto de Venta (POS)", icon: ShoppingCart },
       ]
     },

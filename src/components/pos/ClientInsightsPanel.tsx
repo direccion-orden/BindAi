@@ -63,10 +63,9 @@ export function ClientInsightsPanel({ client }: ClientInsightsPanelProps) {
     setLoadingHistory(true);
     try {
       if (!companyId) return;
-      // Evitamos usar orderBy y limit en la consulta para no requerir un índice compuesto en Firestore.
       const q = query(
-        collection(db, "companies", companyId, "sales"),
-        where("client.id", "==", clientId)
+        collection(db, "companies", companyId, "remisiones"),
+        where("clientId", "==", clientId)
       );
       const snapshot = await getDocs(q);
       
@@ -74,24 +73,26 @@ export function ClientInsightsPanel({ client }: ClientInsightsPanelProps) {
       const sortedSales = snapshot.docs
         .map(doc => doc.data())
         .sort((a, b) => {
-          const timeA = a.createdAt?.toMillis() || 0;
-          const timeB = b.createdAt?.toMillis() || 0;
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return timeB - timeA;
         })
-        .slice(0, 3); // Tomar solo las últimas 3 ventas
+        .slice(0, 3); // Tomar solo las últimas 3 remisiones
 
       const uniqueItems = new Map();
 
       sortedSales.forEach(sale => {
         sale.items?.forEach((item: any) => {
-          if (!uniqueItems.has(item.id)) {
-            uniqueItems.set(item.id, {
-              id: item.id,
-              title: item.title,
-              sku: item.sku,
-              price: item.unitPrice,
-              cost: item.cost,
-              lastBought: sale.createdAt?.toDate()
+          const itemId = item.variantId || item.productId || item.id || "";
+          const itemTitle = item.productName || item.title || "";
+          if (!uniqueItems.has(itemId)) {
+            uniqueItems.set(itemId, {
+              id: itemId,
+              title: itemTitle,
+              sku: item.sku || "",
+              price: item.unitPrice || 0,
+              cost: item.cost || 0,
+              lastBought: sale.createdAt ? new Date(sale.createdAt) : new Date()
             });
           }
         });

@@ -4,12 +4,13 @@ import React, { useState, useEffect, use } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, ArrowLeft, Truck, Package, Receipt, FileText, XCircle, DollarSign } from "lucide-react";
+import { Loader2, ArrowLeft, Truck, Package, Receipt, FileText, XCircle, DollarSign, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { InvoiceModal } from "./InvoiceModal";
 import { PaymentModal } from "@/components/payments/PaymentModal";
+import { ThermalTicket } from "@/components/pos/ThermalTicket";
 
 export default function RemisionDetallePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise);
@@ -68,34 +69,36 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
       }
 
       // 3. Revert Inventory Deductions
-      for (const item of remission.items) {
-        const productRef = doc(db, "companies", companyId, "products", item.productId);
-        const productDoc = await getDoc(productRef);
-        if (productDoc.exists()) {
-          const productData = productDoc.data();
-          const updatedVariants = productData.variants?.map((v: any) => {
-            if (v.id === item.variantId) {
-              return { ...v, stock: (v.stock || 0) + item.quantity }; // Add back
-            }
-            return v;
-          });
-          
-          await updateDoc(productRef, { variants: updatedVariants });
-          
-          // Log the reverse movement
-          const movId = crypto.randomUUID();
-          import("firebase/firestore").then(({ setDoc }) => {
-            setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
-              id: movId,
-              productId: item.productId,
-              variantId: item.variantId,
-              type: "IN",
-              quantity: item.quantity,
-              reason: `Cancelación de Remisión ${remission.remissionNumber}`,
-              referenceId: remission.id,
-              createdAt: new Date().toISOString()
+      if (remission.items && Array.isArray(remission.items)) {
+        for (const item of remission.items) {
+          const productRef = doc(db, "companies", companyId, "products", item.productId);
+          const productDoc = await getDoc(productRef);
+          if (productDoc.exists()) {
+            const productData = productDoc.data();
+            const updatedVariants = productData.variants?.map((v: any) => {
+              if (v.id === item.variantId) {
+                return { ...v, stock: (v.stock || 0) + item.quantity }; // Add back
+              }
+              return v;
             });
-          });
+            
+            await updateDoc(productRef, { variants: updatedVariants });
+            
+            // Log the reverse movement
+            const movId = crypto.randomUUID();
+            import("firebase/firestore").then(({ setDoc }) => {
+              setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
+                id: movId,
+                productId: item.productId,
+                variantId: item.variantId,
+                type: "IN",
+                quantity: item.quantity,
+                reason: `Cancelación de Remisión ${remission.remissionNumber}`,
+                referenceId: remission.id,
+                createdAt: new Date().toISOString()
+              });
+            });
+          }
         }
       }
 
@@ -109,8 +112,12 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
     }
   };
 
-  const subtotal = remission.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0);
-  const tax = subtotal * 0.16;
+  const subtotal = remission.items && Array.isArray(remission.items)
+    ? remission.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0)
+    : (remission.subtotal || 0);
+  const tax = remission.items && Array.isArray(remission.items)
+    ? subtotal * 0.16
+    : (remission.tax || 0);
 
   return (
     <div className="flex flex-col space-y-6 max-w-5xl mx-auto pb-10">
@@ -126,12 +133,24 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
               <h1 className="text-2xl font-bold tracking-tight">Remisión {remission.remissionNumber}</h1>
             </div>
             <p className="text-muted-foreground text-sm mt-1">
-              Cliente: {remission.clientName} | Ref. Pedido: <Link href={`/ventas/pedidos/${remission.orderId}`} className="text-indigo-600 hover:underline">{remission.orderNumber}</Link>
+              Cliente: {remission.clientName} | Ref. Pedido: {remission.orderId ? (
+                <Link href={`/ventas/pedidos/${remission.orderId}`} className="text-indigo-600 hover:underline">{remission.orderNumber}</Link>
+              ) : (
+                <span className="text-slate-500 font-medium">{remission.orderNumber || 'Venta de Mostrador'}</span>
+              )}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
+          {(remission.isPosSale || remission.orderNumber?.startsWith("POS-")) && (
+            <Button 
+              onClick={() => window.print()} 
+              className="gap-2 bg-slate-800 hover:bg-slate-900 text-white font-bold"
+            >
+              <Printer className="w-4 h-4" /> Imprimir Ticket
+            </Button>
+          )}
           {remission.status === 'activa' && (
             <>
               <Button variant="destructive" onClick={handleCancel} disabled={canceling} className="gap-2">
@@ -251,6 +270,29 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
         documentType="remision"
         companyId={companyId || ""}
       />
+
+      {remission && (remission.isPosSale || remission.orderNumber?.startsWith("POS-")) && (
+        <ThermalTicket 
+          saleId={remission.posSaleId || remission.id} 
+          saleData={{
+            client: { name: remission.clientName },
+            createdAt: remission.createdAt,
+            folio: remission.orderNumber?.replace("POS-", "") || remission.remissionNumber,
+            items: remission.items?.map((item: any) => ({
+              title: item.productName || item.title || "",
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              discountPercentage: item.discountPercentage || 0
+            })) || [],
+            financials: {
+              subtotal: subtotal,
+              tax: tax,
+              total: remission.totalAmount
+            },
+            pointsEarned: 0
+          }}
+        />
+      )}
     </div>
   );
 }

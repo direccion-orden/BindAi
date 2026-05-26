@@ -10,7 +10,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
   };
 
-  const client = saleData.client || { name: "Público en General" };
+  const clientName = saleData.clientName || saleData.client?.name || "Público en General";
   
   // Manejar Timestamp de Firestore, Date string, o FieldValue (serverTimestamp)
   let dateObj = new Date();
@@ -29,8 +29,12 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
   }
   const dateStr = dateObj.toLocaleString('es-MX');
 
-  const folioText = saleData.folio || saleId.slice(0, 8).toUpperCase();
-  const barcodeValue = saleData.folio || saleId;
+  const folioText = saleData.orderNumber?.replace("POS-", "") || saleData.remissionNumber || saleData.folio || saleId.slice(0, 8).toUpperCase();
+  const barcodeValue = saleData.orderNumber || saleData.folio || saleId;
+
+  const subtotal = saleData.financials?.subtotal !== undefined ? saleData.financials.subtotal : (saleData.subtotal || 0);
+  const tax = saleData.financials?.tax !== undefined ? saleData.financials.tax : (saleData.tax || 0);
+  const total = saleData.financials?.total !== undefined ? saleData.financials.total : (saleData.totalAmount || 0);
 
   return (
     <div className="print-only thermal-ticket">
@@ -40,7 +44,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
         <h1 className="text-lg font-bold uppercase tracking-widest mt-2">Ticket de Venta</h1>
         <p className="text-xs mt-1">{dateStr}</p>
         <p className="text-xs">Ticket: #{folioText}</p>
-        <p className="text-xs">Cliente: {client.name}</p>
+        <p className="text-xs">Cliente: {clientName}</p>
       </div>
 
       <div className="border-t border-b border-black py-2 mb-2">
@@ -53,13 +57,16 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
             </tr>
           </thead>
           <tbody>
-            {saleData.items.map((item: any, i: number) => (
-              <tr key={i} className="align-top">
-                <td className="py-1">{item.quantity}</td>
-                <td className="py-1 pr-2">{item.title}</td>
-                <td className="py-1 text-right">{formatMoney(item.quantity * item.unitPrice * (1 - (item.discountPercentage || 0) / 100))}</td>
-              </tr>
-            ))}
+            {saleData.items.map((item: any, i: number) => {
+              const itemTitle = item.productName || item.title || "";
+              return (
+                <tr key={i} className="align-top">
+                  <td className="py-1">{item.quantity}</td>
+                  <td className="py-1 pr-2">{itemTitle}</td>
+                  <td className="py-1 text-right">{formatMoney(item.quantity * item.unitPrice * (1 - (item.discountPercentage || 0) / 100))}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -67,15 +74,15 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
       <div className="text-xs space-y-1 mb-4">
         <div className="flex justify-between">
           <span>Subtotal:</span>
-          <span>{formatMoney(saleData.financials.subtotal)}</span>
+          <span>{formatMoney(subtotal)}</span>
         </div>
         <div className="flex justify-between">
           <span>IVA (16%):</span>
-          <span>{formatMoney(saleData.financials.tax)}</span>
+          <span>{formatMoney(tax)}</span>
         </div>
         <div className="flex justify-between font-bold text-sm mt-1 pt-1 border-t border-dashed border-black">
           <span>TOTAL:</span>
-          <span>{formatMoney(saleData.financials.total)}</span>
+          <span>{formatMoney(total)}</span>
         </div>
       </div>
 

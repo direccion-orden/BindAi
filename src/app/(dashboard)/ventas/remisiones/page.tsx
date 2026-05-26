@@ -89,9 +89,13 @@ export default function RemisionesPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-muted-foreground text-xs">
-                      <Link href={`/ventas/pedidos/${remission.orderId}`} className="hover:underline text-indigo-600 font-medium">
-                        {remission.orderNumber}
-                      </Link>
+                      {remission.orderId ? (
+                        <Link href={`/ventas/pedidos/${remission.orderId}`} className="hover:underline text-indigo-600 font-medium">
+                          {remission.orderNumber}
+                        </Link>
+                      ) : (
+                        <span className="text-slate-400 font-medium">{remission.orderNumber || 'Punto de Venta'}</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 font-bold text-emerald-700">
                       ${remission.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}

@@ -69,8 +69,8 @@ export function POSCatalogPanel() {
         const docSnap = await getDoc(doc(db, "companies", companyId, "locations", branchId));
         if (docSnap.exists()) {
            const locData = docSnap.data();
-           const ws = locData.warehouses || [];
-           setBranchWarehouses(ws.map((w: any) => w.id));
+           const ws = locData.warehouses || locData.Warehouses || [];
+           setBranchWarehouses(ws.map((w: any) => w.id || w.ID || w.Id));
         }
       } catch (e) {
         console.error("Error fetching branch warehouses", e);

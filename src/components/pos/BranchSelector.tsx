@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MapPin, Loader2 } from "lucide-react";
-import { collection, query, getDocs } from "firebase/firestore";
+import { collection, query, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { usePOS } from "@/context/POSContext";
@@ -15,28 +15,41 @@ export function BranchSelector() {
   const { companyId } = useAuth();
   
   useEffect(() => {
-    async function fetchLocations() {
-      if (!companyId) return;
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+    
+    setLoading(true);
+    const q = query(collection(db, "companies", companyId, "locations"));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       try {
-        const q = query(collection(db, "companies", companyId, "locations"));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+        const data = snapshot.docs.map(doc => {
+          const d = doc.data();
+          return { 
+            id: doc.id, 
+            name: d.name || d.Name || "Sucursal sin nombre" 
+          };
+        });
         
-        if (Array.isArray(data)) {
-          setBranches(data);
-          
-          // Auto-select the first branch if branchId is empty
-          if (!branchId && data.length > 0) {
-              setBranchId(data[0].id);
-          }
+        setBranches(data);
+        
+        // Auto-select the first branch if branchId is empty
+        if (!branchId && data.length > 0) {
+          setBranchId(data[0].id);
         }
       } catch (e) {
-        console.error("Error cargando sucursales:", e);
+        console.error("Error al procesar sucursales:", e);
       } finally {
         setLoading(false);
       }
-    }
-    fetchLocations();
+    }, (error) => {
+      console.error("Error cargando sucursales:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [branchId, setBranchId, companyId]);
 
   return (
@@ -53,6 +66,9 @@ export function BranchSelector() {
         className="bg-transparent text-sm font-medium border-none outline-none cursor-pointer text-foreground appearance-none focus:ring-0 disabled:opacity-50"
       >
         <option value="" disabled>Seleccionar Sucursal</option>
+        {branches.length === 0 && !loading && (
+          <option value="" disabled>Sin sucursales (ve a Configuración)</option>
+        )}
         {branches.map(b => (
           <option key={b.id} value={b.id}>{b.name}</option>
         ))}
@@ -60,3 +76,4 @@ export function BranchSelector() {
     </div>
   );
 }
+

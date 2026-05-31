@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search } from "lucide-react";
+import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -28,8 +28,55 @@ export default function PedidosPage() {
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  const handleDateFilterChange = (option: string) => {
+    setDateFilterOption(option);
+    
+    const getLocalDateString = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    
+    if (option === "all") {
+      setDateFrom("");
+      setDateTo("");
+    } else if (option === "today") {
+      const todayStr = getLocalDateString(now);
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (option === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+      setDateFrom(yesterdayStr);
+      setDateTo(yesterdayStr);
+    } else if (option === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(getLocalDateString(startOfMonth));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_month") {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateFrom(getLocalDateString(startOfLastMonth));
+      setDateTo(getLocalDateString(endOfLastMonth));
+    } else if (option === "this_year") {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      setDateFrom(getLocalDateString(startOfYear));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      setDateFrom(getLocalDateString(thirtyDaysAgo));
+      setDateTo(getLocalDateString(now));
+    }
+  };
 
   useEffect(() => {
     if (!companyId) return;
@@ -66,6 +113,52 @@ export default function PedidosPage() {
     return true;
   });
 
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "createdAt" || field === "totalAmount" ? "desc" : "asc");
+    }
+  };
+
+  const sortedOrders = [...filteredOrders].sort((a, b) => {
+    let aVal = a[sortField as keyof Order] || "";
+    let bVal = b[sortField as keyof Order] || "";
+
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      if (sortField === "orderNumber") {
+        const aNum = parseInt(aVal.replace(/\D/g, ""), 10) || 0;
+        const bNum = parseInt(bVal.replace(/\D/g, ""), 10) || 0;
+        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      }
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal, "es") 
+        : bVal.localeCompare(aVal, "es");
+    }
+
+    if (typeof aVal === "number" && typeof bVal === "number") {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
+  });
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
   const totalFilteredAmount = filteredOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
 
   if (loading) {
@@ -89,8 +182,8 @@ export default function PedidosPage() {
       </div>
 
       {/* Modern Filter Panel */}
-      <div className="flex flex-col md:flex-row gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
-        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1 w-full">
+      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
+        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1">
           <div className="space-y-1 w-full sm:w-64">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Buscar
@@ -116,34 +209,59 @@ export default function PedidosPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="all">Todos</option>
-              <option value="por_surtir">Por Surtir</option>
-              <option value="surtido">Surtido / Listo</option>
+              <option value="por_surtir">Activo</option>
+              <option value="surtido">Surtido</option>
               <option value="remisionado">Remisionado</option>
+              <option value="cancelado">Cancelado</option>
             </select>
           </div>
 
-          <div className="space-y-1 w-full sm:w-36">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
-            <Input
-              type="date"
-              className="h-9"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
+          <div className="space-y-1 w-full sm:w-44">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Fecha
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={dateFilterOption}
+              onChange={(e) => handleDateFilterChange(e.target.value)}
+            >
+              <option value="all">Cualquier fecha</option>
+              <option value="today">Hoy</option>
+              <option value="yesterday">Ayer</option>
+              <option value="this_month">Este Mes</option>
+              <option value="last_month">Mes Anterior</option>
+              <option value="last_30_days">Últimos 30 Días</option>
+              <option value="this_year">Este Año</option>
+              <option value="custom">Rango Personalizado</option>
+            </select>
           </div>
 
-          <div className="space-y-1 w-full sm:w-36">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
-            <Input
-              type="date"
-              className="h-9"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </div>
+          {dateFilterOption === "custom" && (
+            <>
+              <div className="space-y-1 w-full sm:w-36">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
+                <Input
+                  type="date"
+                  className="h-9 bg-background"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1 w-full sm:w-36">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
+                <Input
+                  type="date"
+                  className="h-9 bg-background"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="text-right whitespace-nowrap bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 self-stretch flex flex-col justify-center">
+        <div className="text-right whitespace-nowrap bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
           <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Monto Total Filtrado</span>
           <span className="text-lg font-black text-indigo-800">${totalFilteredAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
         </div>
@@ -154,16 +272,56 @@ export default function PedidosPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
-                <th className="px-6 py-4">No. Pedido</th>
-                <th className="px-6 py-4">Cliente</th>
-                <th className="px-6 py-4">Cotización Ref.</th>
-                <th className="px-6 py-4">Total</th>
-                <th className="px-6 py-4">Estatus</th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("orderNumber")}
+                >
+                  <div className="flex items-center">
+                    No. Pedido
+                    {renderSortIcon("orderNumber")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("clientName")}
+                >
+                  <div className="flex items-center">
+                    Cliente
+                    {renderSortIcon("clientName")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("createdAt")}
+                >
+                  <div className="flex items-center">
+                    Fecha
+                    {renderSortIcon("createdAt")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("totalAmount")}
+                >
+                  <div className="flex items-center">
+                    Total
+                    {renderSortIcon("totalAmount")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("status")}
+                >
+                  <div className="flex items-center">
+                    Estatus
+                    {renderSortIcon("status")}
+                  </div>
+                </th>
                 <th className="px-6 py-4">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filteredOrders.length === 0 ? (
+              {sortedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
                     <Package className="w-12 h-12 mx-auto mb-3 opacity-20" />
@@ -171,7 +329,7 @@ export default function PedidosPage() {
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((order) => (
+                sortedOrders.map((order) => (
                   <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 font-bold text-slate-900">{order.orderNumber}</td>
                     <td className="px-6 py-4 font-medium text-slate-700">
@@ -181,15 +339,16 @@ export default function PedidosPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-muted-foreground text-xs">
-                      {order.quoteNumber}
+                      {new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-6 py-4 font-bold text-emerald-700">
                       ${order.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}
                     </td>
                     <td className="px-6 py-4">
-                      {order.status === 'por_surtir' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">Por Surtir</span>}
-                      {order.status === 'surtido' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold">Surtido / Listo</span>}
+                      {order.status === 'por_surtir' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">Activo</span>}
+                      {order.status === 'surtido' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold">Surtido</span>}
                       {order.status === 'remisionado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">Remisionado</span>}
+                      {order.status === 'cancelado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold">Cancelado</span>}
                     </td>
                     <td className="px-6 py-4">
                       <Link href={`/ventas/pedidos/${order.id}`}>

@@ -242,7 +242,9 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-lg border mb-4">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">Estatus</p>
-            <p className="font-bold capitalize text-slate-900">{order.status.replace('_', ' ')}</p>
+            <p className="font-bold capitalize text-slate-900">
+              {order.status === 'por_surtir' ? 'Activo' : order.status.replace('_', ' ')}
+            </p>
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">Proyecto Vinculado</p>

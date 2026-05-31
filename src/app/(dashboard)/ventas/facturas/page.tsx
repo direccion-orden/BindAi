@@ -17,8 +17,55 @@ export default function FacturasPage() {
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  const handleDateFilterChange = (option: string) => {
+    setDateFilterOption(option);
+    
+    const getLocalDateString = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    
+    if (option === "all") {
+      setDateFrom("");
+      setDateTo("");
+    } else if (option === "today") {
+      const todayStr = getLocalDateString(now);
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (option === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+      setDateFrom(yesterdayStr);
+      setDateTo(yesterdayStr);
+    } else if (option === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(getLocalDateString(startOfMonth));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_month") {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateFrom(getLocalDateString(startOfLastMonth));
+      setDateTo(getLocalDateString(endOfLastMonth));
+    } else if (option === "this_year") {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      setDateFrom(getLocalDateString(startOfYear));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      setDateFrom(getLocalDateString(thirtyDaysAgo));
+      setDateTo(getLocalDateString(now));
+    }
+  };
 
   useEffect(() => {
     if (!companyId) return;
@@ -79,8 +126,8 @@ export default function FacturasPage() {
       </div>
 
       {/* Modern Filter Panel */}
-      <div className="flex flex-col md:flex-row gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
-        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1 w-full">
+      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
+        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1">
           <div className="space-y-1 w-full sm:w-64">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Buscar
@@ -112,28 +159,52 @@ export default function FacturasPage() {
             </select>
           </div>
 
-          <div className="space-y-1 w-full sm:w-36">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
-            <Input
-              type="date"
-              className="h-9"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
+          <div className="space-y-1 w-full sm:w-44">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Fecha
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={dateFilterOption}
+              onChange={(e) => handleDateFilterChange(e.target.value)}
+            >
+              <option value="all">Cualquier fecha</option>
+              <option value="today">Hoy</option>
+              <option value="yesterday">Ayer</option>
+              <option value="this_month">Este Mes</option>
+              <option value="last_month">Mes Anterior</option>
+              <option value="last_30_days">Últimos 30 Días</option>
+              <option value="this_year">Este Año</option>
+              <option value="custom">Rango Personalizado</option>
+            </select>
           </div>
 
-          <div className="space-y-1 w-full sm:w-36">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
-            <Input
-              type="date"
-              className="h-9"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </div>
+          {dateFilterOption === "custom" && (
+            <>
+              <div className="space-y-1 w-full sm:w-36">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
+                <Input
+                  type="date"
+                  className="h-9 bg-background"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1 w-full sm:w-36">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
+                <Input
+                  type="date"
+                  className="h-9 bg-background"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="text-right whitespace-nowrap bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 self-stretch flex flex-col justify-center">
+        <div className="text-right whitespace-nowrap bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
           <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Monto Total Filtrado</span>
           <span className="text-lg font-black text-indigo-800">${totalFilteredAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
         </div>

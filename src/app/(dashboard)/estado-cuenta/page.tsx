@@ -109,9 +109,56 @@ export default function EstadoCuentaPage() {
 
   // Filters
   const [typeFilter, setTypeFilter] = useState("all");
+  const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [docSearch, setDocSearch] = useState("");
+
+  const handleDateFilterChange = (option: string) => {
+    setDateFilterOption(option);
+    
+    const getLocalDateString = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    
+    if (option === "all") {
+      setDateFrom("");
+      setDateTo("");
+    } else if (option === "today") {
+      const todayStr = getLocalDateString(now);
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (option === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+      setDateFrom(yesterdayStr);
+      setDateTo(yesterdayStr);
+    } else if (option === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(getLocalDateString(startOfMonth));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_month") {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateFrom(getLocalDateString(startOfLastMonth));
+      setDateTo(getLocalDateString(endOfLastMonth));
+    } else if (option === "this_year") {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      setDateFrom(getLocalDateString(startOfYear));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      setDateFrom(getLocalDateString(thirtyDaysAgo));
+      setDateTo(getLocalDateString(now));
+    }
+  };
 
   // Helper to extract YYYY-MM-DD from various date formats
   const extractDate = (val: any): string => {
@@ -186,12 +233,14 @@ export default function EstadoCuentaPage() {
       // Consolidate Orders (Pedidos)
       pedidosSnap.docs.forEach(docSnap => {
         const d = docSnap.data();
-        if (d.status !== "cancelado" && d.status !== "cancelada") {
+        const status = String(d.status || "").trim().toLowerCase();
+        // Omit orders that are already delivered/remisioned or billed/completed (only show active pending orders)
+        if (status !== "cancelado" && status !== "cancelada" && status !== "surtido" && status !== "remisionado" && status !== "completado") {
           lines.push({
             date: extractDate(d.createdAt),
             type: "Order",
             number: d.orderNumber || d.number || `PED-${docSnap.id.substring(0, 6)}`,
-            description: "Pedido de Venta",
+            description: "Pedido de Venta (Pendiente)",
             cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
             abono: 0,
             runningBalance: 0
@@ -202,12 +251,14 @@ export default function EstadoCuentaPage() {
       // Consolidate Remissions (Remisiones)
       remisionesSnap.docs.forEach(docSnap => {
         const d = docSnap.data();
-        if (d.status !== "cancelada" && d.status !== "cancelado") {
+        const status = String(d.status || "").trim().toLowerCase();
+        // Omit remisiones that are already invoiced/facturadas (show active or paid remisiones since their cargo is final)
+        if (status !== "cancelada" && status !== "cancelado" && status !== "facturada") {
           lines.push({
             date: extractDate(d.createdAt),
             type: "Remission",
             number: d.remissionNumber || d.number || `REM-${docSnap.id.substring(0, 6)}`,
-            description: "Remisión de Mercancía",
+            description: "Remisión de Mercancía (Pendiente de Factura)",
             cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
             abono: 0,
             runningBalance: 0
@@ -218,12 +269,13 @@ export default function EstadoCuentaPage() {
       // Consolidate Invoices (Facturas)
       facturasSnap.docs.forEach(docSnap => {
         const d = docSnap.data();
-        if (d.status !== "cancelada" && d.status !== "cancelado") {
+        const status = String(d.status || "").trim().toLowerCase();
+        if (status !== "cancelada" && status !== "cancelado") {
           lines.push({
             date: extractDate(d.createdAt),
             type: "Invoice",
             number: d.invoiceNumber ? `FAC-${d.invoiceNumber}` : `FAC-${docSnap.id.substring(0, 6)}`,
-            description: "Factura de Venta",
+            description: "Factura de Venta (CFDI)",
             cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
             abono: 0,
             runningBalance: 0
@@ -323,6 +375,7 @@ export default function EstadoCuentaPage() {
     setSelectedClient(null);
     setStatement(null);
     setTypeFilter("all");
+    setDateFilterOption("all");
     setDateFrom("");
     setDateTo("");
     setDocSearch("");
@@ -710,24 +763,49 @@ export default function EstadoCuentaPage() {
                   <option value="Anticipo">Anticipos</option>
                 </select>
               </div>
-              <div className="space-y-1 w-full sm:w-36">
-                <span className="text-xs text-muted-foreground">Desde</span>
-                <Input
-                  type="date"
-                  className="h-9"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                />
+              <div className="space-y-1 w-full sm:w-44">
+                <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                  Fecha
+                </span>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+                  value={dateFilterOption}
+                  onChange={(e) => handleDateFilterChange(e.target.value)}
+                >
+                  <option value="all">Cualquier fecha</option>
+                  <option value="today">Hoy</option>
+                  <option value="yesterday">Ayer</option>
+                  <option value="this_month">Este Mes</option>
+                  <option value="last_month">Mes Anterior</option>
+                  <option value="last_30_days">Últimos 30 Días</option>
+                  <option value="this_year">Este Año</option>
+                  <option value="custom">Rango Personalizado</option>
+                </select>
               </div>
-              <div className="space-y-1 w-full sm:w-36">
-                <span className="text-xs text-muted-foreground">Hasta</span>
-                <Input
-                  type="date"
-                  className="h-9"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
-              </div>
+
+              {dateFilterOption === "custom" && (
+                <>
+                  <div className="space-y-1 w-full sm:w-36">
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Desde</span>
+                    <Input
+                      type="date"
+                      className="h-9 bg-background"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1 w-full sm:w-36">
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Hasta</span>
+                    <Input
+                      type="date"
+                      className="h-9 bg-background"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
               <div className="space-y-1 w-full sm:w-48">
                 <span className="text-xs text-muted-foreground">
                   Buscar folio

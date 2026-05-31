@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, doc, writeBatch, getDocs, addDoc } from "firebase/firestore";
+import { collection, query, doc, writeBatch, getDocs, addDoc, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { 
@@ -38,6 +38,7 @@ export default function ImportarHistorialPage() {
   const [cotizacionesFile, setCotizacionesFile] = useState<File | null>(null);
   const [pedidosFile, setPedidosFile] = useState<File | null>(null);
   const [remisionesFacturasFile, setRemisionesFacturasFile] = useState<File | null>(null);
+  const [ingresosFile, setIngresosFile] = useState<File | null>(null); // Added for incomes
   
   // State for loading
   const [loadingStep, setLoadingStep] = useState<number | null>(null);
@@ -52,6 +53,8 @@ export default function ImportarHistorialPage() {
     invoicesImported: 0,
     clientsCreated: 0,
     productsCreated: 0,
+    paymentsImported: 0, // Added for incomes
+    anticiposMigrated: 0, // Added for legacy anticipos
   });
 
   const addLog = (type: "success" | "warning" | "error" | "info", message: string) => {
@@ -59,6 +62,66 @@ export default function ImportarHistorialPage() {
       { type, message, timestamp: new Date().toLocaleTimeString() },
       ...prev
     ]);
+  };
+
+  // Helper: Normalize strings for flexible key matching (removes accents, BOM, non-alphanumeric, and lowercase)
+  const normalizeKey = (key: string): string => {
+    return String(key || "")
+      .replace(/^\ufeff/, "") // Remove BOM
+      .trim()
+      .toLowerCase()
+      .normalize("NFD") // Decompose accents
+      .replace(/[\u0300-\u036f]/g, "") // Remove accent characters
+      .replace(/[^a-z0-9]/g, ""); // Remove non-alphanumeric
+  };
+
+  // Helper: Resolve a value from a record with flexible key matching (prioritizing the order of possibleKeys)
+  const getFlexibleValue = (record: any, possibleKeys: string[], defaultValue: any = ""): any => {
+    if (!record) return defaultValue;
+    
+    // Normalize target keys
+    const targetKeys = possibleKeys.map(k => normalizeKey(k));
+    
+    // Find matching key in record prioritizing targetKeys order
+    const recordKeys = Object.keys(record);
+    const normalizedRecordKeys = recordKeys.map(k => ({ original: k, normalized: normalizeKey(k) }));
+    
+    for (const targetKey of targetKeys) {
+      const match = normalizedRecordKeys.find(rk => rk.normalized === targetKey);
+      if (match) {
+        return record[match.original];
+      }
+    }
+    
+    return defaultValue;
+  };
+
+  // Helper: Robust Date parser that handles DD/MM/YYYY, YYYY/MM/DD, DD-MM-YYYY, YYYY-MM-DD
+  const parseDateStr = (str: string): Date => {
+    if (!str) return new Date(0);
+    // Remove time part if exists
+    const parts = String(str).trim().split(" ");
+    const dateStr = parts[0];
+    
+    // Split by / or -
+    const separator = dateStr.includes("/") ? "/" : "-";
+    const dateParts = dateStr.split(separator);
+    
+    if (dateParts.length === 3) {
+      const part1 = parseInt(dateParts[0]);
+      const part2 = parseInt(dateParts[1]);
+      const part3 = parseInt(dateParts[2]);
+      
+      if (dateParts[0].length === 4) {
+        // YYYY/MM/DD or YYYY-MM-DD
+        return new Date(part1, part2 - 1, part3);
+      } else {
+        // DD/MM/YYYY or DD-MM-YYYY
+        return new Date(part3, part2 - 1, part1);
+      }
+    }
+    const parsed = new Date(str);
+    return isNaN(parsed.getTime()) ? new Date(0) : parsed;
   };
 
   // Helper: Load clients map from Firestore
@@ -75,6 +138,48 @@ export default function ImportarHistorialPage() {
       }
     });
     return clientMap;
+  };
+
+  // Helper: Load facturas map from Firestore
+  const loadFacturasMap = async () => {
+    if (!companyId) return new Map<string, string>();
+    const snap = await getDocs(collection(db, "companies", companyId, "facturas"));
+    const fMap = new Map<string, string>();
+    snap.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.invoiceNumber) {
+        fMap.set(String(data.invoiceNumber).trim().toLowerCase(), doc.id);
+      }
+    });
+    return fMap;
+  };
+
+  // Helper: Load remisiones map from Firestore
+  const loadRemisionesMap = async () => {
+    if (!companyId) return new Map<string, string>();
+    const snap = await getDocs(collection(db, "companies", companyId, "remisiones"));
+    const rMap = new Map<string, string>();
+    snap.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.remissionNumber) {
+        rMap.set(String(data.remissionNumber).trim().toLowerCase(), doc.id);
+      }
+    });
+    return rMap;
+  };
+
+  // Helper: Load accounts map from Firestore
+  const loadAccountsMap = async () => {
+    if (!companyId) return new Map<string, string>();
+    const snap = await getDocs(collection(db, "companies", companyId, "accounts"));
+    const aMap = new Map<string, string>();
+    snap.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.name) {
+        aMap.set(String(data.name).trim().toLowerCase(), doc.id);
+      }
+    });
+    return aMap;
   };
 
   // Helper: Load products map from Firestore
@@ -204,11 +309,14 @@ export default function ImportarHistorialPage() {
               return;
             }
 
+            const headers = Object.keys(records[0]);
+            addLog("info", `Cabeceras detectadas en el CSV: ${headers.join(", ")}`);
             setProgressText("Agrupando partidas por Folio...");
+
             // Group flat lines by Folio
             const groupedQuotes = new Map<string, any[]>();
             records.forEach((record: any) => {
-              const folio = String(record.Folio || "").trim();
+              const folio = String(getFlexibleValue(record, ["folio", "numero", "num", "id", "codigo", "referencia", "quotenumber", "quote", "foliodecotizacion"])).trim();
               if (!folio) return;
               if (!groupedQuotes.has(folio)) {
                 groupedQuotes.set(folio, []);
@@ -226,10 +334,9 @@ export default function ImportarHistorialPage() {
 
             setProgressText("Procesando y resolviendo relaciones...");
             
-            // We use client-side transaction sets
             for (const [folio, lines] of groupedQuotes.entries()) {
               const firstLine = lines[0];
-              const clientName = String(firstLine.Cliente || "").replace(/^\s*-\s*/, "").trim();
+              const clientName = String(getFlexibleValue(firstLine, ["cliente", "client", "nombrecliente", "clientname", "customer", "razonsocial", "nombre", "clientenombre"]) || "").replace(/^\s*-\s*/, "").trim();
               
               // Resolve Client On the fly
               let clientId = await createClientOnTheFly(clientName, clientMap, currentBatch);
@@ -240,9 +347,12 @@ export default function ImportarHistorialPage() {
               let calculatedTotal = 0;
 
               for (const line of lines) {
-                const productName = String(line.Producto || "Concepto General").trim();
-                const totalLine = parseFloat(line.Total) || 0;
-                const subtotalLine = parseFloat(line.Subtotal) || 0;
+                const productName = String(getFlexibleValue(line, ["producto", "product", "articulo", "concepto", "descripcion", "description", "item"]) || "Concepto General").trim();
+                const totalVal = getFlexibleValue(line, ["total", "monto", "amount", "importetotal", "importe", "totalamount"]);
+                const subtotalVal = getFlexibleValue(line, ["subtotal", "subtotalamount", "submonto"]);
+                
+                const totalLine = parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0;
+                const subtotalLine = parseFloat(String(subtotalVal).replace(/[^0-9.-]/g, "")) || 0;
                 calculatedSubtotal += subtotalLine;
                 calculatedTotal += totalLine;
 
@@ -261,7 +371,7 @@ export default function ImportarHistorialPage() {
 
               // Status mapping
               let status = "nueva";
-              const bindStatus = String(firstLine.Estatus || "").trim().toLowerCase();
+              const bindStatus = String(getFlexibleValue(firstLine, ["estatus", "status", "estado", "situacion"]) || "").trim().toLowerCase();
               if (bindStatus.includes("surtida") || bindStatus.includes("aceptada") || bindStatus.includes("ganada")) {
                 status = "ganada";
               } else if (bindStatus.includes("cancelada") || bindStatus.includes("rechazada")) {
@@ -270,15 +380,13 @@ export default function ImportarHistorialPage() {
                 status = "enviada";
               }
 
-              // Date formatting (convert d-m-yyyy to ISO string)
+              // Date formatting
               let isoDate = new Date().toISOString();
-              if (firstLine.Creacion) {
-                const dateParts = firstLine.Creacion.split("-");
-                if (dateParts.length === 3) {
-                  const day = parseInt(dateParts[0]);
-                  const month = parseInt(dateParts[1]) - 1;
-                  const year = parseInt(dateParts[2]);
-                  isoDate = new Date(year, month, day).toISOString();
+              const creationDateStr = String(getFlexibleValue(firstLine, ["fechapedido", "fecha", "date", "createdat", "created", "fechacreacion", "fechadecreacion", "creacion"]) || "");
+              if (creationDateStr) {
+                const parsedDate = parseDateStr(creationDateStr);
+                if (parsedDate.getTime() > 0) {
+                  isoDate = parsedDate.toISOString();
                 }
               }
 
@@ -295,7 +403,7 @@ export default function ImportarHistorialPage() {
                 tax: calculatedTotal - calculatedSubtotal,
                 status: status,
                 createdAt: isoDate,
-                createdBy: String(firstLine.Vendedor || "Migración Automática").trim(),
+                createdBy: String(getFlexibleValue(firstLine, ["vendedor", "empleado", "vendedorasignado", "agent", "salesagent", "user", "usuario", "creadoby", "creadopor"]) || "Migración Automática").trim(),
                 items: items,
                 migrated: true,
                 updatedAt: new Date().toISOString()
@@ -304,7 +412,7 @@ export default function ImportarHistorialPage() {
               writeCount++;
               successQuotes++;
 
-              if (writeCount >= 200) { // Keep batch sizes small since we do lookups
+              if (writeCount >= 200) {
                 batches.push(currentBatch);
                 currentBatch = writeBatch(db);
                 writeCount = 0;
@@ -348,6 +456,7 @@ export default function ImportarHistorialPage() {
 
     try {
       const clientMap = await loadClientsMap();
+      const productMap = await loadProductsMap();
       
       const Papa = await import("papaparse");
       Papa.default.parse(pedidosFile, {
@@ -363,12 +472,14 @@ export default function ImportarHistorialPage() {
               return;
             }
 
+            const headers = Object.keys(records[0]);
+            addLog("info", `Cabeceras detectadas en el CSV: ${headers.join(", ")}`);
             setProgressText("Agrupando pedidos por Número y ordenando cronológicamente...");
             
             // Deduplicate Pedidos: Group by Numero, sort by Creation Date, and pick the latest record.
             const groupedPedidos = new Map<string, any[]>();
             records.forEach((record: any) => {
-              const num = String(record.Numero || "").trim();
+              const num = String(getFlexibleValue(record, ["numero", "num", "folio", "pedido", "id", "codigo", "referencia", "ordernumber", "order", "numerodepedido", "foliodepedido"])).trim();
               if (!num) return;
               if (!groupedPedidos.has(num)) {
                 groupedPedidos.set(num, []);
@@ -386,68 +497,129 @@ export default function ImportarHistorialPage() {
             setProgressText("Procesando cabeceras y resolviendo clientes...");
 
             for (const [numero, rows] of groupedPedidos.entries()) {
-              // Parse date & sort to find the latest update
-              const parseDateStr = (str: string) => {
-                // Format: DD/MM/YYYY HH:MM:SS AM/PM or similar
-                if (!str) return new Date(0);
-                const parts = str.split(" ");
-                const dateParts = parts[0].split("/");
-                if (dateParts.length === 3) {
-                  const d = parseInt(dateParts[0]);
-                  const m = parseInt(dateParts[1]) - 1;
-                  const y = parseInt(dateParts[2]);
-                  return new Date(y, m, d);
-                }
-                return new Date(str);
-              };
+              // Group rows by their date to find the latest date
+              // First, sort all rows by date ascending so we can easily find the latest date
+              rows.sort((a, b) => {
+                const dateA = String(getFlexibleValue(a, ["creacion", "fecha", "date", "createdat", "created", "fechacreacion", "fechadecreacion"]));
+                const dateB = String(getFlexibleValue(b, ["creacion", "fecha", "date", "createdat", "created", "fechacreacion", "fechadecreacion"]));
+                return parseDateStr(dateA).getTime() - parseDateStr(dateB).getTime();
+              });
+              
+              const latestRecordRaw = rows[rows.length - 1];
+              const latestDateStr = String(getFlexibleValue(latestRecordRaw, ["creacion", "fecha", "date", "createdat", "created", "fechacreacion", "fechadecreacion"]));
+              
+              // Get all rows that match this latest date
+              const latestDateRows = rows.filter(row => {
+                const rowDate = String(getFlexibleValue(row, ["creacion", "fecha", "date", "createdat", "created", "fechacreacion", "fechadecreacion"]));
+                return rowDate === latestDateStr;
+              });
 
-              rows.sort((a, b) => parseDateStr(a.Creación).getTime() - parseDateStr(b.Creación).getTime());
-              const latestRecord = rows[rows.length - 1]; // Pick latest state!
+              // Check if we have any non-cancelled row on the latest date
+              const activeStatusRows = latestDateRows.filter(row => {
+                const rowStatus = String(getFlexibleValue(row, ["estatus", "status", "estado", "situacion", "estatuspedido", "statuspedido"]) || "").trim().toLowerCase();
+                return !rowStatus.includes("cancelado");
+              });
 
-              const clientName = String(latestRecord.Cliente || "").trim();
+              let activeLines = [];
+              let latestRecord = null;
+              let latestStatus = "";
+
+              if (activeStatusRows.length > 0) {
+                // We have active (non-cancelled) lines on the latest date!
+                // We prioritize these active lines!
+                activeLines = activeStatusRows;
+                latestRecord = activeStatusRows[activeStatusRows.length - 1];
+                latestStatus = String(getFlexibleValue(latestRecord, ["estatus", "status", "estado", "situacion", "estatuspedido", "statuspedido"]));
+              } else {
+                // All lines on the latest date are cancelled.
+                // We fall back to the cancelled lines.
+                activeLines = latestDateRows;
+                latestRecord = latestDateRows[latestDateRows.length - 1];
+                latestStatus = String(getFlexibleValue(latestRecord, ["estatus", "status", "estado", "situacion", "estatuspedido", "statuspedido"]));
+              }
+
+              const clientName = String(getFlexibleValue(latestRecord, ["cliente", "client", "nombrecliente", "clientname", "customer", "razonsocial", "nombre", "clientenombre"]) || "").trim();
               
               // Resolve Client On the fly
               let clientId = await createClientOnTheFly(clientName, clientMap, currentBatch);
 
               // Map status
               let status = "por_surtir";
-              const bindStatus = String(latestRecord.Estatus || "").trim().toLowerCase();
-              if (bindStatus.includes("cancelado")) {
+              const statusLower = latestStatus.toLowerCase();
+              if (statusLower.includes("cancelado")) {
                 status = "cancelado";
-              } else if (bindStatus.includes("surtido") || bindStatus.includes("listo")) {
+              } else if (statusLower.includes("surtido") || statusLower.includes("listo")) {
                 status = "surtido";
-              } else if (bindStatus.includes("remisionado") || bindStatus.includes("terminado")) {
+              } else if (statusLower.includes("remisionado") || statusLower.includes("terminado")) {
                 status = "remisionado";
               }
 
-              // Date formatting
+              // The earliest record represents when the order was actually created
+              const earliestRecord = rows[0];
+              const earliestDateStr = String(getFlexibleValue(earliestRecord, ["creacion", "fecha", "date", "createdat", "created", "fechacreacion", "fechadecreacion"]));
+
+              // Date formatting (using the earliest Creacion date as the creation date of the order)
               let isoDate = new Date().toISOString();
-              if (latestRecord.Creación) {
-                isoDate = parseDateStr(latestRecord.Creación).toISOString();
+              if (earliestDateStr) {
+                const parsedDate = parseDateStr(earliestDateStr);
+                if (parsedDate.getTime() > 0) {
+                  isoDate = parsedDate.toISOString();
+                }
               }
 
-              const totalAmount = parseFloat(latestRecord.Total) || 0;
-              const subtotal = totalAmount / 1.16; // Asumimos tasa del 16% si no viene desglosado
+              const totalAmountVal = getFlexibleValue(latestRecord, ["total", "monto", "amount", "importetotal", "importe", "totalamount"]);
+              const totalAmount = parseFloat(String(totalAmountVal).replace(/[^0-9.-]/g, "")) || 0;
+              
+              // Build Items array from detailed CSV lines
+              const items: any[] = [];
+              let calculatedSubtotal = 0;
+
+              for (const line of activeLines) {
+                const productName = String(getFlexibleValue(line, ["producto", "product", "articulo", "concepto", "descripcion", "description", "item"]) || "Concepto de Venta").trim();
+                const sku = String(getFlexibleValue(line, ["codigo", "code", "sku", "barcode", "upc"]) || "").trim();
+                const quantity = parseFloat(String(getFlexibleValue(line, ["cantidad", "quantity", "cant"])).replace(/[^0-9.-]/g, "")) || 1;
+                const unitPrice = parseFloat(String(getFlexibleValue(line, ["precio", "unitprice", "preciounitario", "rate"])).replace(/[^0-9.-]/g, "")) || 0;
+
+                calculatedSubtotal += quantity * unitPrice;
+
+                // Resolve Product on the fly
+                let product = null;
+                const titleKey = productName.toLowerCase();
+                const skuKey = sku.toLowerCase();
+
+                if (skuKey && productMap.has(skuKey)) {
+                  product = productMap.get(skuKey);
+                } else if (titleKey && productMap.has(titleKey)) {
+                  product = productMap.get(titleKey);
+                } else {
+                  product = await createProductOnTheFly(productName, unitPrice, productMap, currentBatch);
+                }
+
+                items.push({
+                  productId: product ? product.id : `hist-${crypto.randomUUID()}`,
+                  productName: productName,
+                  sku: sku || (product ? product.variants?.[0]?.sku : ""),
+                  variantTitle: "Default Title",
+                  quantity: quantity,
+                  unitPrice: unitPrice,
+                  discountPercentage: 0
+                });
+              }
+
+              const subtotal = calculatedSubtotal > 0 ? calculatedSubtotal : (totalAmount / 1.16);
               
               const orderId = `order-${numero}`;
               const ref = doc(db, "companies", companyId, "pedidos", orderId);
 
-              // We create a single general placeholder item containing the amount
-              const items = [
-                {
-                  productId: `hist-concept`,
-                  productName: "Concepto de Venta ERP",
-                  quantity: 1,
-                  unitPrice: subtotal,
-                  discountPercentage: 0
-                }
-              ];
+              // Try to resolve reference quote
+              const refQuoteNum = String(getFlexibleValue(latestRecord, ["pedido", "cotizacion", "cotizacionnumero", "quote", "quotenumber", "referencia"]) || "").trim();
+              const quoteNumber = (refQuoteNum && refQuoteNum !== numero) ? refQuoteNum : "";
 
               currentBatch.set(ref, {
                 id: orderId,
                 orderNumber: numero,
-                quoteNumber: latestRecord.Pedido || "", // Reference number if available
-                quoteId: latestRecord.Pedido ? `quote-${latestRecord.Pedido}` : null,
+                quoteNumber: quoteNumber,
+                quoteId: quoteNumber ? `quote-${quoteNumber}` : null,
                 clientName: clientName,
                 clientId: clientId || null,
                 totalAmount: totalAmount,
@@ -455,7 +627,7 @@ export default function ImportarHistorialPage() {
                 tax: totalAmount - subtotal,
                 status: status,
                 createdAt: isoDate,
-                createdBy: String(latestRecord.Empleado || latestRecord.VendedorAsignado || "Migración Automática").trim(),
+                createdBy: String(getFlexibleValue(latestRecord, ["empleado", "vendedor", "vendedorasignado", "agent", "salesagent", "user", "usuario", "creadoby", "creadopor"]) || "Migración Automática").trim(),
                 items: items,
                 migrated: true,
                 updatedAt: new Date().toISOString()
@@ -504,10 +676,11 @@ export default function ImportarHistorialPage() {
     if (!remisionesFacturasFile || !companyId) return;
     setLoadingStep(3);
     setProgressText("Cargando mapas de base de datos...");
-    addLog("info", "Iniciando importación combinada de Remisiones y Facturas...");
+    addLog("info", "Iniciando importación combinada de Remisiones y Facturas con detalle...");
 
     try {
       const clientMap = await loadClientsMap();
+      const productMap = await loadProductsMap();
       
       const Papa = await import("papaparse");
       Papa.default.parse(remisionesFacturasFile, {
@@ -523,55 +696,116 @@ export default function ImportarHistorialPage() {
               return;
             }
 
+            const headers = Object.keys(records[0]);
+            addLog("info", `Cabeceras detectadas en el CSV: ${headers.join(", ")}`);
+            setProgressText("Agrupando partidas por documento...");
+
+            // Group lines by document type and document number
+            const groupedDocs = new Map<string, any[]>();
+            records.forEach((record: any) => {
+              const docType = String(getFlexibleValue(record, ["documento", "tipodocumento", "tipo", "documenttype", "type"]) || "").trim().toLowerCase();
+              const numero = String(getFlexibleValue(record, ["numero", "num", "folio", "id", "codigo", "referencia", "documentnumber"])).trim();
+              if (!numero || !docType) return;
+              
+              const key = `${docType}:${numero.toLowerCase()}`;
+              if (!groupedDocs.has(key)) {
+                groupedDocs.set(key, []);
+              }
+              groupedDocs.get(key)!.push(record);
+            });
+
+            addLog("info", `Detectados ${groupedDocs.size} documentos únicos (Remisiones/Facturas) con detalle.`);
+
             const batches: any[] = [];
             let currentBatch = writeBatch(db);
             let writeCount = 0;
             let successRemissions = 0;
             let successInvoices = 0;
 
-            setProgressText("Procesando y dividiendo documentos contables...");
+            setProgressText("Procesando cabeceras y resolviendo partidas...");
 
-            for (const record of records) {
-              const docType = String(record.Documento || "").trim().toLowerCase();
-              const numero = String(record.Numero || "").trim();
-              if (!numero) continue;
-
-              const clientName = String(record.Cliente || "").trim();
+            for (const [docKey, lines] of groupedDocs.entries()) {
+              const firstLine = lines[0];
+              const docType = String(getFlexibleValue(firstLine, ["documento", "tipodocumento", "tipo", "documenttype", "type"]) || "").trim().toLowerCase();
+              const numero = String(getFlexibleValue(firstLine, ["numero", "num", "folio", "id", "codigo", "referencia", "documentnumber"])).trim();
+              
+              const clientName = String(getFlexibleValue(firstLine, ["cliente", "client", "nombrecliente", "clientname", "customer", "razonsocial", "nombre", "clientenombre"]) || "").trim();
               
               // Resolve Client On the fly
               let clientId = await createClientOnTheFly(clientName, clientMap, currentBatch);
 
-              // Date formatting (DD/MM/YYYY)
+              // Date formatting
               let isoDate = new Date().toISOString();
-              if (record.Fecha) {
-                const parts = record.Fecha.split("/");
-                if (parts.length === 3) {
-                  const d = parseInt(parts[0]);
-                  const m = parseInt(parts[1]) - 1;
-                  const y = parseInt(parts[2]);
-                  isoDate = new Date(y, m, d).toISOString();
+              const dateStr = String(getFlexibleValue(firstLine, ["creacion", "fecha", "date", "createdat", "created", "fechacreacion", "fechadecreacion"]) || "");
+              if (dateStr) {
+                const parsedDate = parseDateStr(dateStr);
+                if (parsedDate.getTime() > 0) {
+                  isoDate = parsedDate.toISOString();
                 }
               }
 
-              const totalAmount = parseFloat(record.Total) || 0;
-              const subtotal = parseFloat(record.Subtotal) || totalAmount / 1.16;
-              const tax = parseFloat(record.Impuestos) || totalAmount - subtotal;
+              const totalVal = getFlexibleValue(firstLine, ["total", "monto", "amount", "importetotal", "importe", "totalamount"]);
+              const subtotalVal = getFlexibleValue(firstLine, ["subtotal", "subtotalamount", "submonto"]);
+              const taxVal = getFlexibleValue(firstLine, ["impuestos", "impuesto", "iva", "tax", "taxes"]);
+
+              const totalAmount = parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0;
+              const subtotal = parseFloat(String(subtotalVal).replace(/[^0-9.-]/g, "")) || (totalAmount / 1.16);
+              const tax = parseFloat(String(taxVal).replace(/[^0-9.-]/g, "")) || (totalAmount - subtotal);
+
+              // Build Items array from detailed CSV lines
+              const items: any[] = [];
+
+              for (const line of lines) {
+                const productName = String(line["Producto_Nombre"] || "").trim();
+                if (!productName) continue;
+
+                const sku = String(line["Producto_SKU"] || "").trim();
+                const qty = parseFloat(line["Producto_Cantidad"]) || 0;
+                const unitPrice = parseFloat(line["Producto_PrecioUnitario"]) || 0;
+                const discountPercentage = parseFloat(line["Producto_DescuentoPorcentaje"]) || 0;
+
+                // Resolve Product on the fly
+                let product = null;
+                const titleKey = productName.toLowerCase();
+                const skuKey = sku.toLowerCase();
+
+                if (skuKey && productMap.has(skuKey)) {
+                  product = productMap.get(skuKey);
+                } else if (titleKey && productMap.has(titleKey)) {
+                  product = productMap.get(titleKey);
+                } else {
+                  product = await createProductOnTheFly(productName, unitPrice, productMap, currentBatch);
+                }
+
+                items.push({
+                  productId: product ? product.id : `hist-${crypto.randomUUID()}`,
+                  productName: productName,
+                  sku: sku || (product ? product.variants?.[0]?.sku : ""),
+                  variantId: product ? (product.variants?.[0]?.id || `var-${product.id}`) : `var-${crypto.randomUUID()}`,
+                  variantTitle: "Default Title",
+                  quantity: qty,
+                  unitPrice: unitPrice,
+                  discountPercentage: discountPercentage
+                });
+              }
 
               // Check if it's a Remission (Remisión)
               if (docType.includes("remis")) {
                 let status = "activa";
-                const bindStatus = String(record.Estatus || "").trim().toLowerCase();
+                const bindStatus = String(getFlexibleValue(firstLine, ["estatus", "status", "estado", "situacion"]) || "").trim().toLowerCase();
                 if (bindStatus.includes("cancelada")) {
                   status = "cancelada";
-                } else if (bindStatus.includes("facturada") || bindStatus.includes("pagada")) {
+                } else if (bindStatus.includes("facturada")) {
                   status = "facturada";
+                } else if (bindStatus.includes("pagada")) {
+                  status = "pagada";
                 }
 
                 const remissionId = `remission-${numero}`;
                 const ref = doc(db, "companies", companyId, "remisiones", remissionId);
 
                 // Try to link to a PurchaseOrder (order Number)
-                const orderNum = String(record.PurchaseOrder || "").trim();
+                const orderNum = String(getFlexibleValue(firstLine, ["purchaseorder", "ordencompra", "orden", "pedido", "order"]) || "").trim();
 
                 currentBatch.set(ref, {
                   id: remissionId,
@@ -585,7 +819,8 @@ export default function ImportarHistorialPage() {
                   tax: tax,
                   status: status,
                   createdAt: isoDate,
-                  createdBy: String(record.Vendedor || "Migración Automática").trim(),
+                  createdBy: String(getFlexibleValue(firstLine, ["vendedor", "empleado", "vendedorasignado", "agent", "salesagent", "user", "usuario", "creadoby", "creadopor"]) || "Migración Automática").trim(),
+                  items: items,
                   migrated: true,
                   updatedAt: new Date().toISOString()
                 }, { merge: true });
@@ -596,7 +831,7 @@ export default function ImportarHistorialPage() {
               } else if (docType.includes("factur")) {
                 // Check if it's an Invoice (Factura)
                 let status = "por_timbrar";
-                const bindStatus = String(record.Estatus || "").trim().toLowerCase();
+                const bindStatus = String(getFlexibleValue(firstLine, ["estatus", "status", "estado", "situacion"]) || "").trim().toLowerCase();
                 if (bindStatus.includes("timbrada") || bindStatus.includes("pagada") || bindStatus.includes("activa")) {
                   status = "timbrada";
                 } else if (bindStatus.includes("cancelada")) {
@@ -611,15 +846,16 @@ export default function ImportarHistorialPage() {
                   invoiceNumber: numero,
                   clientName: clientName,
                   clientId: clientId || null,
-                  rfc: record.RFC || "",
-                  uuid: record.UUID || null,
+                  rfc: String(getFlexibleValue(firstLine, ["rfc", "taxid", "rfcmiscelanea"]) || "").trim(),
+                  uuid: getFlexibleValue(firstLine, ["uuid", "timbre", "foliocomercial", "foliofiscal", "fiscalid"]) || null,
                   totalAmount: totalAmount,
                   subtotal: subtotal,
                   tax: tax,
                   status: status,
                   createdAt: isoDate,
-                  createdBy: String(record.Vendedor || "Migración Automática").trim(),
-                  paymentMethod: record.MetodoPago || "PPD",
+                  createdBy: String(getFlexibleValue(firstLine, ["vendedor", "empleado", "vendedorasignado", "agent", "salesagent", "user", "usuario", "creadoby", "creadopor"]) || "Migración Automática").trim(),
+                  paymentMethod: String(getFlexibleValue(firstLine, ["metodopago", "formapago", "paymentmethod"]) || "PPD").trim(),
+                  items: items,
                   migrated: true,
                   updatedAt: new Date().toISOString()
                 }, { merge: true });
@@ -628,7 +864,7 @@ export default function ImportarHistorialPage() {
                 writeCount++;
               }
 
-              if (writeCount >= 300) {
+              if (writeCount >= 200) {
                 batches.push(currentBatch);
                 currentBatch = writeBatch(db);
                 writeCount = 0;
@@ -650,7 +886,7 @@ export default function ImportarHistorialPage() {
               remissionsImported: prev.remissionsImported + successRemissions,
               invoicesImported: prev.invoicesImported + successInvoices
             }));
-            addLog("success", `¡Sincronización completa! Se importaron ${successRemissions} remisiones y ${successInvoices} facturas.`);
+            addLog("success", `¡Sincronización completa! Se importaron ${successRemissions} remisiones y ${successInvoices} facturas con sus partidas.`);
           } catch (err: any) {
             console.error(err);
             addLog("error", `Error de procesamiento: ${err.message}`);
@@ -664,6 +900,613 @@ export default function ImportarHistorialPage() {
       console.error(e);
       addLog("error", `Error de carga: ${e.message}`);
       setLoadingStep(null);
+    }
+  };
+
+  // Step 5: Import Incomes/Payments
+  const handleImportIngresos = async () => {
+    if (!ingresosFile || !companyId) return;
+    setLoadingStep(5);
+    setProgressText("Cargando mapas de base de datos...");
+    addLog("info", "Iniciando importación masiva de Ingresos y Cobros...");
+
+    try {
+      const clientMap = await loadClientsMap();
+      const facturasMap = await loadFacturasMap();
+      const remisionesMap = await loadRemisionesMap();
+      const accountsMap = await loadAccountsMap();
+
+      const Papa = await import("papaparse");
+      Papa.default.parse(ingresosFile, {
+        header: true,
+        skipEmptyLines: true,
+        encoding: "ISO-8859-1",
+        complete: async (results: any) => {
+          try {
+            const records = results.data;
+            if (!records || records.length === 0) {
+              addLog("error", "El archivo de Ingresos está vacío.");
+              setLoadingStep(null);
+              return;
+            }
+
+            const headers = Object.keys(records[0]);
+            addLog("info", `Cabeceras detectadas en el CSV: ${headers.join(", ")}`);
+            setProgressText("Procesando cobros y vinculando documentos...");
+
+            const batches: any[] = [];
+            let currentBatch = writeBatch(db);
+            let writeCount = 0;
+            let successPayments = 0;
+
+            for (const record of records) {
+              const facturasColVal = String(getFlexibleValue(record, ["facturas", "factura", "documento", "folios"]) || "").trim();
+              if (!facturasColVal) continue; // Skip if no document number
+
+              // Clean document folio: F-     35163 -> 35163
+              const cleanFolio = facturasColVal.replace(/[^0-9]/g, "");
+              if (!cleanFolio) continue;
+
+              const clientName = String(getFlexibleValue(record, ["cliente", "client", "nombre", "customer"]) || "").trim();
+              
+              // Resolve Client On the fly
+              let clientId = await createClientOnTheFly(clientName, clientMap, currentBatch);
+
+              // Date formatting
+              let isoDate = new Date().toISOString();
+              const dateStr = String(getFlexibleValue(record, ["fecha", "createdat", "created", "fechacreacion"]) || "");
+              if (dateStr) {
+                const parsedDate = parseDateStr(dateStr);
+                if (parsedDate.getTime() > 0) {
+                  isoDate = parsedDate.toISOString();
+                }
+              }
+
+              // Account association: Cuenta -> bankAccountId
+              const csvCuenta = String(getFlexibleValue(record, ["cuenta", "banco", "bank"]) || "").trim().toLowerCase();
+              let bankAccountId = "";
+              if (csvCuenta) {
+                for (const [accName, accId] of accountsMap.entries()) {
+                  if (accName.includes(csvCuenta) || csvCuenta.includes(accName)) {
+                    bankAccountId = accId;
+                    break;
+                  }
+                }
+              }
+
+              // Determine document link and type
+              let documentId = "";
+              let documentType: "factura" | "remision" = "factura";
+              let collectionName = "facturas";
+
+              if (facturasMap.has(cleanFolio.toLowerCase())) {
+                documentId = facturasMap.get(cleanFolio.toLowerCase())!;
+                documentType = "factura";
+                collectionName = "facturas";
+              } else if (remisionesMap.has(cleanFolio.toLowerCase())) {
+                documentId = remisionesMap.get(cleanFolio.toLowerCase())!;
+                documentType = "remision";
+                collectionName = "remisiones";
+              } else {
+                // If not found locally, create a detached payment or placeholder reference
+                documentId = `hist-doc-${cleanFolio}`;
+                documentType = "factura";
+                collectionName = "facturas";
+              }
+
+              const totalVal = getFlexibleValue(record, ["total", "monto", "amount", "montooriginal"]);
+              const amountVal = parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0;
+
+              const paymentRef = doc(collection(db, "companies", companyId, "payments"));
+              
+              const paymentData = {
+                id: paymentRef.id,
+                amount: amountVal,
+                date: isoDate.substring(0, 10),
+                method: String(getFlexibleValue(record, ["tipo", "metodopago", "formapago", "paymentmethod"]) || "Transferencia").trim(),
+                reference: String(getFlexibleValue(record, ["referencia", "ref", "notes"]) || "").trim(),
+                documentId,
+                documentType,
+                documentNumber: cleanFolio,
+                clientId: clientId || "",
+                clientName: clientName,
+                bankAccountId: bankAccountId || "hist-account",
+                migrated: true,
+                createdAt: isoDate
+              };
+
+              currentBatch.set(paymentRef, paymentData);
+              successPayments++;
+              writeCount++;
+
+              // Update the matched document's paidAmount and status if linked in our database!
+              if (documentId && !documentId.startsWith("hist-doc-")) {
+                const docRef = doc(db, "companies", companyId, collectionName, documentId);
+                
+                // We increment paidAmount and set status as pagada
+                currentBatch.update(docRef, {
+                  paidAmount: increment(amountVal),
+                  status: "pagada"
+                });
+                writeCount++;
+              }
+
+              if (writeCount >= 200) {
+                batches.push(currentBatch);
+                currentBatch = writeBatch(db);
+                writeCount = 0;
+              }
+            }
+
+            if (writeCount > 0) {
+              batches.push(currentBatch);
+            }
+
+            setProgressText(`Guardando pagos en Firestore (${batches.length} lotes)...`);
+            for (let i = 0; i < batches.length; i++) {
+              await batches[i].commit();
+              setProgressText(`Guardando lote ${i + 1} de ${batches.length}...`);
+            }
+
+            setStats(prev => ({
+              ...prev,
+              paymentsImported: prev.paymentsImported + successPayments
+            }));
+            addLog("success", `¡Sincronización completa! Se importaron ${successPayments} cobros históricos y se actualizaron los saldos de remisiones/facturas.`);
+          } catch (err: any) {
+            console.error(err);
+            addLog("error", `Error de procesamiento: ${err.message}`);
+          } finally {
+            setLoadingStep(null);
+            setProgressText("");
+          }
+        }
+      });
+    } catch (e: any) {
+      console.error(e);
+      addLog("error", `Error de carga: ${e.message}`);
+      setLoadingStep(null);
+    }
+  };
+
+  // Función para migrar los anticipos legacy desde el root a la subcolección de la empresa
+  const handleMigrateLegacyAnticipos = async () => {
+    if (!companyId) return;
+    setLoadingStep(10);
+    setProgressText("Buscando anticipos en la raíz de Firestore...");
+    addLog("info", "Iniciando migración de Anticipos Legacy...");
+
+    try {
+      // 1. Fetch from root /anticipos
+      const rootRef = collection(db, "anticipos");
+      const snap = await getDocs(rootRef);
+
+      if (snap.empty) {
+        addLog("warning", "No se encontraron anticipos legacy en la colección raíz.");
+        alert("No se encontraron anticipos legacy en la colección raíz.");
+        return;
+      }
+
+      addLog("info", `Encontrados ${snap.size} anticipos legacy. Copiando a tu empresa...`);
+      
+      const batches: any[] = [];
+      let currentBatch = writeBatch(db);
+      let count = 0;
+      let migratedCount = 0;
+
+      snap.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        const docId = docSnap.id;
+
+        // Target path: companies/{companyId}/anticipos/{docId}
+        const targetRef = doc(db, "companies", companyId, "anticipos", docId);
+        
+        // Preserve all fields exactly as they are
+        currentBatch.set(targetRef, {
+          ...data,
+          migratedFromLegacy: true,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        count++;
+        migratedCount++;
+
+        if (count >= 200) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          count = 0;
+        }
+      });
+
+      if (count > 0) {
+        batches.push(currentBatch);
+      }
+
+      setProgressText(`Guardando anticipos en subcolección (${batches.length} lotes)...`);
+      for (let i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        setProgressText(`Guardando lote ${i + 1} de ${batches.length}...`);
+      }
+
+      setStats(prev => ({ ...prev, anticiposMigrated: migratedCount }));
+      addLog("success", `¡Migración de anticipos completada! Se copiaron ${migratedCount} anticipos a tu empresa.`);
+      alert(`Se han migrado con éxito ${migratedCount} anticipos legacy a tu subcolección de empresa.`);
+    } catch (err: any) {
+      console.error(err);
+      addLog("error", `Error al migrar anticipos: ${err.message}`);
+      alert(`Error al migrar anticipos: ${err.message}`);
+    } finally {
+      setLoadingStep(null);
+      setProgressText("");
+    }
+  };
+
+  // Función para borrar todos los ingresos y restablecer el historial
+  const handleDeleteAllIngresos = async () => {
+    if (!companyId) return;
+    if (!confirm("¿Estás seguro de que deseas borrar todos los cobros/ingresos importados de la base de datos? Esta acción no se puede deshacer y restablecerá el saldo pendiente de las facturas/remisiones.")) return;
+    
+    setLoadingStep(96); // Código de carga personalizado para borrar ingresos
+    setProgressText("Buscando cobros en la base de datos...");
+    addLog("info", "Iniciando eliminación de todos los cobros...");
+    
+    try {
+      const colRef = collection(db, "companies", companyId, "payments");
+      const snap = await getDocs(colRef);
+      
+      if (snap.empty) {
+        addLog("warning", "No se encontraron cobros para eliminar.");
+        alert("No hay cobros en la base de datos.");
+        return;
+      }
+      
+      addLog("info", `Encontrados ${snap.size} cobros. Eliminando progresivamente y restaurando saldos...`);
+      
+      const batches: any[] = [];
+      let currentBatch = writeBatch(db);
+      let count = 0;
+      
+      // We will delete all payments
+      snap.docs.forEach(docSnap => {
+        currentBatch.delete(docSnap.ref);
+        count++;
+        if (count >= 200) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          count = 0;
+        }
+      });
+      
+      if (count > 0) {
+        batches.push(currentBatch);
+      }
+      
+      // Also, we must reset the paidAmount on all Remisiones and Facturas back to 0 so the database remains completely clean
+      const [remisionesSnap, facturasSnap] = await Promise.all([
+        getDocs(collection(db, "companies", companyId, "remisiones")),
+        getDocs(collection(db, "companies", companyId, "facturas"))
+      ]);
+      
+      let resetBatch = writeBatch(db);
+      let resetCount = 0;
+      
+      remisionesSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.paidAmount && d.paidAmount > 0) {
+          resetBatch.update(docSnap.ref, {
+            paidAmount: 0,
+            status: d.status === "pagada" ? "activa" : d.status // Revert pagada to activa
+          });
+          resetCount++;
+          if (resetCount >= 200) {
+            batches.push(resetBatch);
+            resetBatch = writeBatch(db);
+            resetCount = 0;
+          }
+        }
+      });
+      
+      facturasSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.paidAmount && d.paidAmount > 0) {
+          resetBatch.update(docSnap.ref, {
+            paidAmount: 0,
+            status: d.status === "pagada" ? "timbrada" : d.status // Revert pagada to timbrada
+          });
+          resetCount++;
+          if (resetCount >= 200) {
+            batches.push(resetBatch);
+            resetBatch = writeBatch(db);
+            resetCount = 0;
+          }
+        }
+      });
+      
+      if (resetCount > 0) {
+        batches.push(resetBatch);
+      }
+      
+      setProgressText(`Eliminando cobros y restaurando saldos en Firestore (${batches.length} lotes)...`);
+      for (let i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        setProgressText(`Procesando lote ${i + 1} de ${batches.length}...`);
+      }
+      
+      setStats(prev => ({ ...prev, paymentsImported: 0 }));
+      addLog("success", `¡Limpieza completada! Se eliminaron ${snap.size} cobros y se restauraron los saldos de facturas/remisiones.`);
+      alert(`Se han eliminado todos los cobros (${snap.size}) y se restauraron los saldos de tus remisiones y facturas.`);
+    } catch (err: any) {
+      console.error(err);
+      addLog("error", `Error al eliminar cobros: ${err.message}`);
+      alert(`Error al eliminar cobros: ${err.message}`);
+    } finally {
+      setLoadingStep(null);
+      setProgressText("");
+    }
+  };
+
+  // Función para borrar todos los anticipos migrados de la subcolección de la empresa
+  const handleDeleteAllAnticipos = async () => {
+    if (!companyId) return;
+    if (!confirm("¿Estás seguro de que deseas eliminar permanentemente todos los anticipos de esta empresa? Esta acción no se puede deshacer.")) return;
+
+    setLoadingStep(95); // Código de carga personalizado para borrar anticipos
+    setProgressText("Buscando anticipos de la empresa...");
+    addLog("info", "Iniciando eliminación de todos los anticipos...");
+
+    try {
+      const colRef = collection(db, "companies", companyId, "anticipos");
+      const snap = await getDocs(colRef);
+
+      if (snap.empty) {
+        addLog("warning", "No se encontraron anticipos para eliminar.");
+        alert("No hay anticipos en tu empresa.");
+        return;
+      }
+
+      addLog("info", `Encontrados ${snap.size} anticipos. Eliminando...`);
+
+      const batches: any[] = [];
+      let currentBatch = writeBatch(db);
+      let count = 0;
+
+      snap.docs.forEach(docSnap => {
+        currentBatch.delete(docSnap.ref);
+        count++;
+        if (count >= 200) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          count = 0;
+        }
+      });
+
+      if (count > 0) {
+        batches.push(currentBatch);
+      }
+
+      setProgressText(`Eliminando de Firestore (${batches.length} lotes)...`);
+      for (let i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        setProgressText(`Eliminando lote ${i + 1} de ${batches.length}...`);
+      }
+
+      setStats(prev => ({ ...prev, anticiposMigrated: 0 }));
+      addLog("success", `¡Limpieza de anticipos completada! Se eliminaron ${snap.size} anticipos de la empresa.`);
+      alert(`Se han eliminado todos los anticipos (${snap.size}) de tu empresa.`);
+    } catch (err: any) {
+      console.error(err);
+      addLog("error", `Error al eliminar anticipos: ${err.message}`);
+      alert(`Error al eliminar anticipos: ${err.message}`);
+    } finally {
+      setLoadingStep(null);
+      setProgressText("");
+    }
+  };
+
+  // Función para borrar todos los pedidos y resetear el contador de secuencias
+  const handleDeleteAllPedidos = async () => {
+    if (!companyId) return;
+    if (!confirm("¿Estás seguro de que deseas borrar todos los pedidos de la base de datos? Esta acción no se puede deshacer.")) return;
+    
+    setLoadingStep(99); // Código de carga personalizado para borrar
+    setProgressText("Buscando pedidos en la base de datos...");
+    addLog("info", "Iniciando eliminación de todos los pedidos...");
+    
+    try {
+      const pedidosColRef = collection(db, "companies", companyId, "pedidos");
+      const pedidosSnap = await getDocs(pedidosColRef);
+      
+      if (pedidosSnap.empty) {
+        addLog("warning", "No se encontraron pedidos para eliminar.");
+        alert("No hay pedidos en la base de datos.");
+        return;
+      }
+      
+      addLog("info", `Encontrados ${pedidosSnap.size} pedidos. Eliminando progresivamente...`);
+      
+      const batches: any[] = [];
+      let currentBatch = writeBatch(db);
+      let count = 0;
+      
+      pedidosSnap.docs.forEach(pedidoDoc => {
+        currentBatch.delete(pedidoDoc.ref);
+        count++;
+        if (count >= 300) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          count = 0;
+        }
+      });
+      
+      if (count > 0) {
+        batches.push(currentBatch);
+      }
+      
+      setProgressText(`Eliminando de Firestore (${batches.length} lotes)...`);
+      for (let i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        setProgressText(`Eliminando lote ${i + 1} de ${batches.length}...`);
+      }
+      
+      // Intentar resetear el contador de secuencias
+      try {
+        const counterRef = doc(db, "companies", companyId, "counters", "sequences");
+        const finalBatch = writeBatch(db);
+        finalBatch.set(counterRef, { pedidos: 0 }, { merge: true });
+        await finalBatch.commit();
+        addLog("success", "Contador de secuencias de pedidos reiniciado a 0.");
+      } catch (err: any) {
+        addLog("warning", `No se pudo reiniciar el contador de secuencias: ${err.message}`);
+      }
+      
+      setStats(prev => ({ ...prev, ordersImported: 0 }));
+      addLog("success", `¡Eliminación completada! Se eliminaron ${pedidosSnap.size} pedidos de forma exitosa.`);
+      alert(`Se han eliminado todos los pedidos (${pedidosSnap.size}) de la base de datos.`);
+    } catch (err: any) {
+      console.error(err);
+      addLog("error", `Error al eliminar pedidos: ${err.message}`);
+      alert(`Error al eliminar pedidos: ${err.message}`);
+    } finally {
+      setLoadingStep(null);
+      setProgressText("");
+    }
+  };
+
+  // Función para borrar todas las remisiones y resetear el contador de secuencias
+  const handleDeleteAllRemisiones = async () => {
+    if (!companyId) return;
+    if (!confirm("¿Estás seguro de que deseas borrar todas las remisiones de la base de datos? Esta acción no se puede deshacer.")) return;
+    
+    setLoadingStep(98); // Código de carga personalizado para borrar remisiones
+    setProgressText("Buscando remisiones en la base de datos...");
+    addLog("info", "Iniciando eliminación de todas las remisiones...");
+    
+    try {
+      const colRef = collection(db, "companies", companyId, "remisiones");
+      const snap = await getDocs(colRef);
+      
+      if (snap.empty) {
+        addLog("warning", "No se encontraron remisiones para eliminar.");
+        alert("No hay remisiones en la base de datos.");
+        return;
+      }
+      
+      addLog("info", `Encontradas ${snap.size} remisiones. Eliminando progresivamente...`);
+      
+      const batches: any[] = [];
+      let currentBatch = writeBatch(db);
+      let count = 0;
+      
+      snap.docs.forEach(docSnap => {
+        currentBatch.delete(docSnap.ref);
+        count++;
+        if (count >= 300) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          count = 0;
+        }
+      });
+      
+      if (count > 0) {
+        batches.push(currentBatch);
+      }
+      
+      setProgressText(`Eliminando de Firestore (${batches.length} lotes)...`);
+      for (let i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        setProgressText(`Eliminando lote ${i + 1} de ${batches.length}...`);
+      }
+      
+      // Intentar resetear el contador de secuencias
+      try {
+        const counterRef = doc(db, "companies", companyId, "counters", "sequences");
+        const finalBatch = writeBatch(db);
+        finalBatch.set(counterRef, { remisiones: 0 }, { merge: true });
+        await finalBatch.commit();
+        addLog("success", "Contador de secuencias de remisiones reiniciado a 0.");
+      } catch (err: any) {
+        addLog("warning", `No se pudo reiniciar el contador de secuencias: ${err.message}`);
+      }
+      
+      setStats(prev => ({ ...prev, remissionsImported: 0 }));
+      addLog("success", `¡Eliminación completada! Se eliminaron ${snap.size} remisiones de forma exitosa.`);
+      alert(`Se han eliminado todas las remisiones (${snap.size}) de la base de datos.`);
+    } catch (err: any) {
+      console.error(err);
+      addLog("error", `Error al eliminar remisiones: ${err.message}`);
+      alert(`Error al eliminar remisiones: ${err.message}`);
+    } finally {
+      setLoadingStep(null);
+      setProgressText("");
+    }
+  };
+
+  // Función para borrar todas las facturas y resetear el contador de secuencias
+  const handleDeleteAllFacturas = async () => {
+    if (!companyId) return;
+    if (!confirm("¿Estás seguro de que deseas borrar todas las facturas de la base de datos? Esta acción no se puede deshacer.")) return;
+    
+    setLoadingStep(97); // Código de carga personalizado para borrar facturas
+    setProgressText("Buscando facturas en la base de datos...");
+    addLog("info", "Iniciando eliminación de todas las facturas...");
+    
+    try {
+      const colRef = collection(db, "companies", companyId, "facturas");
+      const snap = await getDocs(colRef);
+      
+      if (snap.empty) {
+        addLog("warning", "No se encontraron facturas para eliminar.");
+        alert("No hay facturas en la base de datos.");
+        return;
+      }
+      
+      addLog("info", `Encontradas ${snap.size} facturas. Eliminando progresivamente...`);
+      
+      const batches: any[] = [];
+      let currentBatch = writeBatch(db);
+      let count = 0;
+      
+      snap.docs.forEach(docSnap => {
+        currentBatch.delete(docSnap.ref);
+        count++;
+        if (count >= 300) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          count = 0;
+        }
+      });
+      
+      if (count > 0) {
+        batches.push(currentBatch);
+      }
+      
+      setProgressText(`Eliminando de Firestore (${batches.length} lotes)...`);
+      for (let i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        setProgressText(`Eliminando lote ${i + 1} de ${batches.length}...`);
+      }
+      
+      // Intentar resetear el contador de secuencias
+      try {
+        const counterRef = doc(db, "companies", companyId, "counters", "sequences");
+        const finalBatch = writeBatch(db);
+        finalBatch.set(counterRef, { facturas: 0 }, { merge: true });
+        await finalBatch.commit();
+        addLog("success", "Contador de secuencias de facturas reiniciado a 0.");
+      } catch (err: any) {
+        addLog("warning", `No se pudo reiniciar el contador de secuencias: ${err.message}`);
+      }
+      
+      setStats(prev => ({ ...prev, invoicesImported: 0 }));
+      addLog("success", `¡Eliminación completada! Se eliminaron ${snap.size} facturas de forma exitosa.`);
+      alert(`Se han eliminado todas las facturas (${snap.size}) de la base de datos.`);
+    } catch (err: any) {
+      console.error(err);
+      addLog("error", `Error al eliminar facturas: ${err.message}`);
+      alert(`Error al eliminar facturas: ${err.message}`);
+    } finally {
+      setLoadingStep(null);
+      setProgressText("");
     }
   };
 
@@ -789,11 +1632,11 @@ export default function ImportarHistorialPage() {
               </div>
               <div className="space-y-1">
                 <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-                  Paso 3 y 4: Remisiones y Facturaciones
+                  Paso 3 y 4: Remisiones y Facturaciones (Detalladas)
                   {(stats.remissionsImported > 0 || stats.invoicesImported > 0) && <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />}
                 </h3>
                 <p className="text-xs text-muted-foreground leading-normal">
-                  Sube el archivo <span className="font-bold font-mono">Remisiones y Facturas.csv</span>. Este paso clasificará automáticamente las entregas activas de mercancía (Remisiones) y las facturas fiscales (CFDI), vinculándolas a sus pedidos y guardando los UUIDs fiscales.
+                  Sube el archivo unificado <span className="font-bold font-mono">Ventas_Detalladas.csv</span> (creado al combinar el resumen de ventas y las partidas). Este paso clasificará e importará automáticamente las entregas activas (Remisiones) y facturas fiscales (CFDI), vinculando el desglose completo de productos (items) y UUIDs fiscales.
                 </p>
               </div>
             </div>
@@ -813,7 +1656,7 @@ export default function ImportarHistorialPage() {
                 disabled={loadingStep !== null}
               >
                 <Upload className="w-4 h-4 shrink-0" />
-                {remisionesFacturasFile ? remisionesFacturasFile.name : "Seleccionar Remisiones y Facturas.csv"}
+                {remisionesFacturasFile ? remisionesFacturasFile.name : "Seleccionar Ventas_Detalladas.csv"}
               </Button>
               <Button
                 onClick={handleImportRemisionesFacturas}
@@ -823,6 +1666,211 @@ export default function ImportarHistorialPage() {
                 {loadingStep === 3 ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                 {loadingStep === 3 ? "Importando..." : "Ejecutar Paso 3 y 4"}
               </Button>
+            </div>
+          </div>
+
+          {/* STEP 5: Ingresos Históricos */}
+          <div className="bg-card border rounded-2xl p-6 shadow-sm flex flex-col justify-between space-y-4 hover:border-teal-200 transition-all">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-teal-50 rounded-xl text-teal-600 shrink-0">
+                <ArrowRightLeft className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                  Paso 5: Ingresos y Pagos Históricos
+                  {stats.paymentsImported > 0 && <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />}
+                </h3>
+                <p className="text-xs text-muted-foreground leading-normal">
+                  Sube el archivo <span className="font-bold font-mono">Ingresos (1).csv</span>. Mapeará los pagos e ingresos a las cuentas bancarias de la empresa y los vinculará con las facturas y remisiones ya cargadas para actualizar saldos de forma dinámica.
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-2">
+              <input
+                type="file"
+                id="ingresos-upload"
+                className="hidden"
+                accept=".csv"
+                onChange={(e) => setIngresosFile(e.target.files?.[0] || null)}
+              />
+              <Button
+                variant="outline"
+                className="justify-start gap-2 border-dashed border-2 hover:border-solid hover:bg-muted text-muted-foreground text-xs h-10 flex-1 truncate"
+                onClick={() => document.getElementById("ingresos-upload")?.click()}
+                disabled={loadingStep !== null}
+              >
+                <Upload className="w-4 h-4 shrink-0" />
+                {ingresosFile ? ingresosFile.name : "Seleccionar Ingresos (1).csv"}
+              </Button>
+              <Button
+                onClick={handleImportIngresos}
+                disabled={!ingresosFile || loadingStep !== null}
+                className="bg-teal-600 hover:bg-teal-700 text-white min-w-[140px] text-xs h-10 gap-2 shrink-0 shadow-md"
+              >
+                {loadingStep === 5 ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                {loadingStep === 5 ? "Importando..." : "Ejecutar Paso 5"}
+              </Button>
+            </div>
+          </div>
+
+          {/* STEP 6: Anticipos Legacy */}
+          <div className="bg-card border rounded-2xl p-6 shadow-sm flex flex-col justify-between space-y-4 hover:border-amber-200 transition-all">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-amber-50 rounded-xl text-amber-600 shrink-0">
+                <Database className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                  Paso 6 (Opcional): Migración de Anticipos Legacy (Desde Firebase)
+                </h3>
+                <p className="text-xs text-muted-foreground leading-normal">
+                  Migra directamente todos los anticipos y abonos a clientes registrados en la colección raíz global de Firestore e intégralos a esta nueva estructura multi-tenant de forma segura y directa.
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-2">
+              <div className="flex-1 text-xs text-muted-foreground/80 font-medium">
+                Esta acción se ejecuta en el navegador usando tu sesión activa de desarrollador (sin requerir descargas ni archivos intermedios).
+              </div>
+              <Button
+                onClick={handleMigrateLegacyAnticipos}
+                disabled={loadingStep !== null}
+                className="bg-amber-600 hover:bg-amber-700 text-white min-w-[180px] text-xs h-10 gap-2 shrink-0 shadow-md"
+              >
+                {loadingStep === 10 ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                {loadingStep === 10 ? "Migrando..." : "Migrar Anticipos de Raíz"}
+              </Button>
+            </div>
+          </div>
+
+          {/* DANGER ZONE: Cleanup Tools */}
+          <div className="bg-red-50/50 border border-red-100 rounded-2xl p-6 shadow-sm flex flex-col space-y-6 hover:border-red-200 transition-all dark:bg-red-950/10 dark:border-red-900/30 dark:hover:border-red-900/50">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-red-100 dark:bg-red-950/50 rounded-xl text-red-600 shrink-0">
+                <Database className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-lg text-red-700 dark:text-red-400 flex items-center gap-2">
+                  Zona de Peligro: Limpieza de Base de Datos
+                </h3>
+                <p className="text-xs text-red-600/80 dark:text-red-400/80 leading-normal font-medium">
+                  Borra selectivamente las cargas de prueba anteriores para preparar tu base de datos para la producción.
+                </p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 pt-2 border-t border-red-100 dark:border-red-900/20">
+              {/* Option 1: Pedidos */}
+              <div className="flex flex-col justify-between space-y-3 p-4 rounded-xl bg-background/50 border border-red-100/50 dark:border-red-950/40">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                    <Package className="w-4 h-4 text-indigo-500" />
+                    Pedidos de Venta
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Elimina todos los pedidos y restablece el folio secuencial <span className="font-mono text-[10px] bg-muted px-1 rounded">PED-00000</span>.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleDeleteAllPedidos}
+                  disabled={loadingStep !== null}
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700 text-white w-full text-xs h-9 gap-2 shadow-sm font-semibold"
+                >
+                  {loadingStep === 99 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                  {loadingStep === 99 ? "Eliminando..." : "Borrar Pedidos"}
+                </Button>
+              </div>
+
+              {/* Option 2: Remisiones */}
+              <div className="flex flex-col justify-between space-y-3 p-4 rounded-xl bg-background/50 border border-red-100/50 dark:border-red-950/40">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                    <Truck className="w-4 h-4 text-emerald-500" />
+                    Remisiones
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Elimina todas las remisiones de entrega y restablece el folio secuencial <span className="font-mono text-[10px] bg-muted px-1 rounded">REM-00000</span>.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleDeleteAllRemisiones}
+                  disabled={loadingStep !== null}
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700 text-white w-full text-xs h-9 gap-2 shadow-sm font-semibold"
+                >
+                  {loadingStep === 98 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                  {loadingStep === 98 ? "Eliminando..." : "Borrar Remisiones"}
+                </Button>
+              </div>
+
+              {/* Option 3: Facturas */}
+              <div className="flex flex-col justify-between space-y-3 p-4 rounded-xl bg-background/50 border border-red-100/50 dark:border-red-950/40">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                    <Receipt className="w-4 h-4 text-teal-500" />
+                    Facturas (CFDI)
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Elimina todas las facturas y restablece el folio secuencial <span className="font-mono text-[10px] bg-muted px-1 rounded">FAC-00000</span>.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleDeleteAllFacturas}
+                  disabled={loadingStep !== null}
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700 text-white w-full text-xs h-9 gap-2 shadow-sm font-semibold"
+                >
+                  {loadingStep === 97 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                  {loadingStep === 97 ? "Eliminando..." : "Borrar Facturas"}
+                </Button>
+              </div>
+
+              {/* Option 4: Cobros/Ingresos */}
+              <div className="flex flex-col justify-between space-y-3 p-4 rounded-xl bg-background/50 border border-red-100/50 dark:border-red-950/40">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                    <ArrowRightLeft className="w-4 h-4 text-teal-500" />
+                    Cobros / Ingresos
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Elimina todos los cobros y pagos, y restablece los montos cobrados en remisiones/facturas.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleDeleteAllIngresos}
+                  disabled={loadingStep !== null}
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700 text-white w-full text-xs h-9 gap-2 shadow-sm font-semibold"
+                >
+                  {loadingStep === 96 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                  {loadingStep === 96 ? "Eliminando..." : "Borrar Cobros"}
+                </Button>
+              </div>
+
+              {/* Option 5: Anticipos */}
+              <div className="flex flex-col justify-between space-y-3 p-4 rounded-xl bg-background/50 border border-red-100/50 dark:border-red-950/40">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-amber-500" />
+                    Anticipos Legacy
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Elimina todos los anticipos migrados de la subcolección de esta empresa en Firestore.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleDeleteAllAnticipos}
+                  disabled={loadingStep !== null}
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700 text-white w-full text-xs h-9 gap-2 shadow-sm font-semibold"
+                >
+                  {loadingStep === 95 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                  {loadingStep === 95 ? "Eliminando..." : "Borrar Anticipos"}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -865,6 +1913,14 @@ export default function ImportarHistorialPage() {
               <div className="py-2.5 flex justify-between">
                 <span className="text-muted-foreground">Facturas Importadas:</span>
                 <span className="font-bold text-teal-600">{stats.invoicesImported}</span>
+              </div>
+              <div className="py-2.5 flex justify-between">
+                <span className="text-muted-foreground">Cobros Importados:</span>
+                <span className="font-bold text-teal-600">{stats.paymentsImported}</span>
+              </div>
+              <div className="py-2.5 flex justify-between">
+                <span className="text-muted-foreground">Anticipos Migrados:</span>
+                <span className="font-bold text-amber-600">{stats.anticiposMigrated}</span>
               </div>
               <div className="py-2.5 flex justify-between border-t-2">
                 <span className="text-muted-foreground">Clientes creados on-the-fly:</span>

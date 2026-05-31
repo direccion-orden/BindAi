@@ -13,18 +13,18 @@ export default function DashboardLayout({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <AuthGuard>
-      <div className="flex min-h-screen flex-col">
-        <Navbar onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
-        <div className="flex flex-1 relative">
-          <Sidebar isMobileOpen={isMobileMenuOpen} onCloseMobile={() => setIsMobileMenuOpen(false)} />
-          <main className="flex-1 p-6 md:p-8 lg:p-10 w-full overflow-x-hidden">
-            <div className="w-full">
+    <div className="flex min-h-screen flex-col">
+      <Navbar onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+      <div className="flex flex-1 relative">
+        <Sidebar isMobileOpen={isMobileMenuOpen} onCloseMobile={() => setIsMobileMenuOpen(false)} />
+        <main className="flex-1 p-6 md:p-8 lg:p-10 w-full overflow-x-hidden">
+          <div className="w-full">
+            <AuthGuard>
               {children}
-            </div>
-          </main>
-        </div>
+            </AuthGuard>
+          </div>
+        </main>
       </div>
-    </AuthGuard>
+    </div>
   );
 }

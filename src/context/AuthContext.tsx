@@ -34,10 +34,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setCompanyId(userDoc.data().companyId);
           } else {
             setCompanyId(null);
-            // Si no tiene empresa y no está ya en la ruta de onboarding, lo mandamos
-            if (pathname !== "/onboarding") {
-              router.push("/onboarding");
-            }
           }
         } catch (error) {
           console.error("Error fetching user profile:", error);
@@ -50,7 +46,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [pathname, router]);
+  }, []);
+
+  useEffect(() => {
+    if (!loading && user && !companyId && pathname !== "/onboarding") {
+      router.push("/onboarding");
+    }
+  }, [user, companyId, loading, pathname, router]);
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();

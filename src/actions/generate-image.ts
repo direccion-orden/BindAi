@@ -30,6 +30,10 @@ Architectural interior photography style, realistic proportions, natural perspec
       }
     });
 
+    if (!response.generatedImages || response.generatedImages.length === 0 || !response.generatedImages[0]?.image?.imageBytes) {
+      throw new Error("No images were generated.");
+    }
+
     const base64Image = response.generatedImages[0].image.imageBytes;
     return `data:image/jpeg;base64,${base64Image}`;
   } catch (error) {

@@ -1,0 +1,85 @@
+[debug] [2026-05-31T09:00:54.865Z] ----------------------------------------------------------------------
+[debug] [2026-05-31T09:00:54.867Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Elitebook 840 G11\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-05-31T09:00:54.867Z] CLI Version:   15.8.0
+[debug] [2026-05-31T09:00:54.867Z] Platform:      win32
+[debug] [2026-05-31T09:00:54.867Z] Node Version:  v24.11.1
+[debug] [2026-05-31T09:00:54.867Z] Time:          Sun May 31 2026 03:00:54 GMT-0600 (hora estándar central)
+[debug] [2026-05-31T09:00:54.867Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-05-31T09:00:56.054Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-05-31T09:00:56.054Z] > authorizing via signed-in user (direccion@ordendelascosas.com)
+[debug] [2026-05-31T09:00:56.054Z] [iam] checking project flowbot-e7ccf for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-05-31T09:00:56.055Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:56.055Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:56.055Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/flowbot-e7ccf:testIamPermissions [none]
+[debug] [2026-05-31T09:00:56.055Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/flowbot-e7ccf:testIamPermissions  x-goog-user-project=flowbot-e7ccf
+[debug] [2026-05-31T09:00:56.056Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/flowbot-e7ccf:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-05-31T09:00:56.286Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/flowbot-e7ccf:testIamPermissions 200
+[debug] [2026-05-31T09:00:56.286Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/flowbot-e7ccf:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-05-31T09:00:56.287Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:56.287Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:56.287Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/flowbot-e7ccf [none]
+[debug] [2026-05-31T09:00:56.641Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/flowbot-e7ccf 200
+[debug] [2026-05-31T09:00:56.641Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/flowbot-e7ccf {"projectId":"flowbot-e7ccf","projectNumber":"524585223194","displayName":"FlowBot","name":"projects/flowbot-e7ccf","resources":{"hostingSite":"flowbot-e7ccf"},"state":"ACTIVE","etag":"1_817f5fb8-a016-420a-b6f7-3b8d9778c66f"}
+[debug] [2026-05-31T09:00:58.428Z] defaultcredentials: writing to file C:\Users\Elitebook 840 G11\AppData\Roaming\firebase\direccion_ordendelascosas_com_application_default_credentials.json
+[debug] [2026-05-31T09:00:58.429Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:58.429Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:58.429Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites pageToken=&pageSize=10
+[debug] [2026-05-31T09:00:59.143Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites 200
+[debug] [2026-05-31T09:00:59.143Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites {"sites":[{"name":"projects/flowbot-e7ccf/sites/flowbot-e7ccf","defaultUrl":"https://flowbot-e7ccf.web.app","type":"DEFAULT_SITE"}]}
+[debug] [2026-05-31T09:00:59.144Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:59.144Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:59.144Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites 
+[debug] [2026-05-31T09:00:59.621Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites 200
+[debug] [2026-05-31T09:00:59.621Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites {"sites":[{"name":"projects/flowbot-e7ccf/sites/flowbot-e7ccf","defaultUrl":"https://flowbot-e7ccf.web.app","type":"DEFAULT_SITE"}]}
+[debug] [2026-05-31T09:00:59.621Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:59.622Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:00:59.622Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/flowbot-e7ccf/webApps/-/config [none]
+[debug] [2026-05-31T09:00:59.944Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/flowbot-e7ccf/webApps/-/config 200
+[debug] [2026-05-31T09:00:59.944Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/flowbot-e7ccf/webApps/-/config {"projectId":"flowbot-e7ccf","appId":"1:524585223194:web:9efff4c24ff0a4af3c7da3","storageBucket":"flowbot-e7ccf.firebasestorage.app","apiKey":"AIzaSyA7dWBVeUrSA9k-tkT0Y7UHah_qxGba8Ng","authDomain":"flowbot-e7ccf.firebaseapp.com","messagingSenderId":"524585223194","measurementId":"G-KSDVGKZSSZ","projectNumber":"524585223194","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 15.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-05-31T09:01:03.933Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:01:03.933Z] Checked if tokens are valid: true, expires at: 1780221395553
+[debug] [2026-05-31T09:01:03.933Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites/flowbot-e7ccf [none]
+[debug] [2026-05-31T09:01:04.418Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites/flowbot-e7ccf 200
+[debug] [2026-05-31T09:01:04.419Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/flowbot-e7ccf/sites/flowbot-e7ccf {"name":"projects/flowbot-e7ccf/sites/flowbot-e7ccf","defaultUrl":"https://flowbot-e7ccf.web.app","type":"DEFAULT_SITE"}
+[info] ▲ Next.js 16.2.2 (Turbopack)
+
+[info] - Environments: .env.local, .env.production, .env
+
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 7.5s
+
+[info]   Running TypeScript ...
+
+[info] Failed to type check.
+
+
+[info] ./src/actions/generate-image.ts:33:25
+Type error: 'response.generatedImages' is possibly 'undefined'.
+
+  31 |     });
+  32 |
+> 33 |     const base64Image = response.generatedImages[0].image.imageBytes;
+     |                         ^
+  34 |     return `data:image/jpeg;base64,${base64Image}`;
+  35 |   } catch (error) {
+  36 |     console.error("Error generating image with Google Imagen:", error);
+
+[info] Next.js build worker exited with code: 1 and signal: null
+
+[debug] [2026-05-31T09:01:22.160Z] Error: ENOENT: no such file or directory, open 'C:\Users\Elitebook 840 G11\.gemini\antigravity\playground\rogue-tyson\.next\export-marker.json'
+[error] 
+[error] Error: An unexpected error has occurred.

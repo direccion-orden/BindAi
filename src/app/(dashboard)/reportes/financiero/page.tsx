@@ -159,7 +159,7 @@ export default function ReporteFinancieroPage() {
                   dx={-10}
                 />
                 <RechartsTooltip 
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, "Deuda Total"]}
+                  formatter={(value: any) => [`$${value?.toLocaleString() || ""}`, "Deuda Total"]}
                   contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                   cursor={{fill: '#f8fafc'}}
                 />
@@ -204,7 +204,7 @@ export default function ReporteFinancieroPage() {
                   dx={-10}
                 />
                 <RechartsTooltip 
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
+                  formatter={(value: any) => [`$${value?.toLocaleString() || ""}`, ""]}
                   contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                 />
                 <Legend wrapperStyle={{paddingTop: '20px'}} />

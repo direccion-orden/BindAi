@@ -27,6 +27,7 @@ interface PendingOrder {
   vendorId: string;
   vendorName: string;
   status: string;
+  createdAt: string;
   items: {
     productId: string;
     variantId: string;

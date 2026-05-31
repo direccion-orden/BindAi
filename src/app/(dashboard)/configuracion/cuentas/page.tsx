@@ -23,6 +23,8 @@ interface BankAccount {
   currency: string;
   initialBalance: number;
   accountId?: string;
+  Name?: string;
+  CurrencyCode?: string;
 }
 
 export default function CuentasPage() {

@@ -18,6 +18,8 @@ interface BankAccount {
   type: "cash" | "bank" | "terminal";
   currency: string;
   initialBalance: number;
+  Name?: string;
+  CurrencyCode?: string;
 }
 
 export default function BancosPage() {

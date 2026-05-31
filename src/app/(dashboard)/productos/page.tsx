@@ -127,7 +127,7 @@ export default function ProductosPage() {
                   const totalInventory = product.variants?.reduce((sum, v) => {
                     let total = 0;
                     if ((v as any).inventoryByWarehouse) {
-                      total += Object.values((v as any).inventoryByWarehouse).reduce((a: any, b: any) => a + b, 0);
+                      total += (Object.values((v as any).inventoryByWarehouse) as number[]).reduce((a: number, b: number) => a + b, 0);
                     }
                     total += ((v as any).inventoryQuantity || 0);
                     return sum + total;

@@ -50,7 +50,7 @@ export default function ImportarProductosPage() {
             const productByIdMap = new Map();
             
             snapshot.docs.forEach(d => {
-              const p = { id: d.id, ...d.data() };
+              const p = { id: d.id, ...d.data() } as any;
               productByIdMap.set(d.id, p);
               if (p.variants && p.variants[0]) {
                 if (p.variants[0].barcode) productMap.set(String(p.variants[0].barcode).trim(), p);

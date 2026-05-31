@@ -17,7 +17,7 @@ async function test() {
     try {
         const fiel = Fiel.create(cerContent, keyContent, password);
         console.log("Fiel created successfully!");
-    } catch (e) {
+    } catch (e: any) {
         console.error("Fiel.create Error:", e.message);
     }
 }

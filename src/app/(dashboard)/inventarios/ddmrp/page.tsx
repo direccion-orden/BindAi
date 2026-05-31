@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Loader2, TrendingDown, TrendingUp, AlertTriangle, Settings, RefreshCcw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ShopifyProduct, ProductVariant } from "@/types/product";
+import { ShopifyProduct } from "@/types/product";
 
 interface DDMRPVariant {
   productId: string;

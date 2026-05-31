@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { doc, getDoc, updateDoc, deleteDoc, serverTimestamp, collection, query, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, collection, query, onSnapshot } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
 import { ArrowLeft, Save, Loader2, Image as ImageIcon, Sparkles, Trash2, AlertCircle } from "lucide-react";
@@ -29,7 +29,7 @@ export default function EditarProductoPage() {
   const [description, setDescription] = useState("");
   const [vendor, setVendor] = useState("");
   const [productType, setProductType] = useState("");
-  const [status, setStatus] = useState<'ACTIVE' | 'DRAFT'>('DRAFT');
+  const [status, setStatus] = useState<'ACTIVE' | 'ARCHIVED' | 'DRAFT'>('DRAFT');
   const [inventoryRole, setInventoryRole] = useState<'PRODUCTO' | 'MATERIA_PRIMA' | 'AMBOS'>('PRODUCTO');
   const [categories, setCategories] = useState<{ id: string; name: string }[]>(
     [],
@@ -210,6 +210,68 @@ export default function EditarProductoPage() {
       alert("Error al cargar el producto");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    if (!companyId || !newCategoryName.trim()) return;
+    setSavingCategory(true);
+    try {
+      const docId = crypto.randomUUID();
+      await setDoc(doc(db, "companies", companyId, "categories", docId), {
+        name: newCategoryName.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setProductType(newCategoryName.trim());
+      setNewCategoryName("");
+      setIsCategoryModalOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert("Error al crear categoría");
+    } finally {
+      setSavingCategory(false);
+    }
+  };
+
+  const handleCreateTag = async () => {
+    if (!companyId || !newTagName.trim()) return;
+    setSavingTag(true);
+    try {
+      const docId = crypto.randomUUID();
+      await setDoc(doc(db, "companies", companyId, "tags", docId), {
+        name: newTagName.trim(),
+        createdAt: serverTimestamp(),
+      });
+      if (!selectedTags.includes(newTagName.trim())) {
+        setSelectedTags([...selectedTags, newTagName.trim()]);
+      }
+      setNewTagName("");
+      setIsTagModalOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert("Error al crear etiqueta");
+    } finally {
+      setSavingTag(false);
+    }
+  };
+
+  const handleCreateVendor = async () => {
+    if (!companyId || !newVendorName.trim()) return;
+    setSavingVendor(true);
+    try {
+      const docId = crypto.randomUUID();
+      await setDoc(doc(db, "companies", companyId, "vendors", docId), {
+        name: newVendorName.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setVendor(newVendorName.trim());
+      setNewVendorName("");
+      setIsVendorModalOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert("Error al crear proveedor");
+    } finally {
+      setSavingVendor(false);
     }
   };
 
@@ -587,10 +649,11 @@ export default function EditarProductoPage() {
             <select 
               className="w-full border rounded-md p-2 text-sm bg-background"
               value={status}
-              onChange={(e) => setStatus(e.target.value as 'ACTIVE' | 'DRAFT')}
+              onChange={(e) => setStatus(e.target.value as 'ACTIVE' | 'ARCHIVED' | 'DRAFT')}
             >
               <option value="ACTIVE">Activo</option>
               <option value="DRAFT">Borrador</option>
+              <option value="ARCHIVED">Archivado</option>
             </select>
             
             <h3 className="font-semibold pt-4 border-t">Rol en Inventario</h3>

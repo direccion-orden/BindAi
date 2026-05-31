@@ -168,7 +168,7 @@ export default function ReporteComercialPage() {
                   dx={-10}
                 />
                 <RechartsTooltip 
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
+                  formatter={(value: any) => [`$${value?.toLocaleString() || ""}`, undefined]}
                   contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                 />
                 <Legend wrapperStyle={{paddingTop: '20px'}} />
@@ -201,7 +201,7 @@ export default function ReporteComercialPage() {
                   ))}
                 </Pie>
                 <RechartsTooltip 
-                  formatter={(value: number) => [`${value} unids.`, "Volumen"]}
+                  formatter={(value: any) => [`${value} unids.`, "Volumen"]}
                   contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                 />
               </PieChart>
@@ -236,7 +236,7 @@ export default function ReporteComercialPage() {
                 <XAxis type="number" axisLine={false} tickLine={false} tickFormatter={(val) => `$${val/1000}k`} tick={{fill: '#64748b', fontSize: 12}} />
                 <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 11, fontWeight: 500}} width={120} />
                 <RechartsTooltip 
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, "Monto"]}
+                  formatter={(value: any) => [`$${value?.toLocaleString() || ""}`, "Monto"]}
                   contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                   cursor={{fill: '#f8fafc'}}
                 />

@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "flowbot-e7ccf"
+    "default": "flowbot-e7ccf",
+    "production": "bind-ai-6f1fc"
   }
 }

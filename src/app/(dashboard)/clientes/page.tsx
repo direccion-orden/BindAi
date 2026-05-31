@@ -31,6 +31,16 @@ export interface Client {
   neighborhood?: string;
   city?: string;
   state?: string;
+  razonSocial?: string;
+  cfdiUse?: string;
+  
+  // Legacy / API fields
+  LegalName?: string;
+  CommercialName?: string;
+  Email?: string;
+  Phone?: string;
+  RFC?: string;
+  address?: string;
 }
 
 export default function ClientesPage() {
@@ -253,11 +263,13 @@ export default function ClientesPage() {
     }
   };
 
-  const filteredClients = clients.filter(c => 
-    (c.LegalName || c.CommercialName || c.name).toLowerCase().includes(searchTerm.toLowerCase()) || 
-    ((c.Email || c.email) && (c.Email || c.email).toLowerCase().includes(searchTerm.toLowerCase())) ||
-    ((c.RFC || c.rfc) && (c.RFC || c.rfc).toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredClients = clients.filter(c => {
+    const nameVal = (c.LegalName || c.CommercialName || c.name || "").toLowerCase();
+    const emailVal = (c.Email || c.email || "").toLowerCase();
+    const rfcVal = (c.RFC || c.rfc || "").toLowerCase();
+    const search = searchTerm.toLowerCase();
+    return nameVal.includes(search) || emailVal.includes(search) || rfcVal.includes(search);
+  });
 
   if (loading) {
     return (

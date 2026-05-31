@@ -10,6 +10,7 @@ export interface EngineDiscount {
   id: string;
   method: "code" | "automatic";
   code?: string | null;
+  title?: string | null;
   type: "percentage" | "fixed_amount";
   value: number;
   targetType: "order" | "specific_categories";

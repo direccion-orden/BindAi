@@ -19,6 +19,8 @@ export interface ShopifyProductVariant {
   weightUnit: 'kg' | 'g' | 'lb' | 'oz';
   cost?: number;
   inventoryByWarehouse?: Record<string, number>; // Maps warehouseId -> quantity
+  inventoryQuantity?: number;
+  stock?: number;
   // Firestore specific to track creation/updates
   createdAt?: any;
   updatedAt?: any;
@@ -32,9 +34,10 @@ export interface ShopifyProductVariant {
 
 export interface ShopifyProductImage {
   id: string;
-  src: string;
-  alt: string | null;
-  position: number;
+  src?: string;
+  alt?: string | null;
+  altText?: string;
+  position?: number;
 }
 
 export interface ShopifyProduct {
@@ -55,6 +58,10 @@ export interface ShopifyProduct {
   satProductName?: string;
   satUnitCode?: string;
   satUnitName?: string;
+  categoryId?: string;
+  vendorId?: string;
+  initialCost?: number;
+  cost?: number;
   createdAt?: any;
   updatedAt?: any;
 }

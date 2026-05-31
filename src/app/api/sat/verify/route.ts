@@ -29,8 +29,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: "rejected", message: verifyResult.getStatus().getMessage() });
         }
 
-        if (!verifyResult.getCodeRequest().isFinished()) {
-            const state = verifyResult.getCodeRequest().getValue();
+        if (!verifyResult.getStatusRequest().isTypeOf('Finished')) {
+            const state = verifyResult.getStatusRequest().getValue();
             return NextResponse.json({ status: "pending", code: state, message: verifyResult.getCodeRequest().getMessage() });
         }
 
@@ -43,25 +43,27 @@ export async function POST(req: Request) {
             if (!downloadResult.getStatus().isAccepted()) continue;
             
             const zipContent = downloadResult.getPackageContent();
-            const reader = CfdiPackageReader.createFromContents(zipContent);
+            const reader = await CfdiPackageReader.createFromContents(zipContent);
             
-            for (const [filename, content] of reader.cfdis()) {
-                const uuidMatch = content.match(/UUID="([^"]+)"/);
-                const totalMatch = content.match(/Total="([^"]+)"/);
-                const fechaMatch = content.match(/Fecha="([^"]+)"/);
-                const emisorMatch = content.match(/<cfdi:Emisor[^>]+Rfc="([^"]+)"[^>]+Nombre="([^"]+)"/i);
-                
-                if (uuidMatch) {
-                    invoices.push({
-                        uuid: uuidMatch[1],
-                        total: totalMatch ? parseFloat(totalMatch[1]) : 0,
-                        date: fechaMatch ? fechaMatch[1] : "",
-                        emisorRfc: emisorMatch ? emisorMatch[1] : "Desconocido",
-                        emisorName: emisorMatch ? emisorMatch[2] : "Desconocido",
-                        xmlBase64: Buffer.from(content).toString('base64'),
-                        status: "pending_review",
-                        createdAt: new Date().toISOString()
-                    });
+            for await (const map of reader.cfdis()) {
+                for (const [uuid, content] of map) {
+                    const uuidMatch = content.match(/UUID="([^"]+)"/);
+                    const totalMatch = content.match(/Total="([^"]+)"/);
+                    const fechaMatch = content.match(/Fecha="([^"]+)"/);
+                    const emisorMatch = content.match(/<cfdi:Emisor[^>]+Rfc="([^"]+)"[^>]+Nombre="([^"]+)"/i);
+                    
+                    if (uuidMatch) {
+                        invoices.push({
+                            uuid: uuidMatch[1],
+                            total: totalMatch ? parseFloat(totalMatch[1]) : 0,
+                            date: fechaMatch ? fechaMatch[1] : "",
+                            emisorRfc: emisorMatch ? emisorMatch[1] : "Desconocido",
+                            emisorName: emisorMatch ? emisorMatch[2] : "Desconocido",
+                            xmlBase64: Buffer.from(content).toString('base64'),
+                            status: "pending_review",
+                            createdAt: new Date().toISOString()
+                        });
+                    }
                 }
             }
         }

@@ -13,7 +13,7 @@ export default function PuntoDeVentaPage() {
   if (!user) return <p className="p-8">Inicia sesión para continuar.</p>;
 
   return (
-    <POSProvider companyId={companyId}>
+    <POSProvider companyId={companyId || undefined}>
       <div className="-m-6 md:-m-8 lg:-m-10 flex flex-col h-[calc(100vh-4rem)] overflow-hidden bg-background">
         <div className="px-4 pt-4 shrink-0">
           <POSToolbar />

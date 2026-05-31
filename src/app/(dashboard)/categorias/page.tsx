@@ -19,6 +19,8 @@ import {
 export interface Category {
   id: string;
   name: string;
+  Description?: string;
+  Name?: string;
 }
 
 export default function CategoriasPage() {

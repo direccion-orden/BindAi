@@ -8,6 +8,13 @@ import { Loader2, Plus, FileText, Clock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
+export interface PurchaseOrderItem {
+  productId?: string;
+  productName: string;
+  quantity: number;
+  unitCost: number;
+}
+
 export interface PurchaseOrder {
   id: string;
   orderNumber: string;
@@ -18,6 +25,9 @@ export interface PurchaseOrder {
   expectedDate?: string;
   createdAt: string;
   createdBy: string;
+  notes?: string;
+  paidAmount?: number;
+  items: PurchaseOrderItem[];
 }
 
 export default function OrdenesCompraPage() {

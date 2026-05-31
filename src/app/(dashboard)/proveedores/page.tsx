@@ -28,6 +28,13 @@ export interface Vendor {
   neighborhood?: string;
   city?: string;
   state?: string;
+  
+  // Legacy / API fields
+  address?: string;
+  zipCode?: string;
+  LegalName?: string;
+  Email?: string;
+  Phone?: string;
 }
 
 export default function ProveedoresPage() {
@@ -240,10 +247,12 @@ export default function ProveedoresPage() {
     }
   };
 
-  const filteredVendors = vendors.filter(v => 
-    (v.LegalName || v.name).toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ((v.Email || v.email) && (v.Email || v.email).toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredVendors = vendors.filter(v => {
+    const nameVal = (v.LegalName || v.name || "").toLowerCase();
+    const emailVal = (v.Email || v.email || "").toLowerCase();
+    const search = searchTerm.toLowerCase();
+    return nameVal.includes(search) || emailVal.includes(search);
+  });
 
   if (loading) {
     return (

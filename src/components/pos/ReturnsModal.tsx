@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { collection, doc, getDoc, updateDoc, increment, addDoc, serverTimestamp, query, getDocs, where, orderBy, limit } from "firebase/firestore";
+import { collection, doc, getDoc, updateDoc, increment, addDoc, serverTimestamp, query, getDocs, where, orderBy, limit, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { X, Search, Loader2, RotateCcw, CheckCircle2, Banknote, CreditCard, Wallet, User } from "lucide-react";

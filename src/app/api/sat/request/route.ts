@@ -47,10 +47,8 @@ export async function POST(req: Request) {
         
         const parameters = QueryParameters.create(
             period,
-            DownloadType.received,
-            RequestType.cfdi,
-            DocumentType.undefined,
-            DocumentStatus.undefined
+            new DownloadType('received'),
+            new RequestType('xml')
         );
 
         const queryResult = await service.query(parameters);

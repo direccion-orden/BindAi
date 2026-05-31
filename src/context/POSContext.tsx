@@ -14,12 +14,14 @@ export type Product = {
   price: number; // We need to ensure we fetch price or use cost if price isn't there (Bind has PriceList but maybe cost is base?)
   // Actually, Bind products have a Cost, but the Price comes from PriceLists. Wait! Did we migrate prices?
   // Let's check what we migrated: cost: item.Cost. We didn't migrate Price!
-  imageUrl: string | null;
+  imageUrl?: string | null;
   bindCurrentInventory: number;
   inventoryByWarehouse?: Record<string, number>;
   unit: string;
   tags?: string[];
   productType?: string;
+  variants?: any[];
+  images?: any[];
 };
 
 export type CartItem = {

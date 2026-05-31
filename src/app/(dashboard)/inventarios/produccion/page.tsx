@@ -277,7 +277,7 @@ export default function ProduccionPage() {
             const inv = { ...(v.inventoryByWarehouse || {}) };
             
             // Cost calculation
-            const currentTotalStock = Object.values(inv).reduce((sum, q) => sum + (q as number), 0);
+            const currentTotalStock = Object.values(inv).reduce((sum: number, q: any) => sum + (q as number), 0);
             const currentCost = v.cost || 0;
             const totalCurrentValue = currentTotalStock * currentCost;
             const totalNewValue = order.totalCost;

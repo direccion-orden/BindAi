@@ -26,6 +26,8 @@ interface Location {
   name: string;
   address: string;
   warehouses: Warehouse[];
+  Name?: string;
+  Address?: string;
 }
 
 export default function SucursalesPage() {

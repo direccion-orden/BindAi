@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import JSZip from "jszip";
 import {
     Fiel,
     FielRequestBuilder,
@@ -45,17 +46,14 @@ export async function POST(req: Request) {
             
             const zipContent = downloadResult.getPackageContent();
             
-            // Detectar dinámicamente si el paquete es de XMLs o de Metadatos
+            // Detectar dinámicamente si el paquete es de XMLs o de Metadatos inspeccionando en memoria las extensiones
             let isXmlPackage = false;
             try {
-                const testReader = await CfdiPackageReader.createFromContents(zipContent);
-                for await (const map of testReader.cfdis()) {
-                    if (map.size > 0) {
-                        isXmlPackage = true;
-                        break;
-                    }
-                }
+                const zip = await JSZip.loadAsync(zipContent, { base64: true });
+                const filenames = Object.keys(zip.files);
+                isXmlPackage = filenames.some(name => name.toLowerCase().endsWith('.xml'));
             } catch (e) {
+                console.error("Error al descomprimir y validar las extensiones del paquete:", e);
                 isXmlPackage = false;
             }
             

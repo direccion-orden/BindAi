@@ -314,7 +314,7 @@ export default function EstadoCuentaPage() {
           number: folio,
           description: `Anticipo - ${ant.paymentTermName || "Pago"}${ant.reference ? " | Ref: " + ant.reference : ""}`,
           cargo: 0,
-          abono: parseFloat(ant.amount) || ant.amount || 0,
+          abono: ant.balance !== undefined ? (parseFloat(ant.balance) || 0) : (parseFloat(ant.amount) || 0),
           runningBalance: 0
         });
 

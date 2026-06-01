@@ -163,6 +163,27 @@ export default function CompanyProfilePage() {
         </p>
       </div>
 
+      {companyId && (
+        <div className="bg-slate-900/5 dark:bg-slate-900/30 border border-slate-200/60 dark:border-slate-800 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">ID de tu Empresa (para invitar colaboradores)</p>
+            <p className="font-mono text-base font-extrabold text-indigo-600 dark:text-indigo-400 select-all mt-1">{companyId}</p>
+          </div>
+          <Button 
+            type="button"
+            variant="outline" 
+            size="sm" 
+            onClick={() => {
+              navigator.clipboard.writeText(companyId);
+              alert("ID de la empresa copiado al portapapeles.");
+            }}
+            className="shrink-0 font-semibold"
+          >
+            Copiar ID
+          </Button>
+        </div>
+      )}
+
       <form onSubmit={handleSave} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Comercial Data */}

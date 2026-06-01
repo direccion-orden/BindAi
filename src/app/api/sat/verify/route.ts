@@ -44,12 +44,13 @@ export async function POST(req: Request) {
             const downloadResult = await service.download(packageId);
             if (!downloadResult.getStatus().isAccepted()) continue;
             
-            const zipContent = downloadResult.getPackageContent();
+            const zipContentBase64 = downloadResult.getPackageContent();
+            const zipBuffer = Buffer.from(zipContentBase64, 'base64');
             
             // Detectar dinámicamente si el paquete es de XMLs o de Metadatos inspeccionando en memoria las extensiones
             let isXmlPackage = false;
             try {
-                const zip = await JSZip.loadAsync(zipContent, { base64: true });
+                const zip = await JSZip.loadAsync(zipBuffer);
                 const filenames = Object.keys(zip.files);
                 isXmlPackage = filenames.some(name => name.toLowerCase().endsWith('.xml'));
             } catch (e) {
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
             
             if (isXmlPackage) {
                 console.log(`[SAT Sync] Detectado paquete de XMLs (${packageId}). Procesando...`);
-                const reader = await CfdiPackageReader.createFromContents(zipContent);
+                const reader = await CfdiPackageReader.createFromContents(zipBuffer as any);
                 for await (const map of reader.cfdis()) {
                     for (const [uuid, content] of map) {
                         const uuidMatch = content.match(/UUID="([^"]+)"/);
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
                 }
             } else {
                 console.log(`[SAT Sync] Detectado paquete de Metadatos (${packageId}). Procesando...`);
-                const reader = await MetadataPackageReader.createFromContents(zipContent);
+                const reader = await MetadataPackageReader.createFromContents(zipBuffer as any);
                 for await (const item of reader.metadata()) {
                     const uuid = item.get('uuid');
                     if (uuid) {

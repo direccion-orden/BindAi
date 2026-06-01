@@ -4,6 +4,7 @@ import {
     FielRequestBuilder,
     HttpsWebClient,
     Service,
+    CfdiPackageReader,
     MetadataPackageReader
 } from '@nodecfdi/sat-ws-descarga-masiva';
 
@@ -43,26 +44,67 @@ export async function POST(req: Request) {
             if (!downloadResult.getStatus().isAccepted()) continue;
             
             const zipContent = downloadResult.getPackageContent();
-            const reader = await MetadataPackageReader.createFromContents(zipContent);
             
-            for await (const item of reader.metadata()) {
-                const uuid = item.get('uuid');
-                if (uuid) {
-                    const total = parseFloat(item.get('monto')) || 0;
-                    const date = item.get('fechaEmision') || "";
-                    const emisorRfc = item.get('rfcEmisor') || "Desconocido";
-                    const emisorName = item.get('nombreEmisor') || "Desconocido";
-                    
-                    invoices.push({
-                        uuid: uuid,
-                        total: total,
-                        date: date,
-                        emisorRfc: emisorRfc,
-                        emisorName: emisorName,
-                        xmlBase64: "", // Los metadatos no contienen el archivo XML completo
-                        status: "pending_review",
-                        createdAt: new Date().toISOString()
-                    });
+            // Detectar dinámicamente si el paquete es de XMLs o de Metadatos
+            let isXmlPackage = false;
+            try {
+                const testReader = await CfdiPackageReader.createFromContents(zipContent);
+                for await (const map of testReader.cfdis()) {
+                    if (map.size > 0) {
+                        isXmlPackage = true;
+                        break;
+                    }
+                }
+            } catch (e) {
+                isXmlPackage = false;
+            }
+            
+            if (isXmlPackage) {
+                console.log(`[SAT Sync] Detectado paquete de XMLs (${packageId}). Procesando...`);
+                const reader = await CfdiPackageReader.createFromContents(zipContent);
+                for await (const map of reader.cfdis()) {
+                    for (const [uuid, content] of map) {
+                        const uuidMatch = content.match(/UUID="([^"]+)"/);
+                        const totalMatch = content.match(/Total="([^"]+)"/);
+                        const fechaMatch = content.match(/Fecha="([^"]+)"/);
+                        const emisorMatch = content.match(/<cfdi:Emisor[^>]+Rfc="([^"]+)"[^>]+Nombre="([^"]+)"/i);
+                        
+                        if (uuidMatch) {
+                            invoices.push({
+                                uuid: uuidMatch[1],
+                                total: totalMatch ? parseFloat(totalMatch[1]) : 0,
+                                date: fechaMatch ? fechaMatch[1] : "",
+                                emisorRfc: emisorMatch ? emisorMatch[1] : "Desconocido",
+                                emisorName: emisorMatch ? emisorMatch[2] : "Desconocido",
+                                xmlBase64: Buffer.from(content).toString('base64'),
+                                status: "pending_review",
+                                createdAt: new Date().toISOString()
+                            });
+                        }
+                    }
+                }
+            } else {
+                console.log(`[SAT Sync] Detectado paquete de Metadatos (${packageId}). Procesando...`);
+                const reader = await MetadataPackageReader.createFromContents(zipContent);
+                for await (const item of reader.metadata()) {
+                    const uuid = item.get('uuid');
+                    if (uuid) {
+                        const total = parseFloat(item.get('monto')) || 0;
+                        const date = item.get('fechaEmision') || "";
+                        const emisorRfc = item.get('rfcEmisor') || "Desconocido";
+                        const emisorName = item.get('nombreEmisor') || "Desconocido";
+                        
+                        invoices.push({
+                            uuid: uuid,
+                            total: total,
+                            date: date,
+                            emisorRfc: emisorRfc,
+                            emisorName: emisorName,
+                            xmlBase64: "", // Los metadatos no contienen el archivo XML completo
+                            status: "pending_review",
+                            createdAt: new Date().toISOString()
+                        });
+                    }
                 }
             }
         }

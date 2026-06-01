@@ -49,7 +49,7 @@ export async function POST(req: Request) {
             period,
             new DownloadType('received'),
             new RequestType('xml')
-        );
+        ).withDocumentStatus(new DocumentStatus('active'));
 
         const queryResult = await service.query(parameters);
         

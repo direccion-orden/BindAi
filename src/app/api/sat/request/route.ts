@@ -32,6 +32,8 @@ export async function POST(req: Request) {
         const now = new Date();
         const mxTimeStr = now.toLocaleString("en-US", { timeZone: "America/Mexico_City" });
         const mxDate = new Date(mxTimeStr);
+        // Restar 15 minutos para evitar problemas de desfase horario (Clock Drift) con los servidores del SAT
+        mxDate.setMinutes(mxDate.getMinutes() - 15);
         
         const year = mxDate.getFullYear();
         const month = String(mxDate.getMonth() + 1).padStart(2, '0');

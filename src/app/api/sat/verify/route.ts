@@ -4,7 +4,7 @@ import {
     FielRequestBuilder,
     HttpsWebClient,
     Service,
-    CfdiPackageReader
+    MetadataPackageReader
 } from '@nodecfdi/sat-ws-descarga-masiva';
 
 export async function POST(req: Request) {
@@ -43,27 +43,26 @@ export async function POST(req: Request) {
             if (!downloadResult.getStatus().isAccepted()) continue;
             
             const zipContent = downloadResult.getPackageContent();
-            const reader = await CfdiPackageReader.createFromContents(zipContent);
+            const reader = await MetadataPackageReader.createFromContents(zipContent);
             
-            for await (const map of reader.cfdis()) {
-                for (const [uuid, content] of map) {
-                    const uuidMatch = content.match(/UUID="([^"]+)"/);
-                    const totalMatch = content.match(/Total="([^"]+)"/);
-                    const fechaMatch = content.match(/Fecha="([^"]+)"/);
-                    const emisorMatch = content.match(/<cfdi:Emisor[^>]+Rfc="([^"]+)"[^>]+Nombre="([^"]+)"/i);
+            for await (const item of reader.metadata()) {
+                const uuid = item.get('uuid');
+                if (uuid) {
+                    const total = parseFloat(item.get('monto')) || 0;
+                    const date = item.get('fechaEmision') || "";
+                    const emisorRfc = item.get('rfcEmisor') || "Desconocido";
+                    const emisorName = item.get('nombreEmisor') || "Desconocido";
                     
-                    if (uuidMatch) {
-                        invoices.push({
-                            uuid: uuidMatch[1],
-                            total: totalMatch ? parseFloat(totalMatch[1]) : 0,
-                            date: fechaMatch ? fechaMatch[1] : "",
-                            emisorRfc: emisorMatch ? emisorMatch[1] : "Desconocido",
-                            emisorName: emisorMatch ? emisorMatch[2] : "Desconocido",
-                            xmlBase64: Buffer.from(content).toString('base64'),
-                            status: "pending_review",
-                            createdAt: new Date().toISOString()
-                        });
-                    }
+                    invoices.push({
+                        uuid: uuid,
+                        total: total,
+                        date: date,
+                        emisorRfc: emisorRfc,
+                        emisorName: emisorName,
+                        xmlBase64: "", // Los metadatos no contienen el archivo XML completo
+                        status: "pending_review",
+                        createdAt: new Date().toISOString()
+                    });
                 }
             }
         }

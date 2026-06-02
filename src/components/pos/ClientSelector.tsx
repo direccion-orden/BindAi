@@ -113,7 +113,7 @@ export function ClientSelector() {
 
   return (
     <>
-      <div className="p-4 border-b space-y-2 shrink-0 bg-background" ref={wrapperRef}>
+      <div className="p-3 border-b space-y-1.5 shrink-0 bg-background" ref={wrapperRef}>
         <h3 className="text-xs font-semibold uppercase text-muted-foreground flex items-center justify-between">
           <span className="flex items-center gap-1"><User className="w-3 h-3"/> Cliente Asignado</span>
           {activeAccount.selectedClient && activeAccount.selectedClient.id !== "public" && (

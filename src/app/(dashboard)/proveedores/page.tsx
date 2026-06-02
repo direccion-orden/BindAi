@@ -178,7 +178,7 @@ export default function ProveedoresPage() {
               await b.commit();
             }
             
-            alert(`Â¡ImportaciÃ³n exitosa! Se importaron ${records.length} proveedores con sus direcciones completas.`);
+            alert(`¡Importación exitosa! Se importaron ${records.length} proveedores con sus direcciones completas.`);
           } catch (error) {
             console.error(error);
             alert("Error importando CSV");
@@ -238,7 +238,7 @@ export default function ProveedoresPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!companyId || !window.confirm("Â¿Seguro que deseas eliminar este proveedor?")) return;
+    if (!companyId || !window.confirm("¿Seguro que deseas eliminar este proveedor?")) return;
     try {
       await deleteDoc(doc(db, "companies", companyId, "vendors", id));
     } catch (error) {
@@ -303,13 +303,13 @@ export default function ProveedoresPage() {
                 <h3 className="font-semibold text-lg border-b pb-2">Datos Generales</h3>
                 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Nombre / RazÃ³n Social <span className="text-destructive">*</span></label>
+                  <label className="text-sm font-medium">Nombre / Razón Social <span className="text-destructive">*</span></label>
                   <Input 
                     required 
                     autoFocus
                     value={formData.name || ""} 
                     onChange={e => setFormData({...formData, name: e.target.value})} 
-                    placeholder="Ej. Nike de MÃ©xico S.A. de C.V." 
+                    placeholder="Ej. Nike de México S.A. de C.V." 
                   />
                 </div>
 
@@ -324,7 +324,7 @@ export default function ProveedoresPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Correo ElectrÃ³nico</label>
+                    <label className="text-sm font-medium">Correo Electrónico</label>
                     <Input 
                       type="email"
                       value={formData.email || ""} 
@@ -333,7 +333,7 @@ export default function ProveedoresPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">TelÃ©fono</label>
+                    <label className="text-sm font-medium">Teléfono</label>
                     <Input 
                       value={formData.phone || ""} 
                       onChange={e => setFormData({...formData, phone: e.target.value})} 
@@ -344,7 +344,7 @@ export default function ProveedoresPage() {
               </div>
 
               <div className="space-y-6">
-                <h3 className="font-semibold text-lg border-b pb-2">DirecciÃ³n (Opcional)</h3>
+                <h3 className="font-semibold text-lg border-b pb-2">Dirección (Opcional)</h3>
                 
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -387,7 +387,7 @@ export default function ProveedoresPage() {
                       <Input 
                         value={formData.city || ""} 
                         onChange={e => setFormData({...formData, city: e.target.value})} 
-                        placeholder="CuauhtÃ©moc" 
+                        placeholder="Cuauhtémoc" 
                       />
                     </div>
                     <div className="space-y-2">
@@ -427,7 +427,7 @@ export default function ProveedoresPage() {
           </div>
           {filteredVendors.length === 0 ? (
             <div className="p-10 text-center text-muted-foreground">
-              {searchTerm ? "No se encontraron proveedores." : "AÃºn no tienes proveedores registrados."}
+              {searchTerm ? "No se encontraron proveedores." : "Aún no tienes proveedores registrados."}
             </div>
           ) : (
             <Table>

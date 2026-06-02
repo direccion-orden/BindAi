@@ -10,7 +10,7 @@ export function POSCartPanel() {
   const totalItems = activeAccount.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <div className="w-[420px] flex flex-col bg-card border rounded-lg shadow-sm overflow-hidden shrink-0">
+    <div className="flex-1 flex flex-col bg-card border rounded-lg shadow-sm overflow-hidden min-w-[300px]">
       {/* Cabecera Carrito */}
       <div className="p-3 border-b bg-primary/5 flex items-center justify-between shrink-0">
         <h2 className="font-semibold text-base flex items-center gap-2">

@@ -55,8 +55,11 @@ service cloud.firestore {
     match /companies/{companyId} {
       // Cualquier usuario logueado puede crear su empresa en el onboarding
       allow create: if request.auth != null;
-      // Solo miembros de la empresa pueden leerla o actualizarla
-      allow read, update: if isUserOfCompany(companyId);
+      // Cualquier usuario autenticado puede obtener (get) una empresa por ID para unirse a ella
+      allow get: if request.auth != null;
+      // Solo miembros de la empresa pueden listar (list) o actualizarla (update)
+      allow list, update: if isUserOfCompany(companyId);
+
 
       // --- SUBCOLECCIONES DE DATOS PRIVADOS AISLADOS POR EMPRESA ---
       

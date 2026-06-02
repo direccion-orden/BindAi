@@ -299,7 +299,7 @@ export default function ImportarHistorialPage() {
       Papa.default.parse(cotizacionesFile, {
         header: true,
         skipEmptyLines: true,
-        encoding: "ISO-8859-1",
+        encoding: "UTF-8",
         complete: async (results: any) => {
           try {
             const records = results.data;
@@ -462,7 +462,7 @@ export default function ImportarHistorialPage() {
       Papa.default.parse(pedidosFile, {
         header: true,
         skipEmptyLines: true,
-        encoding: "ISO-8859-1",
+        encoding: "UTF-8",
         complete: async (results: any) => {
           try {
             const records = results.data;
@@ -575,12 +575,24 @@ export default function ImportarHistorialPage() {
               let calculatedSubtotal = 0;
 
               for (const line of activeLines) {
+                const quantity = parseFloat(String(getFlexibleValue(line, ["cantidad", "quantity", "cant"])).replace(/[^0-9.-]/g, "")) || 1;
+                const unitPrice = parseFloat(String(getFlexibleValue(line, ["precio", "unitprice", "preciounitario", "rate"])).replace(/[^0-9.-]/g, "")) || 0;
+                calculatedSubtotal += quantity * unitPrice;
+              }
+
+              // Determine global discount percentage if total is lower than subtotal * 1.16
+              let orderDiscountPercentage = 0;
+              if (calculatedSubtotal > 0 && totalAmount < (calculatedSubtotal * 1.16) - 1.00) {
+                const taxableSubtotal = totalAmount / 1.16;
+                const discountAmt = Math.max(0, calculatedSubtotal - taxableSubtotal);
+                orderDiscountPercentage = Math.round((discountAmt / calculatedSubtotal) * 100);
+              }
+
+              for (const line of activeLines) {
                 const productName = String(getFlexibleValue(line, ["producto", "product", "articulo", "concepto", "descripcion", "description", "item"]) || "Concepto de Venta").trim();
                 const sku = String(getFlexibleValue(line, ["codigo", "code", "sku", "barcode", "upc"]) || "").trim();
                 const quantity = parseFloat(String(getFlexibleValue(line, ["cantidad", "quantity", "cant"])).replace(/[^0-9.-]/g, "")) || 1;
                 const unitPrice = parseFloat(String(getFlexibleValue(line, ["precio", "unitprice", "preciounitario", "rate"])).replace(/[^0-9.-]/g, "")) || 0;
-
-                calculatedSubtotal += quantity * unitPrice;
 
                 // Resolve Product on the fly
                 let product = null;
@@ -602,12 +614,15 @@ export default function ImportarHistorialPage() {
                   variantTitle: "Default Title",
                   quantity: quantity,
                   unitPrice: unitPrice,
-                  discountPercentage: 0
+                  discountPercentage: orderDiscountPercentage
                 });
               }
 
-              const subtotal = calculatedSubtotal > 0 ? calculatedSubtotal : (totalAmount / 1.16);
-              
+              const subtotal = calculatedSubtotal;
+              const totalDiscount = subtotal * (orderDiscountPercentage / 100);
+              const taxableSubtotal = subtotal - totalDiscount;
+              const tax = Math.max(0, totalAmount - taxableSubtotal);
+
               const orderId = `order-${numero}`;
               const ref = doc(db, "companies", companyId, "pedidos", orderId);
 
@@ -624,7 +639,8 @@ export default function ImportarHistorialPage() {
                 clientId: clientId || null,
                 totalAmount: totalAmount,
                 subtotal: subtotal,
-                tax: totalAmount - subtotal,
+                totalDiscount: totalDiscount,
+                tax: tax,
                 status: status,
                 createdAt: isoDate,
                 createdBy: String(getFlexibleValue(latestRecord, ["empleado", "vendedor", "vendedorasignado", "agent", "salesagent", "user", "usuario", "creadoby", "creadopor"]) || "Migración Automática").trim(),
@@ -686,7 +702,7 @@ export default function ImportarHistorialPage() {
       Papa.default.parse(remisionesFacturasFile, {
         header: true,
         skipEmptyLines: true,
-        encoding: "ISO-8859-1",
+        encoding: "UTF-8",
         complete: async (results: any) => {
           try {
             const records = results.data;
@@ -920,7 +936,7 @@ export default function ImportarHistorialPage() {
       Papa.default.parse(ingresosFile, {
         header: true,
         skipEmptyLines: true,
-        encoding: "ISO-8859-1",
+        encoding: "UTF-8",
         complete: async (results: any) => {
           try {
             const records = results.data;

@@ -1,17 +1,18 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { collection, query, onSnapshot, doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, getDoc, updateDoc, setDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt, Percent } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
 import { getNextSequence } from "@/lib/firebase/counters";
+import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/discountEngine";
 
 interface OrderItem {
   productId: string;
@@ -22,6 +23,7 @@ interface OrderItem {
   unitPrice: number;
   discountPercentage: number;
   imageUrl?: string;
+  categoryIds?: string[];
 }
 
 export default function EditarFacturaPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
@@ -53,6 +55,10 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
   
   const [saving, setSaving] = useState(false);
 
+  // Engine state
+  const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
+  const [enteredPromoCode, setEnteredPromoCode] = useState<string>("");
+
   useEffect(() => {
     if (!companyId || !params.id) return;
 
@@ -65,6 +71,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         setClientSearch(data.clientName || "");
         setItems(data.items || []);
         setProjectId(data.projectId || "");
+        setEnteredPromoCode(data.promoCode || "");
       }
       setFacturaLoaded(true);
     };
@@ -84,7 +91,11 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
       setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); };
+    const unsubD = onSnapshot(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active")), (snap) => {
+      setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
+    });
+
+    return () => { unsubC(); unsubP(); unsubProj(); unsubD(); };
   }, [companyId, params.id]);
 
   const getFilteredClients = () => {
@@ -119,7 +130,11 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         quantity: 1, 
         unitPrice: variant.price || 0,
         discountPercentage: 0,
-        imageUrl: product.images?.[0]?.src || ""
+        imageUrl: product.images?.[0]?.src || "",
+        categoryIds: [
+          ...(product.productType ? [product.productType] : []),
+          ...(product.tags || [])
+        ]
       }]);
     }
     setProductSearch("");
@@ -138,10 +153,25 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
     setItems(prev => prev.filter(i => i.variantId !== variantId));
   };
 
-  // Calculations
-  const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0);
-  const tax = subtotal * 0.16;
-  const total = subtotal + tax;
+  // Calculations via Engine
+  const engineItems: EngineItem[] = items.map(i => {
+    const matchingProd = products.find(p => p.id === i.productId);
+    return {
+      id: i.variantId,
+      quantity: i.quantity,
+      unitPrice: i.unitPrice,
+      manualDiscountPercentage: i.discountPercentage,
+      categoryIds: i.categoryIds || [
+        ...(matchingProd?.productType ? [matchingProd.productType] : []),
+        ...(matchingProd?.tags || [])
+      ]
+    };
+  });
+
+  const totals = calculateOrderTotals(engineItems, availableDiscounts, enteredPromoCode);
+  const subtotal = totals.subtotal;
+  const tax = totals.tax;
+  const total = totals.total;
 
   const handleSave = async () => {
     if (!companyId) return;
@@ -206,7 +236,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         Date: new Date().toISOString().split('.')[0],
         ExpeditionPlace: "64753",
         Items: items.map((item: any) => {
-          const discountAmt = item.quantity * item.unitPrice * (item.discountPercentage / 100);
+          const engineItem = totals.processedItems?.find(ei => ei.id === item.variantId);
+          const discountAmt = engineItem ? engineItem.finalDiscountAmt : 0;
           const subtotalItem = (item.quantity * item.unitPrice) - discountAmt;
           return {
             ProductCode: "01010101",
@@ -216,7 +247,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
             UnitCode: "H87",
             UnitPrice: Number(item.unitPrice.toFixed(4)),
             Quantity: item.quantity,
-            Subtotal: Number(subtotalItem.toFixed(4)),
+            Subtotal: Number((item.quantity * item.unitPrice).toFixed(4)),
             Discount: Number(discountAmt.toFixed(4)),
             TaxObject: "02",
             Taxes: [
@@ -246,9 +277,11 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         clientId: finalClientId,
         clientName: finalClientName,
         items: items,
-        subtotal,
-        tax,
-        totalAmount: total,
+        subtotal: totals.subtotal,
+        totalDiscount: totals.totalDiscount,
+        promoCode: totals.appliedPromo?.code || null,
+        tax: totals.tax,
+        totalAmount: totals.total,
         projectId: projectId || null,
         projectName: projectId ? projects.find(p => p.id === projectId)?.name : null,
         cfdiPayload: cfdiPayload,
@@ -504,17 +537,43 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
             </div>
 
             <div className="p-5 border-t bg-muted/30 flex flex-col items-end gap-2">
+              <div className="w-full max-w-[300px] mb-4">
+                 <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1 mb-1">
+                    <Percent className="w-3 h-3"/> Código Promocional
+                 </label>
+                 <Input 
+                    value={enteredPromoCode}
+                    onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
+                    placeholder="Ej. VERANO20"
+                    className="h-8 text-sm font-mono uppercase bg-white"
+                 />
+                 {totals.error && enteredPromoCode && (
+                   <p className="text-[10px] text-red-500 mt-1 font-medium">{totals.error}</p>
+                 )}
+                 {totals.appliedPromo && (
+                   <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1">
+                     ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
+                   </p>
+                 )}
+              </div>
+
               <div className="flex justify-between w-full max-w-[300px] text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-semibold">${subtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                <span className="font-semibold">${totals.subtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
               </div>
+              {totals.totalDiscount > 0 && (
+                <div className="flex justify-between w-full max-w-[300px] text-sm">
+                  <span className="text-muted-foreground">Descuento</span>
+                  <span className="font-semibold text-emerald-600">-${totals.totalDiscount.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+              )}
               <div className="flex justify-between w-full max-w-[300px] text-sm">
                 <span className="text-muted-foreground">IVA (16%)</span>
-                <span className="font-semibold">${tax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                <span className="font-semibold">${totals.tax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
               </div>
               <div className="flex justify-between w-full max-w-[300px] text-lg mt-2 pt-2 border-t border-slate-300">
                 <span className="font-bold text-slate-800">TOTAL</span>
-                <span className="font-black text-blue-700">${total.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                <span className="font-black text-blue-700">${totals.total.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
               </div>
               
               <Button 

@@ -215,8 +215,18 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
     }
   };
   
-  const subtotal = factura.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0);
-  const tax = subtotal * 0.16;
+  const grossSubtotal = factura.items && Array.isArray(factura.items)
+    ? factura.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0)
+    : 0;
+  const totalDiscount = factura.items && Array.isArray(factura.items)
+    ? factura.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0)
+    : 0;
+
+  const displaySubtotal = factura.subtotal || grossSubtotal;
+  const displayDiscount = factura.totalDiscount || totalDiscount;
+  const taxableSubtotal = displaySubtotal - displayDiscount;
+  const displayTax = factura.tax !== undefined ? factura.tax : (taxableSubtotal * 0.16);
+  const displayTotal = factura.totalAmount !== undefined ? factura.totalAmount : (taxableSubtotal + displayTax);
 
   return (
     <div className="flex flex-col space-y-6 max-w-5xl mx-auto pb-10">
@@ -260,7 +270,7 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
         </div>
 
         <div className="flex items-center gap-3">
-          {factura.status !== 'cancelada' && (factura.paidAmount || 0) < subtotal * 1.16 - 0.01 && (
+          {factura.status !== 'cancelada' && (factura.paidAmount || 0) < displayTotal - 0.01 && (
             <Button onClick={() => setIsPaymentModalOpen(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
               <DollarSign className="w-4 h-4" /> Registrar Pago
             </Button>
@@ -343,9 +353,16 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
                 </div>
               </div>
               
-              <div className="text-right">
-                <p className="font-semibold">{item.quantity} x ${(item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}</p>
-                {item.discountPercentage > 0 && <p className="text-[10px] text-emerald-600">Descuento: {item.discountPercentage}%</p>}
+              <div className="text-right flex items-center gap-6">
+                <div className="text-slate-500 text-xs">
+                  <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                  {item.discountPercentage > 0 && (
+                    <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
+                  )}
+                </div>
+                <div className="font-bold text-slate-950 min-w-[100px] text-base">
+                  ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                </div>
               </div>
             </div>
           ))}
@@ -355,15 +372,21 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
           <div className="w-72 space-y-2 text-sm bg-slate-50 p-4 rounded-lg border">
             <div className="flex justify-between text-slate-500">
               <span>Subtotal</span>
-              <span>${subtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+              <span>${displaySubtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
             </div>
+            {displayDiscount > 0 && (
+              <div className="flex justify-between text-emerald-600 font-medium">
+                <span>Descuento</span>
+                <span>-${displayDiscount.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+              </div>
+            )}
             <div className="flex justify-between text-slate-500">
               <span>IVA (16%)</span>
-              <span>${tax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+              <span>${displayTax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
             </div>
             <div className="flex justify-between font-black text-xl pt-2 border-t mt-2 text-slate-900">
               <span>Total CFDI</span>
-              <span className="text-indigo-700">${factura.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+              <span className="text-indigo-700">${displayTotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
             </div>
             {(factura.paidAmount || 0) > 0 && (
               <>

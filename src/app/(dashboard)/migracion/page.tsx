@@ -63,11 +63,73 @@ export default function MigrationPage() {
         const batch = writeBatch(db);
         const colRef = collection(db, "companies", companyId, task.id);
 
+        // Si es la colección de productos, cargamos los precios de venta en paralelo para el lote
+        const priceMap = new Map();
+        if (task.id === "products") {
+          await Promise.all(data.map(async (item: any) => {
+            const itemId = item.ID || item.Id || item.id || item.Number;
+            if (!itemId) return;
+            try {
+              const priceRes = await fetch(`/api/erp/fetch-product-price?bindId=${itemId}`);
+              if (priceRes.ok) {
+                const priceJson = await priceRes.json();
+                if (priceJson.price > 0) {
+                  priceMap.set(itemId.toString(), priceJson.price);
+                }
+              }
+            } catch (err) {
+              console.error("Error fetching price for", itemId, err);
+            }
+          }));
+        }
+
         data.forEach((item: any) => {
           const itemId = item.ID || item.Id || item.id || item.Number; 
           if (!itemId) return;
           const docRef = doc(colRef, itemId.toString());
-          batch.set(docRef, item, { merge: true });
+          
+          if (task.id === "products") {
+            const title = item.Title || item.Code || "Sin título";
+            const handle = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+            const cost = parseFloat(item.Cost) || 0;
+            
+            // Usar el precio de venta real del mapa, o el costo como fallback
+            const price = priceMap.get(itemId.toString()) || cost;
+            
+            const mappedProduct = {
+              title: title,
+              handle: handle,
+              bodyHtml: item.Description || "",
+              vendor: "Bind ERP",
+              productType: item.TypeText || "",
+              status: 'ACTIVE',
+              tags: [],
+              currency: item.CurrencyCode || "MXN",
+              cost: cost,
+              iva: item.ChargeVAT ? 16 : 0,
+              variants: [
+                {
+                  id: `var-${itemId}`,
+                  title: "Default Title",
+                  price: price, // Usamos el precio de venta real mapeado
+                  sku: item.SKU || item.Code || "",
+                  barcode: item.Code || "",
+                  inventoryQuantity: item.CurrentInventory || 0,
+                  weight: parseFloat(item.Weight) || 0,
+                }
+              ],
+              options: [
+                { id: "opt-1", name: "Title", values: ["Default Title"] }
+              ],
+              images: [],
+              updatedAt: new Date(),
+              // Mantenemos también los campos originales del ERP por respaldo
+              ...item
+            };
+            batch.set(docRef, mappedProduct, { merge: true });
+          } else {
+            batch.set(docRef, item, { merge: true });
+          }
         });
 
         await batch.commit();

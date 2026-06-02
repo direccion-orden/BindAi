@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { collection, query, getDocs, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { Plus, Search, Tag, Filter, MoreHorizontal, Package } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShopifyProduct } from "@/types/product";
@@ -15,11 +15,15 @@ export default function ProductosPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
+
   const { companyId } = useAuth();
 
   useEffect(() => {
     if (companyId) {
       fetchProducts();
+      fetchCategories();
     }
   }, [companyId]);
 
@@ -38,15 +42,59 @@ export default function ProductosPage() {
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      if (!companyId) return;
+      const q = query(collection(db, "companies", companyId, "categories"));
+      const snapshot = await getDocs(q);
+      const catList = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          name: d.name || d.Name || d.description || d.Description || ""
+        };
+      }).filter(c => c.name !== "");
+      catList.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      setCategories(catList);
+    } catch (e) {
+      console.error("Error fetching categories:", e);
+    }
+  };
+
   const filteredProducts = products.filter(p => {
+    // 1. Filtrar por categoría seleccionada
+    if (selectedCategory && selectedCategory !== "Todas") {
+      const selectedCatObj = categories.find(c => c.name.toLowerCase() === selectedCategory.toLowerCase());
+      const selectedCatId = selectedCatObj?.id;
+
+      const matchByName = p.productType && typeof p.productType === 'string' && p.productType.toLowerCase() === selectedCategory.toLowerCase();
+      const matchById = selectedCatId && (
+        (p as any).Category1ID === selectedCatId ||
+        (p as any).Category2ID === selectedCatId ||
+        (p as any).Category3ID === selectedCatId ||
+        (p as any).categoryId === selectedCatId
+      );
+      if (!matchByName && !matchById) {
+        return false;
+      }
+    }
+
+    // 2. Filtrar por búsqueda
     const title = p.title || "";
     const vendor = p.vendor || "";
     const type = p.productType || "";
     const search = searchTerm.toLowerCase();
     
+    // Buscar también en SKU y código de barras de las variantes
+    const hasSkuOrBarcode = p.variants?.some(v => 
+      (v.sku && String(v.sku).toLowerCase().includes(search)) ||
+      (v.barcode && String(v.barcode).toLowerCase().includes(search))
+    ) || (p as any).SKU === searchTerm || (p as any).Code === searchTerm;
+    
     return title.toLowerCase().includes(search) || 
            vendor.toLowerCase().includes(search) ||
-           type.toLowerCase().includes(search);
+           type.toLowerCase().includes(search) ||
+           hasSkuOrBarcode;
   });
 
   return (
@@ -81,13 +129,19 @@ export default function ProductosPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Button variant="outline" className="gap-2 flex-1 sm:flex-none">
-              <Filter className="w-4 h-4" /> Filtrar
-            </Button>
-            <Button variant="outline" className="gap-2 flex-1 sm:flex-none">
-              <Tag className="w-4 h-4" /> Etiquetas
-            </Button>
+          <div className="w-full sm:w-60 shrink-0">
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full border rounded-md p-2 h-10 text-sm bg-background text-foreground shadow-sm hover:border-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+            >
+              <option value="Todas">Todas las categorías</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

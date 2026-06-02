@@ -20,6 +20,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   
   const [order, setOrder] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isItemsModified, setIsItemsModified] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [canceling, setCanceling] = useState(false);
@@ -71,11 +72,23 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     if (!companyId) return;
     setSaving(true);
     try {
-      const subtotal = order.items && Array.isArray(order.items)
-        ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0)
-        : (order.subtotal || 0);
-      const tax = subtotal * 0.16;
-      const totalAmount = subtotal + tax;
+      const grossSubtotal = order.items && Array.isArray(order.items)
+        ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0)
+        : 0;
+      const totalDiscount = order.items && Array.isArray(order.items)
+        ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0)
+        : 0;
+
+      const subtotal = isItemsModified ? grossSubtotal : (order.subtotal || grossSubtotal);
+      const discount = isItemsModified ? totalDiscount : (order.totalDiscount || totalDiscount);
+      const taxableSubtotal = subtotal - discount;
+
+      const tax = isItemsModified
+        ? taxableSubtotal * 0.16
+        : (order.tax !== undefined ? order.tax : taxableSubtotal * 0.16);
+      const totalAmount = isItemsModified
+        ? taxableSubtotal + tax
+        : (order.totalAmount !== undefined ? order.totalAmount : taxableSubtotal + tax);
 
       let finalProjectName = order.projectName;
       if (order.projectId) {
@@ -86,12 +99,15 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         ...order,
         projectName: finalProjectName,
         subtotal,
+        totalDiscount: discount,
         tax,
         totalAmount,
       };
 
       await updateDoc(doc(db, "companies", companyId, "pedidos", order.id), updatedOrder);
       setIsEditing(false);
+      setIsItemsModified(false);
+      setOrder(updatedOrder);
       alert("Pedido actualizado correctamente.");
     } catch (e) {
       console.error(e);
@@ -102,6 +118,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   };
 
   const updateItem = (variantId: string, field: string, value: number) => {
+    setIsItemsModified(true);
     setOrder((prev: any) => ({
       ...prev,
       items: prev.items.map((item: any) => 
@@ -111,6 +128,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   };
 
   const removeItem = (variantId: string) => {
+    setIsItemsModified(true);
     setOrder((prev: any) => ({
       ...prev,
       items: prev.items.filter((item: any) => item.variantId !== variantId)
@@ -118,6 +136,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   };
 
   const handleAddProduct = (product: any, variant: any) => {
+    setIsItemsModified(true);
     const exists = order.items.find((i: any) => i.variantId === variant.id);
     if (!exists) {
       setOrder((prev: any) => ({
@@ -165,11 +184,23 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     }
   };
 
-  const displaySubtotal = isEditing && order.items && Array.isArray(order.items)
-    ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0)
-    : (order.subtotal || 0);
-  const displayTax = displaySubtotal * 0.16;
-  const displayTotal = displaySubtotal + displayTax;
+  const grossSubtotal = order.items && Array.isArray(order.items)
+    ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0)
+    : 0;
+  const totalDiscount = order.items && Array.isArray(order.items)
+    ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0)
+    : 0;
+
+  const displaySubtotal = isItemsModified ? grossSubtotal : (order.subtotal || grossSubtotal);
+  const displayDiscount = isItemsModified ? totalDiscount : (order.totalDiscount || totalDiscount);
+  const taxableSubtotal = displaySubtotal - displayDiscount;
+
+  const displayTax = isItemsModified
+    ? taxableSubtotal * 0.16
+    : (order.tax !== undefined ? order.tax : taxableSubtotal * 0.16);
+  const displayTotal = isItemsModified
+    ? taxableSubtotal + displayTax
+    : (order.totalAmount !== undefined ? order.totalAmount : taxableSubtotal + displayTax);
 
   return (
     <div className="flex flex-col space-y-6 max-w-5xl mx-auto pb-10">
@@ -286,7 +317,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
               </div>
               
               {isEditing ? (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-3">
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] text-slate-500 font-bold uppercase">Cant.</label>
                     <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-20 h-9 text-center bg-white" />
@@ -299,12 +330,25 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                     <label className="text-[10px] text-emerald-600 font-bold uppercase">Desc %</label>
                     <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-20 h-9 text-center text-emerald-600 bg-white" />
                   </div>
+                  <div className="flex flex-col gap-1 text-right min-w-[90px]">
+                    <label className="text-[10px] text-slate-500 font-bold uppercase">Subtotal</label>
+                    <span className="h-9 flex items-center justify-end font-bold text-slate-900 pr-1">
+                      ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                    </span>
+                  </div>
                   <Button variant="ghost" size="icon" onClick={() => removeItem(item.variantId)} className="h-9 w-9 text-red-500 mt-4 bg-white hover:bg-red-50"><Trash2 className="w-4 h-4" /></Button>
                 </div>
               ) : (
-                <div className="text-right">
-                  <p className="font-semibold">{item.quantity} x ${(item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}</p>
-                  {item.discountPercentage > 0 && <p className="text-[10px] text-emerald-600">Descuento: {item.discountPercentage}%</p>}
+                <div className="text-right flex items-center gap-6">
+                  <div className="text-slate-500 text-xs">
+                    <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                    {item.discountPercentage > 0 && (
+                      <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
+                    )}
+                  </div>
+                  <div className="font-bold text-slate-950 min-w-[100px] text-base">
+                    ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                  </div>
                 </div>
               )}
             </div>
@@ -360,6 +404,12 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
               <span>Subtotal</span>
               <span>${displaySubtotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
             </div>
+            {displayDiscount > 0 && (
+              <div className="flex justify-between text-emerald-600 font-medium">
+                <span>Descuento</span>
+                <span>-${displayDiscount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+              </div>
+            )}
             <div className="flex justify-between text-slate-500">
               <span>IVA (16%)</span>
               <span>${displayTax?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>

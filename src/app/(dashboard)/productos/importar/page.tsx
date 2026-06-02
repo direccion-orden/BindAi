@@ -30,7 +30,7 @@ export default function ImportarProductosPage() {
       Papa.default.parse(file, {
         header: true,
         skipEmptyLines: true,
-        encoding: "ISO-8859-1",
+        encoding: "UTF-8",
         complete: async (results: any) => {
           try {
             const records = results.data;

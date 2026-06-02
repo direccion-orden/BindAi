@@ -45,9 +45,13 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
     setLoading(true);
     try {
       // Recalculate totals
-      const subtotal = editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0);
-      const tax = subtotal * 0.16;
-      const totalAmount = subtotal + tax;
+      const grossSubtotal = editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+      const totalDiscount = editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0);
+      const subtotal = isEditing ? grossSubtotal : (editData.subtotal || grossSubtotal);
+      const discount = isEditing ? totalDiscount : (editData.totalDiscount || totalDiscount);
+      const taxableSubtotal = subtotal - discount;
+      const tax = taxableSubtotal * 0.16;
+      const totalAmount = taxableSubtotal + tax;
 
       // Handle AI Image Update if prompt changed via Server Action
       let imageUrl = editData.imageUrl;
@@ -68,6 +72,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
         ...editData,
         projectName: finalProjectName,
         subtotal,
+        totalDiscount: discount,
         tax,
         totalAmount,
         imageUrl
@@ -147,11 +152,23 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
   };
 
   // Recalc UI totals on the fly during edit
-  const displaySubtotal = isEditing 
-    ? editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0)
-    : editData.subtotal;
-  const displayTax = displaySubtotal * 0.16;
-  const displayTotal = displaySubtotal + displayTax;
+  const grossSubtotal = editData.items && Array.isArray(editData.items)
+    ? editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0)
+    : 0;
+  const totalDiscount = editData.items && Array.isArray(editData.items)
+    ? editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0)
+    : 0;
+
+  const displaySubtotal = isEditing ? grossSubtotal : (editData.subtotal || grossSubtotal);
+  const displayDiscount = isEditing ? totalDiscount : (editData.totalDiscount || totalDiscount);
+  const taxableSubtotal = displaySubtotal - displayDiscount;
+
+  const displayTax = isEditing
+    ? taxableSubtotal * 0.16
+    : (editData.tax !== undefined ? editData.tax : taxableSubtotal * 0.16);
+  const displayTotal = isEditing
+    ? taxableSubtotal + displayTax
+    : (editData.totalAmount !== undefined ? editData.totalAmount : taxableSubtotal + displayTax);
 
   return (
     <Dialog open={!!quote} onOpenChange={(open) => !open && onClose()}>
@@ -262,7 +279,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                   </div>
                   
                   {isEditing ? (
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                       <div className="flex flex-col gap-1">
                         <label className="text-[10px] text-slate-500 font-bold uppercase">Cant.</label>
                         <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-16 h-8 text-center" />
@@ -275,12 +292,25 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                         <label className="text-[10px] text-emerald-600 font-bold uppercase">Desc %</label>
                         <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-16 h-8 text-center text-emerald-600" />
                       </div>
+                      <div className="flex flex-col gap-1 text-right min-w-[90px]">
+                        <label className="text-[10px] text-slate-500 font-bold uppercase">Subtotal</label>
+                        <span className="h-8 flex items-center justify-end font-bold text-slate-900 pr-1">
+                          ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                        </span>
+                      </div>
                       <Button variant="ghost" size="icon" onClick={() => removeItem(item.variantId)} className="h-8 w-8 text-red-500 mt-4"><Trash2 className="w-4 h-4" /></Button>
                     </div>
                   ) : (
-                    <div className="text-right">
-                      <p className="font-semibold">{item.quantity} x ${(item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}</p>
-                      {item.discountPercentage > 0 && <p className="text-[10px] text-emerald-600">Descuento: {item.discountPercentage}%</p>}
+                    <div className="text-right flex items-center gap-6">
+                      <div className="text-slate-500 text-xs">
+                        <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                        {item.discountPercentage > 0 && (
+                          <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
+                        )}
+                      </div>
+                      <div className="font-bold text-slate-950 min-w-[100px] text-base">
+                        ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -333,6 +363,12 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                 <span>Subtotal</span>
                 <span>${displaySubtotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
               </div>
+              {displayDiscount > 0 && (
+                <div className="flex justify-between text-emerald-600 font-medium">
+                  <span>Descuento</span>
+                  <span>-${displayDiscount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+              )}
               <div className="flex justify-between text-muted-foreground">
                 <span>IVA (16%)</span>
                 <span>${displayTax?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>

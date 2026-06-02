@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt, Building2, BookOpen } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt, Building2, BookOpen, Percent } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
@@ -280,9 +280,11 @@ export default function NuevaFacturaPage() {
         clientId: finalClientId,
         clientName: finalClientName,
         items: items,
-        subtotal,
-        tax,
-        totalAmount: total,
+        subtotal: totals.subtotal,
+        totalDiscount: totals.totalDiscount,
+        promoCode: totals.appliedPromo?.code || null,
+        tax: totals.tax,
+        totalAmount: totals.total,
         projectId: projectId || null,
         projectName: projectId ? projects.find(p => p.id === projectId)?.name : null,
         locationId,
@@ -612,17 +614,43 @@ export default function NuevaFacturaPage() {
             </div>
 
             <div className="p-5 border-t bg-muted/30 flex flex-col items-end gap-2">
+              <div className="w-full max-w-[300px] mb-4">
+                 <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1 mb-1">
+                    <Percent className="w-3 h-3"/> Código Promocional
+                 </label>
+                 <Input 
+                    value={enteredPromoCode}
+                    onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
+                    placeholder="Ej. VERANO20"
+                    className="h-8 text-sm font-mono uppercase"
+                 />
+                 {totals.error && enteredPromoCode && (
+                   <p className="text-[10px] text-red-500 mt-1 font-medium">{totals.error}</p>
+                 )}
+                 {totals.appliedPromo && (
+                   <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1">
+                     ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
+                   </p>
+                 )}
+              </div>
+
               <div className="flex justify-between w-full max-w-[300px] text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-semibold">${subtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                <span className="font-semibold">${totals.subtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
               </div>
+              {totals.totalDiscount > 0 && (
+                <div className="flex justify-between w-full max-w-[300px] text-sm">
+                  <span className="text-muted-foreground">Descuento</span>
+                  <span className="font-semibold text-emerald-600">-${totals.totalDiscount.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+              )}
               <div className="flex justify-between w-full max-w-[300px] text-sm">
                 <span className="text-muted-foreground">IVA (16%)</span>
-                <span className="font-semibold">${tax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                <span className="font-semibold">${totals.tax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
               </div>
               <div className="flex justify-between w-full max-w-[300px] text-lg mt-2 pt-2 border-t border-slate-300">
                 <span className="font-bold text-slate-800">TOTAL</span>
-                <span className="font-black text-blue-700">${total.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                <span className="font-black text-blue-700">${totals.total.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
               </div>
               
               <Button 

@@ -33,7 +33,7 @@ export function POSTotalsPanel() {
   };
 
   return (
-    <div className="w-1/4 h-full bg-card border rounded-lg flex flex-col shadow-sm overflow-hidden min-w-[320px] shrink-0">
+    <div className="w-[340px] h-full bg-card border rounded-lg flex flex-col shadow-sm overflow-hidden shrink-0">
 
 
       {/* Selector de Cuentas (Tabs) */}
@@ -74,52 +74,52 @@ export function POSTotalsPanel() {
       )}
 
       {/* Totales y Cobro */}
-      <div className="p-4 border-t bg-muted/20 space-y-3 shrink-0">
-        <div className="flex flex-col gap-2 mb-4 bg-background p-3 rounded border border-dashed">
-            <span className="text-sm font-medium flex items-center gap-2 text-indigo-700">
-              <Percent className="w-4 h-4"/> Código Promocional
+      <div className="p-3 border-t bg-muted/20 space-y-2 shrink-0">
+        <div className="flex flex-col gap-1.5 mb-2 bg-background p-2.5 rounded border border-dashed">
+            <span className="text-xs font-semibold flex items-center gap-1.5 text-indigo-700">
+              <Percent className="w-3.5 h-3.5"/> Código Promocional
             </span>
             <div className="flex items-center gap-2">
                 <Input 
                     type="text" 
                     placeholder="Ej. VERANO20" 
-                    className="h-8 uppercase flex-1 font-mono text-sm" 
+                    className="h-8 uppercase flex-1 font-mono text-xs" 
                     value={activeAccount.enteredPromoCode || ''}
                     onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
                 />
             </div>
             {promoError && activeAccount.enteredPromoCode && (
-              <span className="text-xs text-red-500 font-medium">{promoError}</span>
+              <span className="text-[10px] text-red-500 font-medium">{promoError}</span>
             )}
             {appliedPromo && (
-              <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+              <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
                 ✓ Aplicado: {appliedPromo.title || appliedPromo.code}
               </span>
             )}
         </div>
 
-        <div className="flex justify-between text-sm">
+        <div className="flex justify-between text-xs">
           <span className="text-muted-foreground">Subtotal</span>
           <span className="font-medium">{formatMoney(subtotal)}</span>
         </div>
         {totalDiscount > 0 && (
-            <div className="flex justify-between text-sm">
+            <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Descuentos</span>
               <span className="font-medium text-emerald-600">-{formatMoney(totalDiscount)}</span>
             </div>
         )}
-        <div className="flex justify-between text-sm">
+        <div className="flex justify-between text-xs">
           <span className="text-muted-foreground">IVA (16%)</span>
           <span className="font-medium">{formatMoney(tax)}</span>
         </div>
-        <div className="flex justify-between text-2xl font-black pt-3 border-t border-foreground/10">
+        <div className="flex justify-between text-xl font-bold pt-2 border-t border-foreground/10">
           <span>Total</span>
           <span className="text-primary">{formatMoney(total)}</span>
         </div>
         <button 
           disabled={activeAccount.items.length === 0}
           onClick={() => setIsCheckoutOpen(true)}
-          className="w-full mt-4 bg-primary text-primary-foreground font-bold text-lg h-11 rounded-md shadow hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full mt-2 bg-primary text-primary-foreground font-bold text-base h-10 rounded-md shadow hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cobrar Ticket
         </button>

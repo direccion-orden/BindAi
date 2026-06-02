@@ -141,11 +141,11 @@ export function ClientInsightsPanel({ client }: ClientInsightsPanelProps) {
   };
 
   return (
-    <div className="flex-1 bg-muted/10 border-b flex flex-col min-h-0 overflow-hidden">
+    <div className="flex-1 bg-muted/10 border-b flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
       
       {/* Información de Contacto */}
-      <div className="p-3 border-b bg-background shrink-0">
-        <div className="flex items-center justify-between mb-2">
+      <div className="p-2.5 border-b bg-background shrink-0">
+        <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">
             Contacto del Cliente
           </span>
@@ -161,7 +161,7 @@ export function ClientInsightsPanel({ client }: ClientInsightsPanelProps) {
           )}
         </div>
         
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <Phone className="w-3 h-3 text-muted-foreground shrink-0" />
             <Input 
@@ -184,7 +184,7 @@ export function ClientInsightsPanel({ client }: ClientInsightsPanelProps) {
       </div>
 
       {/* Sugerencias (Últimas 3 Visitas) */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
+      <div className="p-3">
         <div className="flex items-center gap-1.5 mb-2 text-muted-foreground">
           <ShoppingBag className="w-3.5 h-3.5" />
           <span className="text-[10px] font-bold uppercase tracking-wider">

@@ -97,6 +97,69 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     recyclerStatusRef.current = recyclerStatus;
   }, [recyclerStatus]);
 
+  const [agentConnected, setAgentConnected] = useState<boolean | null>(null); // null = checking
+  const [agentStarting, setAgentStarting] = useState(false);
+
+  useEffect(() => {
+      if (currentMethod === 'efectivo' && cashMode === 'recycler') {
+          let active = true;
+          const checkConnection = async () => {
+              try {
+                  const ping = await fetch('http://localhost:3001/api/status', { signal: AbortSignal.timeout(1000) });
+                  if (ping.ok && active) {
+                      setAgentConnected(true);
+                      return;
+                  }
+              } catch (e) {}
+              if (active) setAgentConnected(false);
+          };
+          
+          checkConnection();
+          const interval = setInterval(checkConnection, 3000);
+          return () => {
+              active = false;
+              clearInterval(interval);
+          };
+      }
+  }, [currentMethod, cashMode]);
+
+  const startLocalAgent = async () => {
+    try {
+      setRecyclerEventMessage('Iniciando agente de hardware local...');
+      const startRes = await fetch('/api/hardware-agent/start', { method: 'POST' });
+      if (startRes.ok) {
+        setRecyclerEventMessage('Agente iniciado. Conectando al reciclador...');
+        return true;
+      }
+    } catch (e) {
+      console.warn("Failed to auto-start local hardware agent via API", e);
+    }
+    return false;
+  };
+
+  const autoCheckAndStartAgent = async () => {
+      try {
+          const ping = await fetch('http://localhost:3001/api/status', { signal: AbortSignal.timeout(1000) });
+          if (ping.ok) {
+              setAgentConnected(true);
+              return;
+          }
+      } catch (e) {
+          setAgentStarting(true);
+          try {
+              const res = await fetch('/api/hardware-agent/start', { method: 'POST' });
+              if (res.ok) {
+                  console.log("[POS Checkout] Local hardware agent started automatically.");
+                  setAgentConnected(true);
+              }
+          } catch (err) {
+              console.error("[POS Checkout] Failed to auto-start agent:", err);
+          } finally {
+              setAgentStarting(false);
+          }
+      }
+  };
+
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -144,6 +207,34 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       setRecyclerInserted(0);
       setRecyclerEventMessage('Iniciando sesión en reciclador...');
       
+      let isConnected = false;
+      try {
+          // 1. Proactively test agent status
+          const ping = await fetch('http://localhost:3001/api/status', { signal: AbortSignal.timeout(1500) });
+          if (ping.ok) isConnected = true;
+      } catch (e) {
+          // 2. If connection failed, trigger start agent
+          setRecyclerEventMessage('Agente local fuera de línea. Intentando iniciar...');
+          try {
+              const startRes = await fetch('/api/hardware-agent/start', { method: 'POST' });
+              if (startRes.ok) {
+                  setRecyclerEventMessage('Agente iniciado. Conectando al reciclador...');
+                  // Wait 1.5 seconds for agent to start listening
+                  await new Promise(resolve => setTimeout(resolve, 1500));
+                  const ping2 = await fetch('http://localhost:3001/api/status', { signal: AbortSignal.timeout(1500) });
+                  if (ping2.ok) isConnected = true;
+              }
+          } catch (err) {
+              console.error("Auto-start failed:", err);
+          }
+      }
+
+      if (!isConnected) {
+          setRecyclerStatus('error');
+          setRecyclerEventMessage('Error: No se pudo conectar con el Agente Local en http://localhost:3001. Verifica que esté encendido.');
+          return;
+      }
+
       try {
           // Reset proactivo: Intentar cancelar y cerrar cualquier sesión previa stuck
           try {
@@ -335,6 +426,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     // Round to 2 decimal places to avoid floating point precision issues
     const roundedAmount = Number(Math.round(Number(defaultAmount + 'e2')) + 'e-2');
     setCurrentAmount(method === 'efectivo' ? "" : roundedAmount.toString());
+
+    // Auto-trigger local agent check and startup
+    if (method === 'efectivo' && cashMode === 'recycler') {
+      autoCheckAndStartAgent();
+    }
   };
 
   const handleAddPayment = () => {
@@ -809,7 +905,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                     className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
                   >
                       <Banknote className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
-                      <span className="text-sm font-semibold">Efectivo</span>
+                      <span className="text-sm font-semibold">
+                        {cashMode === 'recycler' ? 'Efectivo (Reciclador)' : 'Efectivo'}
+                      </span>
                   </button>
                   <button 
                     onClick={() => handleSelectMethod('tarjeta')}
@@ -874,12 +972,31 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       
                       {recyclerStatus === 'idle' && (
                         <>
+                          <div className="mb-4 flex items-center justify-center gap-2">
+                              <span className={`w-2.5 h-2.5 rounded-full ${
+                                  agentConnected === true ? 'bg-green-500 animate-pulse' :
+                                  agentConnected === null || agentStarting ? 'bg-amber-500 animate-bounce' : 'bg-red-500'
+                              }`} />
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                  {agentConnected === true ? 'Agente Conectado (Puerto 3001)' :
+                                   agentConnected === null || agentStarting ? 'Iniciando Agente...' : 'Agente Desconectado'}
+                              </span>
+                          </div>
+
                           <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-                            Conecta con el hardware local para cobrar {formatMoney(remaining)} automáticamente.
+                              Conecta con el hardware local para cobrar {formatMoney(remaining)} automáticamente.
                           </p>
-                          <Button onClick={startRecyclerPayment} size="lg" className="w-full max-w-xs">
-                            Iniciar Cobro ({formatMoney(remaining)})
-                          </Button>
+
+                          <div className="w-full max-w-xs flex flex-col gap-2">
+                              <Button 
+                                  onClick={startRecyclerPayment} 
+                                  size="lg" 
+                                  className="w-full"
+                                  disabled={agentStarting}
+                              >
+                                  Iniciar Cobro ({formatMoney(remaining)})
+                              </Button>
+                          </div>
                         </>
                       )}
 

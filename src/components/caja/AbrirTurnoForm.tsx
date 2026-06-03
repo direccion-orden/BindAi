@@ -22,7 +22,15 @@ const DENOMINATIONS = [
   { value: 0.5, label: "Monedas de 50¢" },
 ];
 
-export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any) => void; onCancel: () => void }) {
+export function AbrirTurnoForm({ 
+  onOpened, 
+  onCancel, 
+  defaultLocationId 
+}: { 
+  onOpened: (session: any) => void; 
+  onCancel: () => void; 
+  defaultLocationId?: string;
+}) {
   const { user, companyId } = useAuth();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
@@ -31,6 +39,12 @@ export function AbrirTurnoForm({ onOpened, onCancel }: { onOpened: (session: any
   const [locations, setLocations] = useState<Array<{id: string, name: string}>>([]);
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [loadingLocs, setLoadingLocs] = useState(false);
+
+  useEffect(() => {
+    if (defaultLocationId && locations.some(loc => loc.id === defaultLocationId)) {
+      setSelectedLocationId(defaultLocationId);
+    }
+  }, [defaultLocationId, locations]);
 
   useEffect(() => {
     if (!companyId) {

@@ -113,7 +113,7 @@ export function ClientSelector() {
 
   return (
     <>
-      <div className="p-3 border-b space-y-1.5 shrink-0 bg-background" ref={wrapperRef}>
+      <div className="p-3 border-b space-y-1.5 shrink-0 bg-card" ref={wrapperRef}>
         <h3 className="text-xs font-semibold uppercase text-muted-foreground flex items-center justify-between">
           <span className="flex items-center gap-1"><User className="w-3 h-3"/> Cliente Asignado</span>
           {activeAccount.selectedClient && activeAccount.selectedClient.id !== "public" && (
@@ -142,7 +142,7 @@ export function ClientSelector() {
             
             {/* Dashboard de Lealtad Minificado */}
             {activeAccount.selectedClient.preferences && (
-              <div className="p-2 bg-background flex flex-col gap-1.5">
+              <div className="p-2 bg-card flex flex-col gap-1.5">
                 <div className="text-[10px] bg-muted/50 p-1.5 rounded flex gap-1 items-start text-muted-foreground">
                   <AlignLeft className="w-3 h-3 shrink-0 mt-0.5" />
                   <span className="leading-tight">{activeAccount.selectedClient.preferences}</span>

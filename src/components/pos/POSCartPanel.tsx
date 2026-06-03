@@ -22,7 +22,7 @@ export function POSCartPanel() {
       </div>
 
       {/* Lista de Artículos */}
-      <div className="flex-1 overflow-y-auto p-4 bg-background space-y-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 bg-card space-y-4 custom-scrollbar">
         {activeAccount.items.length === 0 ? (
            <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm opacity-60">
               <ShoppingCart className="w-12 h-12 mb-3 opacity-20" />

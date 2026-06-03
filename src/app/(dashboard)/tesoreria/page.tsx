@@ -1,9 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Unlock, Vault, Coins, Banknote, History, Loader2, PlusCircle, ArrowDownToLine, Trash2, Save } from 'lucide-react';
+import { ShieldAlert, Unlock, Vault, Coins, Banknote, History, Loader2, PlusCircle, ArrowDownToLine, Trash2, Save, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/context/AuthContext';
+import { db } from '@/lib/firebase/client';
+import { collection, query, where, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
 export default function TesoreriaPage() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -19,6 +22,43 @@ export default function TesoreriaPage() {
     const [sessionMessage, setSessionMessage] = useState("");
     const [sessionAmount, setSessionAmount] = useState(0);
     const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    const { user, companyId } = useAuth();
+    const [mockMode, setMockMode] = useState(false);
+
+    // Cash Sessions Integration
+    const [openSessions, setOpenSessions] = useState<any[]>([]);
+    const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+    const activeCashSession = openSessions.find(s => s.id === selectedSessionId) || openSessions[0] || null;
+
+    // Mock Recycler Inventory Levels (pesos)
+    const [mockSystemCash, setMockSystemCash] = useState(157500); // $1,575.00
+    const [mockCollectableCash, setMockCollectableCash] = useState(42000); // $420.00
+    const [mockBillsStored, setMockBillsStored] = useState(85000); // $850.00
+    const [mockCoinsStored, setMockCoinsStored] = useState(30500); // $305.00
+    const [mockBillsCashbox, setMockBillsCashbox] = useState(32000); // $320.00
+    const [mockCoinsCashbox, setMockCoinsCashbox] = useState(10000); // $100.00
+
+    useEffect(() => {
+        if (!companyId) return;
+        
+        const q = query(
+            collection(db, "companies", companyId, "cash_sessions"),
+            where("status", "==", "open")
+        );
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setOpenSessions(data);
+            if (data.length > 0 && !selectedSessionId) {
+                setSelectedSessionId(data[0].id);
+            }
+        }, (err) => {
+            console.error("Error fetching open sessions:", err);
+        });
+        
+        return () => unsubscribe();
+    }, [companyId]);
 
     const TREASURER_PIN = process.env.NEXT_PUBLIC_TREASURER_PIN || "123456";
 
@@ -37,10 +77,14 @@ export default function TesoreriaPage() {
     const loadData = async () => {
         setLoading(true);
         try {
+            // Check connection to hardware agent
             const statusRes = await fetch('http://localhost:3001/api/status');
             if (statusRes.ok) {
                 const data = await statusRes.json();
                 setCashStatus(data.cashStatus);
+                setMockMode(false);
+            } else {
+                throw new Error("Local agent not responding");
             }
             
             const systemRes = await fetch('http://localhost:3001/api/system');
@@ -53,12 +97,37 @@ export default function TesoreriaPage() {
                             allDenoms = [...allDenoms, ...device.denominations];
                         }
                     });
-                    // Ordenar por valor ascendente
                     setDenominations(allDenoms.sort((a: any, b: any) => a.value - b.value));
                 }
             }
         } catch (err) {
-            console.error("Error cargando datos:", err);
+            console.warn("[Treasury Page] Recycler hardware offline. Falling back to simulation mode.", err);
+            setMockMode(true);
+            
+            // Populate mock denominations
+            setDenominations([
+                { value: 100000, label: "Billetes de $1000", enabled: true, floatLevel: 10 },
+                { value: 50000, label: "Billetes de $500", enabled: true, floatLevel: 15 },
+                { value: 20000, label: "Billetes de $200", enabled: true, floatLevel: 20 },
+                { value: 10000, label: "Billetes de $100", enabled: true, floatLevel: 25 },
+                { value: 5000, label: "Billetes de $50", enabled: true, floatLevel: 30 },
+                { value: 2000, label: "Billetes de $20", enabled: true, floatLevel: 30 },
+                { value: 1000, label: "Monedas de $10", enabled: true, floatLevel: 50 },
+                { value: 500, label: "Monedas de $5", enabled: true, floatLevel: 50 },
+                { value: 200, label: "Monedas de $2", enabled: true, floatLevel: 50 },
+                { value: 100, label: "Monedas de $1", enabled: true, floatLevel: 100 },
+                { value: 50, label: "Monedas de 50¢", enabled: true, floatLevel: 100 }
+            ]);
+            
+            // Set mock cash status
+            setCashStatus({
+                totalSystemCash: mockSystemCash,
+                totalCollectableCash: mockCollectableCash,
+                billsStored: mockBillsStored,
+                coinsStored: mockCoinsStored,
+                billsCashbox: mockBillsCashbox,
+                coinsCashbox: mockCoinsCashbox
+            });
         }
         setLoading(false);
     };
@@ -69,6 +138,48 @@ export default function TesoreriaPage() {
 
     const startSession = async (requestType: string, message: string) => {
         setActionLoading(true);
+        if (mockMode) {
+            // Simulated Recycler Session
+            setActiveSession(requestType);
+            setSessionMessage(message);
+            setSessionAmount(0);
+            
+            let simulatedCount = 0;
+            let targetAmount = 0;
+            if (requestType === 'RefillCash') {
+                targetAmount = 1250;
+            } else if (requestType === 'CollectAllCash') {
+                targetAmount = mockCollectableCash / 100;
+            } else if (requestType === 'EmptyAllCash') {
+                targetAmount = mockSystemCash / 100;
+            }
+            
+            pollIntervalRef.current = setInterval(() => {
+                if (requestType === 'RefillCash') {
+                    simulatedCount += 100;
+                    if (simulatedCount >= targetAmount) {
+                        setSessionAmount(targetAmount);
+                        clearInterval(pollIntervalRef.current!);
+                    } else {
+                        setSessionAmount(simulatedCount);
+                    }
+                } else {
+                    // Cuts and Empties dispense quickly
+                    simulatedCount += 250;
+                    if (simulatedCount >= targetAmount) {
+                        setSessionAmount(targetAmount);
+                        clearInterval(pollIntervalRef.current!);
+                    } else {
+                        setSessionAmount(simulatedCount);
+                    }
+                }
+            }, 1000);
+            
+            setActionLoading(false);
+            return;
+        }
+
+        // Real Hardware Session
         try {
             const res = await fetch('http://localhost:3001/api/session', {
                 method: 'POST',
@@ -100,21 +211,21 @@ export default function TesoreriaPage() {
                     if (requestType === 'RefillCash') {
                         const events = statusData.events || [];
                         const currentTxEvents = txId ? events.filter((e: any) => e.transaction?.transaction_id === txId) : events;
-                        
-                        // Buscamos si hay un evento de "Refill" o si la transacción tiene cash_in
                         const refillEvent = currentTxEvents.find((e: any) => e.transaction && e.transaction.cash_in !== undefined);
                         if (refillEvent) {
                             setSessionAmount(refillEvent.transaction.cash_in / 100);
                         } else if (statusData.transaction && statusData.transaction.transaction_id === txId) {
                             setSessionAmount((statusData.transaction.cash_in || 0) / 100);
                         }
+                    } else if (requestType === 'CollectAllCash' || requestType === 'EmptyAllCash') {
+                        if (statusData.transaction && statusData.transaction.transaction_id === txId) {
+                            setSessionAmount((statusData.transaction.cash_out || 0) / 100);
+                        }
                     }
-                    
                 } catch (err) {
                     console.error("Polling error", err);
                 }
             }, 1000);
-
         } catch (err) {
             console.error(err);
             alert("No se pudo conectar con el agente de hardware.");
@@ -127,15 +238,89 @@ export default function TesoreriaPage() {
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         
         try {
-            await fetch('http://localhost:3001/api/session', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ request: 'CloseSession' })
-            });
+            if (mockMode) {
+                // Mock State updates
+                if (activeSession === 'RefillCash') {
+                    const newSystem = mockSystemCash + (sessionAmount * 100);
+                    const newBills = mockBillsStored + (sessionAmount * 80);
+                    const newCoins = mockCoinsStored + (sessionAmount * 20);
+                    setMockSystemCash(newSystem);
+                    setMockBillsStored(newBills);
+                    setMockCoinsStored(newCoins);
+                    setCashStatus({
+                        totalSystemCash: newSystem,
+                        totalCollectableCash: mockCollectableCash,
+                        billsStored: newBills,
+                        coinsStored: newCoins,
+                        billsCashbox: mockBillsCashbox,
+                        coinsCashbox: mockCoinsCashbox
+                    });
+                } else if (activeSession === 'CollectAllCash') {
+                    const newSystem = Math.max(0, mockSystemCash - (sessionAmount * 100));
+                    setMockSystemCash(newSystem);
+                    setMockCollectableCash(0);
+                    setCashStatus({
+                        totalSystemCash: newSystem,
+                        totalCollectableCash: 0,
+                        billsStored: mockBillsStored,
+                        coinsStored: mockCoinsStored,
+                        billsCashbox: mockBillsCashbox,
+                        coinsCashbox: mockCoinsCashbox
+                    });
+                } else if (activeSession === 'EmptyAllCash') {
+                    setMockSystemCash(0);
+                    setMockCollectableCash(0);
+                    setMockBillsStored(0);
+                    setMockCoinsStored(0);
+                    setMockBillsCashbox(0);
+                    setMockCoinsCashbox(0);
+                    setCashStatus({
+                        totalSystemCash: 0,
+                        totalCollectableCash: 0,
+                        billsStored: 0,
+                        coinsStored: 0,
+                        billsCashbox: 0,
+                        coinsCashbox: 0
+                    });
+                }
+            } else {
+                // Real Hardware close
+                await fetch('http://localhost:3001/api/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ request: 'CloseSession' })
+                });
+            }
+
+            // --- Control de Caja Integration ---
+            if (sessionAmount > 0 && companyId && activeCashSession) {
+                const isIncome = activeSession === 'RefillCash';
+                const txPayload = {
+                    sessionId: activeCashSession.id,
+                    type: isIncome ? "INCOME" : "EXPENSE",
+                    category: isIncome ? "INGRESO_FONDO" : "RETIRO_FONDO",
+                    amount: sessionAmount,
+                    reference: activeSession === 'RefillCash' 
+                        ? "Refill Reciclador (Tesorería)"
+                        : activeSession === 'CollectAllCash'
+                            ? "Corte Parcial Reciclador (Tesorería)"
+                            : "Retiro Total Reciclador (Tesorería)",
+                    paymentMethod: "CASH",
+                    createdAt: serverTimestamp(),
+                    createdBy: user?.email || "Tesorero"
+                };
+
+                await addDoc(collection(db, "companies", companyId, "cash_transactions"), txPayload);
+                console.log("[Treasury] Cash transaction registered in Control de Caja:", txPayload);
+            }
+
             setActiveSession(null);
             setSessionMessage("");
+            
             // Recargar datos para ver el nuevo inventario
-            setTimeout(loadData, 1000);
+            if (!mockMode) {
+                setTimeout(loadData, 1000);
+            }
         } catch (err) {
             console.error(err);
             alert("Error al cerrar la sesión.");
@@ -145,6 +330,12 @@ export default function TesoreriaPage() {
 
     const updateFloatLevels = async () => {
         setActionLoading(true);
+        if (mockMode) {
+            alert("Niveles base (Float) actualizados en modo simulación.");
+            setActionLoading(false);
+            return;
+        }
+
         try {
             const res = await fetch('http://localhost:3001/api/denomination', {
                 method: 'POST',
@@ -218,6 +409,77 @@ export default function TesoreriaPage() {
                 <Button variant="outline" onClick={loadData} disabled={loading}>
                     Actualizar Estado
                 </Button>
+            </div>
+
+            {/* Banners de Estado y Conexión */}
+            <div className="space-y-4">
+                {mockMode && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 shrink-0">
+                                <ShieldAlert className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-amber-700 dark:text-amber-400">Agente de Hardware Fuera de Línea</h4>
+                                <p className="text-sm text-amber-600 dark:text-amber-500 mt-0.5">
+                                    No se pudo establecer conexión con el reciclador en el puerto 3001. El sistema está operando en <strong>Modo Simulación</strong>.
+                                </p>
+                            </div>
+                        </div>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={loadData} 
+                            disabled={loading}
+                            className="border-amber-500/30 hover:bg-amber-500/10 text-amber-700 dark:text-amber-400 gap-2 font-medium shrink-0"
+                        >
+                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reintentar Conexión"}
+                        </Button>
+                    </div>
+                )}
+                {activeCashSession ? (
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
+                        <div className="flex items-center gap-3 w-full md:w-auto">
+                            <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500 shrink-0">
+                                <CheckCircle2 className="w-5 h-5" />
+                            </div>
+                            <div className="space-y-0.5">
+                                <h4 className="font-semibold text-emerald-700 dark:text-emerald-400">Turno de Caja Vinculado</h4>
+                                <p className="text-sm text-emerald-600 dark:text-emerald-500">
+                                    Sucursal activa: <strong className="text-emerald-800 dark:text-emerald-300">{activeCashSession.locationName}</strong> ({activeCashSession.openedByEmail})
+                                </p>
+                            </div>
+                        </div>
+                        {openSessions.length > 1 && (
+                            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase whitespace-nowrap">Cambiar Caja:</span>
+                                <select 
+                                    value={selectedSessionId} 
+                                    onChange={(e) => setSelectedSessionId(e.target.value)}
+                                    className="bg-background border border-border rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary font-medium"
+                                >
+                                    {openSessions.map((session) => (
+                                        <option key={session.id} value={session.id}>
+                                            {session.locationName} ({session.openedByEmail?.split('@')[0]})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top duration-300">
+                        <div className="w-10 h-10 bg-rose-500/20 rounded-full flex items-center justify-center text-rose-500 shrink-0">
+                            <ShieldAlert className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h4 className="font-semibold text-rose-700 dark:text-rose-400">Sin Turno de Caja Activo</h4>
+                            <p className="text-sm text-rose-600 dark:text-rose-500 mt-0.5">
+                                No hay un turno de caja abierto en ninguna sucursal. Las operaciones de bóveda se realizarán físicamente, pero <strong>no se registrarán contablemente</strong> en el control de caja.
+                            </p>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Modal de Sesión Activa */}

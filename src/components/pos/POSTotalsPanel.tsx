@@ -1,6 +1,6 @@
 "use client";
 
-import { Percent, X, Plus, Search } from "lucide-react";
+import { Percent, X, Plus, Search, Tag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePOS } from "@/context/POSContext";
 import { ClientSelector } from "@/components/pos/ClientSelector";
@@ -37,12 +37,12 @@ export function POSTotalsPanel() {
 
 
       {/* Selector de Cuentas (Tabs) */}
-      <div className="flex gap-2 overflow-x-auto p-2 border-b shrink-0 custom-scrollbar bg-background">
+      <div className="flex gap-2 overflow-x-auto p-2 border-b shrink-0 custom-scrollbar bg-card">
         {accounts.map((tab) => (
             <div 
                 key={tab.id}
                 onClick={() => setActiveAccount(tab.id)}
-                className={`flex items-center gap-2 px-3 py-1 text-sm cursor-pointer border-r transition-colors ${activeAccountId === tab.id ? 'bg-background font-semibold border-b-2 border-b-primary' : 'hover:bg-muted/50 text-muted-foreground'}`}
+                className={`flex items-center gap-2 px-3 py-1 text-sm cursor-pointer border-r transition-colors ${activeAccountId === tab.id ? 'bg-card font-semibold border-b-2 border-b-primary' : 'hover:bg-muted/50 text-muted-foreground'}`}
             >
                 {tab.name}
                 {accounts.length > 1 && (
@@ -74,28 +74,82 @@ export function POSTotalsPanel() {
       )}
 
       {/* Totales y Cobro */}
-      <div className="p-3 border-t bg-muted/20 space-y-2 shrink-0">
-        <div className="flex flex-col gap-1.5 mb-2 bg-background p-2.5 rounded border border-dashed">
-            <span className="text-xs font-semibold flex items-center gap-1.5 text-indigo-700">
-              <Percent className="w-3.5 h-3.5"/> Código Promocional
-            </span>
-            <div className="flex items-center gap-2">
-                <Input 
-                    type="text" 
-                    placeholder="Ej. VERANO20" 
-                    className="h-8 uppercase flex-1 font-mono text-xs" 
-                    value={activeAccount.enteredPromoCode || ''}
-                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                />
-            </div>
-            {promoError && activeAccount.enteredPromoCode && (
-              <span className="text-[10px] text-red-500 font-medium">{promoError}</span>
-            )}
-            {appliedPromo && (
-              <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
-                ✓ Aplicado: {appliedPromo.title || appliedPromo.code}
+      <div className="p-3 border-t bg-card space-y-2 shrink-0">
+        <div className="grid grid-cols-2 gap-2 mb-2 shrink-0">
+          {/* Cupón */}
+          <div className="flex flex-col gap-1.5 bg-background p-2 rounded border border-dashed relative">
+              <span className="text-xs font-semibold flex items-center gap-1 text-indigo-700">
+                <Percent className="w-3 h-3 shrink-0"/> Cupón
               </span>
-            )}
+              <div className="flex items-center gap-2">
+                  <Input 
+                      type="text" 
+                      placeholder="Ej. VERANO" 
+                      className="h-8 uppercase flex-1 font-mono text-[11px] px-2" 
+                      value={activeAccount.enteredPromoCode || ''}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  />
+              </div>
+              {promoError && activeAccount.enteredPromoCode && (
+                <span className="text-[9px] text-red-500 font-medium truncate mt-0.5" title={promoError}>{promoError}</span>
+              )}
+              {appliedPromo && (
+                <span className="text-[9px] text-emerald-600 font-medium flex items-center gap-0.5 mt-0.5 truncate" title={appliedPromo.title || appliedPromo.code || undefined}>
+                  ✓ {appliedPromo.title || appliedPromo.code}
+                </span>
+              )}
+          </div>
+
+          {/* Descuento */}
+          <div className="flex flex-col gap-1.5 bg-background p-2 rounded border border-dashed">
+              <span className="text-xs font-semibold flex items-center gap-1 text-amber-700">
+                <Tag className="w-3 h-3 shrink-0"/> Descuento
+              </span>
+              <div className="flex items-center gap-1">
+                  <Input 
+                      type="number" 
+                      placeholder="0" 
+                      className="h-8 flex-1 text-[11px] px-2" 
+                      value={activeAccount.globalDiscountValue || ''}
+                      onChange={(e) => {
+                        const rawVal = e.target.value;
+                        if (rawVal === '') {
+                          setGlobalDiscount(0, activeAccount.globalDiscountType || 'percentage');
+                        } else {
+                          const val = parseFloat(rawVal) || 0;
+                          setGlobalDiscount(val, activeAccount.globalDiscountType || 'percentage');
+                        }
+                      }}
+                      min={0}
+                  />
+                  <div className="flex border rounded h-8 overflow-hidden shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setGlobalDiscount(activeAccount.globalDiscountValue || 0, 'percentage')}
+                      className={`px-1 text-[10px] font-bold transition-colors ${
+                        (activeAccount.globalDiscountType || 'percentage') === 'percentage'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-background hover:bg-muted text-muted-foreground'
+                      }`}
+                      title="Porcentaje"
+                    >
+                      %
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGlobalDiscount(activeAccount.globalDiscountValue || 0, 'fixed')}
+                      className={`px-1 text-[10px] font-bold border-l transition-colors ${
+                        activeAccount.globalDiscountType === 'fixed'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-background hover:bg-muted text-muted-foreground'
+                      }`}
+                      title="Monto Fijo"
+                    >
+                      $
+                    </button>
+                  </div>
+              </div>
+          </div>
         </div>
 
         <div className="flex justify-between text-xs">

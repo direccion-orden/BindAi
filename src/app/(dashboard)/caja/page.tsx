@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { collection, query, where, getDocs, limit, Timestamp, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, limit, Timestamp, doc, updateDoc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, Plus, Banknote, Download, Search, RefreshCcw, CheckCircle2 } from "lucide-react";
@@ -152,75 +152,82 @@ export default function CajaPage() {
     setTransactions(docs);
   };
 
-  const fetchBindSales = async (openedAt: any) => {
-    if (!openedAt) return;
-    setIsFetchingErp(true);
-    try {
-      let dateObj;
-      if (openedAt?.seconds) {
-        dateObj = new Date(openedAt.seconds * 1000);
-      } else if (openedAt?.toDate) {
-        dateObj = openedAt.toDate();
-      } else {
-        dateObj = new Date(openedAt);
-      }
-      
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      
-      const localDateString = `${year}-${month}-${day}`;
-      
-      let url = `/api/erp/cash-sales?date=${localDateString}&_t=${Date.now()}`;
-      if (activeSession?.locationId) {
-          url += `&locationId=${activeSession.locationId}`;
-      }
-      const res = await fetch(url, { cache: 'no-store' });
-      if (res.ok) {
-         const data = await res.json();
-         setBindSales(data.totalCashSales || 0);
-      }
-    } catch (e) {
-      console.error("Failed to fetch ERP Cash Sales", e);
-    } finally {
-      setIsFetchingErp(false);
+  // Listen to local sales (remisiones) since shift open in real-time
+  useEffect(() => {
+    if (!companyId || !activeSession?.openedAt || !activeSession?.locationId) {
+      setBindSales(0);
+      setTotalDailySales(null);
+      return;
     }
-  }
 
-  const fetchDailySales = async () => {
+    setIsFetchingErp(true);
     setIsFetchingDailySales(true);
-    try {
-      const dateObj = new Date();
-      
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      
-      const localIsoString = `${year}-${month}-${day}T00:00:00.000Z`;
-      let url = `/api/erp/sales-summary?startIso=${localIsoString}`;
-      if (activeSession?.locationId) {
-          url += `&locationId=${activeSession.locationId}`;
-      }
-      
-      const res = await fetch(url, { cache: 'no-store' });
-      if (res.ok) {
-         const data = await res.json();
-         setTotalDailySales(data.totalSales || 0);
-      }
-    } catch (e) {
-      console.error("Failed to fetch total daily sales", e);
-    } finally {
-      setIsFetchingDailySales(false);
+
+    let openedAtDate;
+    if (activeSession.openedAt?.seconds) {
+      openedAtDate = new Date(activeSession.openedAt.seconds * 1000);
+    } else if (activeSession.openedAt?.toDate) {
+      openedAtDate = activeSession.openedAt.toDate();
+    } else {
+      openedAtDate = new Date(activeSession.openedAt);
     }
-  }
+    const openedAtIso = openedAtDate.toISOString();
+
+    // Query remisiones created since shift opened
+    const q = query(
+      collection(db, "companies", companyId, "remisiones"),
+      where("createdAt", ">=", openedAtIso)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      try {
+        const docs = snapshot.docs.map(doc => doc.data());
+        
+        // Filter in memory for status and location
+        const filtered = docs.filter((rem: any) => 
+          rem.locationId === activeSession.locationId && 
+          rem.status === "activa"
+        );
+
+        // Sum cash sales
+        let cashSales = 0;
+        filtered.forEach((rem: any) => {
+          if (rem.payments) {
+            rem.payments.forEach((p: any) => {
+              if (p.method?.toLowerCase() === "efectivo") {
+                cashSales += p.amount || 0;
+              }
+            });
+          }
+        });
+        setBindSales(cashSales);
+
+        // Sum total overall sales
+        let totalSales = 0;
+        filtered.forEach((rem: any) => {
+          totalSales += rem.totalAmount || rem.financials?.total || 0;
+        });
+        setTotalDailySales(totalSales);
+      } catch (err) {
+        console.error("Error computing sales from Firestore:", err);
+      } finally {
+        setIsFetchingErp(false);
+        setIsFetchingDailySales(false);
+      }
+    }, (error) => {
+      console.error("Error listening to remisiones in page.tsx:", error);
+      setIsFetchingErp(false);
+      setIsFetchingDailySales(false);
+    });
+
+    return () => unsubscribe();
+  }, [companyId, activeSession?.id, activeSession?.openedAt, activeSession?.locationId]);
 
   useEffect(() => {
     if (activeSession?.id) {
       fetchTransactions(activeSession.id);
-      fetchBindSales(activeSession.openedAt);
-      fetchDailySales();
     }
-  }, [activeSession?.id, activeSession?.openedAt]);
+  }, [activeSession?.id]);
 
   const fetchReportData = async () => {
     if (!user || !companyId) return;
@@ -380,16 +387,10 @@ export default function CajaPage() {
                 <p className="text-sm text-muted-foreground mt-1">Sucursal: <span className="font-medium text-foreground">{activeSession.locationName || 'Nacional'}</span></p>
                 <div className="flex items-center gap-3 mt-2">
                   <p className="text-xs text-muted-foreground">Apertura: {activeSession.openedAt?.seconds ? new Date(activeSession.openedAt.seconds * 1000).toLocaleString('es-MX') : 'Reciente'}</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => { fetchBindSales(activeSession.openedAt); fetchDailySales(); }} 
-                    disabled={isFetchingErp || isFetchingDailySales} 
-                    className="h-6 text-[10px] px-2 py-0 gap-1 bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary"
-                  >
-                    <RefreshCcw className={`w-3 h-3 ${isFetchingErp || isFetchingDailySales ? 'animate-spin' : ''}`} />
-                    Actualizar ERP
-                  </Button>
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-[10px] text-emerald-700 font-semibold select-none">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Base de Datos Sincronizada
+                  </div>
                 </div>
               </div>
               <div className="flex gap-8 text-right">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -67,37 +67,58 @@ export function CerrarTurnoModal({
     }
   }, [isOpen, initialCounts, initialCardSales]);
 
+  // Listen to sales (remisiones) since shift open in real-time
   useEffect(() => {
-    async function fetchBindSales() {
-      if (!isOpen || !session?.openedAt) return;
-      setFetchingBind(true);
+    if (!isOpen || !companyId || !session?.openedAt || !session?.locationId) {
+      setBindSales(0);
+      return;
+    }
+
+    setFetchingBind(true);
+    let dateObj;
+    if (session.openedAt?.seconds) {
+      dateObj = new Date(session.openedAt.seconds * 1000);
+    } else if (session.openedAt?.toDate) {
+      dateObj = session.openedAt.toDate();
+    } else {
+      dateObj = new Date(session.openedAt);
+    }
+    const openedAtIso = dateObj.toISOString();
+
+    // Query remisiones created since shift opened
+    const q = query(
+      collection(db, "companies", companyId, "remisiones"),
+      where("createdAt", ">=", openedAtIso)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       try {
-        let dateObj;
-        if (session.openedAt?.seconds) {
-          dateObj = new Date(session.openedAt.seconds * 1000);
-        } else if (session.openedAt?.toDate) {
-          dateObj = session.openedAt.toDate();
-        } else {
-          dateObj = new Date(session.openedAt);
-        }
-        const openedAtIso = dateObj.toISOString();
-        let url = `/api/erp/sales-summary?startIso=${openedAtIso}`;
-        if (session.locationId) {
-          url += `&locationId=${session.locationId}`;
-        }
-        const res = await fetch(url);
-        if (res.ok) {
-          const data = await res.json();
-          setBindSales(data.totalSales || 0);
-        }
-      } catch (error) {
-        console.error("Bind fetching error", error);
+        const docs = snapshot.docs.map(doc => doc.data());
+        
+        // Filter in memory for status and location
+        const filtered = docs.filter((rem: any) => 
+          rem.locationId === session.locationId && 
+          rem.status === "activa"
+        );
+
+        // Sum total overall sales
+        let totalSales = 0;
+        filtered.forEach((rem: any) => {
+          totalSales += rem.totalAmount || rem.financials?.total || 0;
+        });
+        setBindSales(totalSales);
+      } catch (err) {
+        console.error("Error computing sales totals in CerrarTurnoModal:", err);
       } finally {
         setFetchingBind(false);
       }
-    }
-    fetchBindSales();
-  }, [isOpen, session]);
+    }, (error) => {
+      console.error("Error listening to remisiones in CerrarTurnoModal:", error);
+      setFetchingBind(false);
+    });
+
+    return () => unsubscribe();
+  }, [isOpen, companyId, session?.id, session?.openedAt, session?.locationId]);
 
   // Derived financial computations
   const totalFondo = session?.initialFloat || 0;

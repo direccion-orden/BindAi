@@ -69,6 +69,44 @@ export function ClientInsightsPanel({ client }: ClientInsightsPanelProps) {
       );
       const snapshot = await getDocs(q);
       
+      // Auto-heal encoding issues in remisiones collection
+      const docsToUpdate: { docId: string, items: any[] }[] = [];
+      
+      snapshot.docs.forEach(docSnap => {
+        const sale = docSnap.data();
+        let needsUpdate = false;
+        const updatedItems = sale.items?.map((item: any) => {
+          let itemTitle = item.productName || item.title || "";
+          const hasCorruption = itemTitle.includes("Ã") || itemTitle.includes("Â");
+          if (hasCorruption) {
+            try {
+              const fixedTitle = decodeURIComponent(escape(itemTitle));
+              needsUpdate = true;
+              const newItem = { ...item };
+              if (item.productName) newItem.productName = fixedTitle;
+              if (item.title) newItem.title = fixedTitle;
+              return newItem;
+            } catch (e) {}
+          }
+          return item;
+        });
+        
+        if (needsUpdate) {
+          docsToUpdate.push({ docId: docSnap.id, items: updatedItems });
+        }
+      });
+      
+      if (docsToUpdate.length > 0) {
+        Promise.all(docsToUpdate.map(async ({ docId, items }) => {
+          try {
+            await updateDoc(doc(db, "companies", companyId, "remisiones", docId), { items });
+            console.log(`[Auto-Heal] Successfully fixed encoding for remission: ${docId}`);
+          } catch (err) {
+            console.error(`[Auto-Heal] Error fixing remission ${docId}:`, err);
+          }
+        })).catch(() => {});
+      }
+
       // Ordenar en memoria por createdAt descendente
       const sortedSales = snapshot.docs
         .map(doc => doc.data())
@@ -84,7 +122,14 @@ export function ClientInsightsPanel({ client }: ClientInsightsPanelProps) {
       sortedSales.forEach(sale => {
         sale.items?.forEach((item: any) => {
           const itemId = item.variantId || item.productId || item.id || "";
-          const itemTitle = item.productName || item.title || "";
+          let itemTitle = item.productName || item.title || "";
+          
+          try {
+            if (itemTitle.includes("Ã") || itemTitle.includes("Â")) {
+              itemTitle = decodeURIComponent(escape(itemTitle));
+            }
+          } catch (e) {}
+
           if (!uniqueItems.has(itemId)) {
             uniqueItems.set(itemId, {
               id: itemId,
@@ -141,10 +186,10 @@ export function ClientInsightsPanel({ client }: ClientInsightsPanelProps) {
   };
 
   return (
-    <div className="flex-1 bg-muted/10 border-b flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
+    <div className="flex-1 bg-card border-b flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
       
       {/* Información de Contacto */}
-      <div className="p-2.5 border-b bg-background shrink-0">
+      <div className="p-2.5 border-b bg-card shrink-0">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">
             Contacto del Cliente

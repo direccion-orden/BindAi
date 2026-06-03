@@ -53,14 +53,23 @@ const mapRemissionToSale = (r: any) => {
       total: r.totalAmount || 0,
       refundedAmount: r.refundedAmount || 0
     },
-    items: r.items?.map((item: any) => ({
-      id: item.variantId || item.productId || "",
-      title: item.productName || item.title || "",
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      discountPercentage: item.discountPercentage || 0,
-      returnedQuantity: item.returnedQuantity || 0
-    })) || []
+    items: r.items?.map((item: any) => {
+      let rawTitle = item.productName || item.title || "";
+      try {
+        if (rawTitle.includes("Ã") || rawTitle.includes("Â")) {
+          rawTitle = decodeURIComponent(escape(rawTitle));
+        }
+      } catch (e) {}
+      
+      return {
+        id: item.variantId || item.productId || "",
+        title: rawTitle,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discountPercentage: item.discountPercentage || 0,
+        returnedQuantity: item.returnedQuantity || 0
+      };
+    }) || []
   };
 };
 

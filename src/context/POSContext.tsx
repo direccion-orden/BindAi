@@ -37,6 +37,8 @@ export type POSAccount = {
   name: string;
   items: CartItem[];
   globalDiscountPercentage: number;
+  globalDiscountType: 'percentage' | 'fixed';
+  globalDiscountValue: number;
   selectedClient: Client | null;
   enteredPromoCode: string | null;
 };
@@ -61,7 +63,7 @@ interface POSContextType {
   updateItemDiscount: (productId: string, discount: number) => void;
   
   // Global Actions (apply to active account)
-  setGlobalDiscount: (discount: number) => void;
+  setGlobalDiscount: (value: number, type?: 'percentage' | 'fixed') => void;
   setPromoCode: (code: string | null) => void;
   setClient: (client: Client | null) => void;
   
@@ -122,7 +124,7 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
   };
 
   const [accounts, setAccounts] = useState<POSAccount[]>([
-    { id: 1, name: "Cuenta 1", items: [], globalDiscountPercentage: 0, selectedClient: defaultClient, enteredPromoCode: null }
+    { id: 1, name: "Cuenta 1", items: [], globalDiscountPercentage: 0, globalDiscountType: 'percentage', globalDiscountValue: 0, selectedClient: defaultClient, enteredPromoCode: null }
   ]);
   const [activeAccountId, setActiveAccountId] = useState<number>(1);
 
@@ -140,7 +142,7 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
     }
 
     setAccounts(prev => {
-      const newAccount: POSAccount = { id: newId, name: `Cuenta ${newId}`, items: [], globalDiscountPercentage: 0, selectedClient: defaultClient, enteredPromoCode: null };
+      const newAccount: POSAccount = { id: newId, name: `Cuenta ${newId}`, items: [], globalDiscountPercentage: 0, globalDiscountType: 'percentage', globalDiscountValue: 0, selectedClient: defaultClient, enteredPromoCode: null };
       return [...prev, newAccount].sort((a, b) => a.id - b.id);
     });
     setActiveAccountId(newId);
@@ -158,7 +160,7 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
   const clearAccount = (id: number) => {
     setAccounts(prev => prev.map(acc => 
       acc.id === id 
-        ? { ...acc, items: [], globalDiscountPercentage: 0, selectedClient: defaultClient, enteredPromoCode: null }
+        ? { ...acc, items: [], globalDiscountPercentage: 0, globalDiscountType: 'percentage', globalDiscountValue: 0, selectedClient: defaultClient, enteredPromoCode: null }
         : acc
     ));
   };
@@ -194,7 +196,14 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
     });
   };
 
-  const setGlobalDiscount = (discount: number) => updateActiveAccount({ globalDiscountPercentage: discount });
+  const setGlobalDiscount = (value: number, type?: 'percentage' | 'fixed') => {
+    const finalType = type || activeAccount.globalDiscountType || 'percentage';
+    updateActiveAccount({
+      globalDiscountValue: value,
+      globalDiscountType: finalType,
+      globalDiscountPercentage: finalType === 'percentage' ? value : 0
+    });
+  };
   const setPromoCode = (code: string | null) => updateActiveAccount({ enteredPromoCode: code });
   const setClient = (client: Client | null) => updateActiveAccount({ selectedClient: client });
 
@@ -217,12 +226,21 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
 
   const totals = calculateOrderTotals(engineItems, availableDiscounts, activeAccount.enteredPromoCode);
   
-  // Re-apply legacy global manual discount over engine's taxableSubtotal if they are still using that slider
+  // Re-apply global manual discount (percentage or fixed amount) over engine's taxableSubtotal
   let finalTaxableSubtotal = totals.taxableSubtotal;
   let legacyGlobalDiscountValue = 0;
-  if (activeAccount.globalDiscountPercentage > 0) {
-     legacyGlobalDiscountValue = finalTaxableSubtotal * (activeAccount.globalDiscountPercentage / 100);
-     finalTaxableSubtotal -= legacyGlobalDiscountValue;
+  
+  const discountType = activeAccount.globalDiscountType || 'percentage';
+  const discountVal = activeAccount.globalDiscountValue || 0;
+  
+  if (discountVal > 0) {
+    if (discountType === 'percentage') {
+      legacyGlobalDiscountValue = finalTaxableSubtotal * (discountVal / 100);
+    } else {
+      // Fixed amount discount. Cap at taxable subtotal to prevent negative billing.
+      legacyGlobalDiscountValue = Math.min(discountVal, finalTaxableSubtotal);
+    }
+    finalTaxableSubtotal -= legacyGlobalDiscountValue;
   }
   
   const tax = finalTaxableSubtotal * 0.16;

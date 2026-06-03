@@ -1,28 +1,14 @@
+"use client"; // Note: Next.js API routes don't strictly use "use client", but we can import NextResponse from next/server
+
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import JSZip from "jszip";
 
-export async function GET() {
-  try {
-    const zip = new JSZip();
-    
-    // Ruta del directorio del agente en el proyecto
-    const agentDir = path.join(process.cwd(), "hardware-agent");
-    
-    // Archivos requeridos para distribuir el agente (sin incluir node_modules)
-    const filesToInclude = ["index.js", "package.json", "package-lock.json", ".env"];
-    
-    for (const fileName of filesToInclude) {
-      const filePath = path.join(agentDir, fileName);
-      if (fs.existsSync(filePath)) {
-        const fileContent = fs.readFileSync(filePath);
-        zip.file(fileName, fileContent);
-      }
-    }
-    
-    // Crear un archivo README.md con instrucciones claras de arranque
-    const readmeContent = `# Agente de Hardware Local (Cash Recycler)
+// Embedded hardware agent files
+const indexJsContent = "require('dotenv').config();\r\nconst express = require('express');\r\nconst cors = require('cors');\r\nconst axios = require('axios');\r\nconst https = require('https');\r\n\r\nconst app = express();\r\n\r\n// Permitir solicitudes CORS desde cualquier origen (ya que es un agente local)\r\napp.use(cors());\r\napp.use(express.json());\r\n\r\nconst PORT = process.env.PORT || 3001;\r\nconst RECYCLER_IP = process.env.RECYCLER_IP || '192.168.1.109';\r\nconst RECYCLER_PORT = process.env.RECYCLER_PORT || '44333';\r\nconst RECYCLER_PROTOCOL = process.env.RECYCLER_PROTOCOL || 'http';\r\nconst RECYCLER_USERNAME = process.env.RECYCLER_USERNAME || 'admin';\r\nconst RECYCLER_PASSWORD = process.env.RECYCLER_PASSWORD || 'password';\r\n\r\nconst BASE_URL = `${RECYCLER_PROTOCOL}://${RECYCLER_IP}:${RECYCLER_PORT}`;\r\n\r\n// Agente HTTPS configurado para ignorar errores de certificados auto-firmados\r\nconst httpsAgent = new https.Agent({\r\n    rejectUnauthorized: false\r\n});\r\n\r\nlet currentToken = null;\r\n\r\n// Función para obtener el token del hardware\r\nasync function getToken() {\r\n    console.log(\"[Hardware Agent] Authenticating with recycler...\");\r\n    try {\r\n        const params = new URLSearchParams();\r\n        params.append('grant_type', 'password');\r\n        params.append('username', RECYCLER_USERNAME);\r\n        params.append('password', RECYCLER_PASSWORD);\r\n\r\n        const response = await axios.post(`${BASE_URL}/token`, params, {\r\n            httpsAgent,\r\n            timeout: 5000, // 5 seconds timeout for authentication\r\n            headers: {\r\n                'Content-Type': 'application/x-www-form-urlencoded'\r\n            }\r\n        });\r\n        \r\n        if (response.data && response.data.access_token) {\r\n            currentToken = response.data.access_token;\r\n            console.log(\"[Hardware Agent] Authentication successful.\");\r\n            return currentToken;\r\n        }\r\n        throw new Error(\"No token in response\");\r\n    } catch (error) {\r\n        console.error(\"[Hardware Agent] Error authenticating:\", error.message);\r\n        throw error;\r\n    }\r\n}\r\n\r\n// Función middleware para envolver peticiones y reintentar si el token expira\r\nasync function makeRecyclerRequest(method, endpoint, data = null) {\r\n    if (!currentToken) {\r\n        await getToken();\r\n    }\r\n    \r\n    const config = {\r\n        method,\r\n        url: `${BASE_URL}${endpoint}`,\r\n        timeout: 10000, // 10 seconds timeout for general requests\r\n        headers: {\r\n            'Authorization': `Bearer ${currentToken}`\r\n        }\r\n    };\r\n    \r\n    if (BASE_URL.startsWith('https')) {\r\n        config.httpsAgent = httpsAgent;\r\n    }\r\n    \r\n    if (data && method !== 'GET') {\r\n        config.data = data;\r\n        config.headers['Content-Type'] = 'application/json';\r\n    }\r\n\r\n    try {\r\n        const response = await axios(config);\r\n        return response.data;\r\n    } catch (error) {\r\n        if (error.response && error.response.status === 401) {\r\n            console.log(\"[Hardware Agent] Token expired, refreshing...\");\r\n            await getToken();\r\n            config.headers['Authorization'] = `Bearer ${currentToken}`;\r\n            const retryResponse = await axios(config);\r\n            return retryResponse.data;\r\n        }\r\n        throw error;\r\n    }\r\n}\r\n\r\n// --- Endpoints del Agente Local ---\r\n\r\n// GET /api/system - Devuelve la información del sistema del hardware\r\napp.get('/api/system', async (req, res) => {\r\n    try {\r\n        const data = await makeRecyclerRequest('GET', '/system');\r\n        res.json(data);\r\n    } catch (error) {\r\n        res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });\r\n    }\r\n});\r\n\r\n// GET /api/status - Devuelve el estado actual de los dispositivos y eventos\r\napp.get('/api/status', async (req, res) => {\r\n    try {\r\n        const data = await makeRecyclerRequest('GET', '/status');\r\n        console.log(\"GET /api/status response:\", JSON.stringify(data));\r\n        res.json(data);\r\n    } catch (error) {\r\n        res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });\r\n    }\r\n});\r\n\r\n// POST /api/session - Inicia o detiene una sesión (ej. cobrar, cancelar, vaciar)\r\napp.post('/api/session', async (req, res) => {\r\n    console.log(\"POST /api/session body:\", JSON.stringify(req.body));\r\n    try {\r\n        const data = await makeRecyclerRequest('POST', '/session', req.body);\r\n        console.log(\"Response from recycler:\", JSON.stringify(data));\r\n        res.json(data);\r\n    } catch (error) {\r\n        res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });\r\n    }\r\n});\r\n\r\n// GET /api/denomination - Obtener opciones de denominación (incluye floatLevel)\r\napp.get('/api/denomination', async (req, res) => {\r\n    try {\r\n        const data = await makeRecyclerRequest('GET', '/denomination');\r\n        res.json(data);\r\n    } catch (error) {\r\n        res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });\r\n    }\r\n});\r\n\r\n// POST /api/denomination - Modificar opciones de denominación\r\napp.post('/api/denomination', async (req, res) => {\r\n    try {\r\n        const data = await makeRecyclerRequest('POST', '/denomination', req.body);\r\n        res.json(data);\r\n    } catch (error) {\r\n        res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });\r\n    }\r\n});\r\n\r\n// Iniciar Servidor\r\napp.listen(PORT, () => {\r\n    console.log(`========================================`);\r\n    console.log(`[Hardware Agent] Started Successfully!`);\r\n    console.log(`[Hardware Agent] Listening on http://localhost:${PORT}`);\r\n    console.log(`[Hardware Agent] Bridging to Cash Recycler at ${BASE_URL}`);\r\n    console.log(`========================================`);\r\n});\r\n";
+const packageJsonContent = "{\r\n  \"name\": \"hardware-agent\",\r\n  \"version\": \"1.0.0\",\r\n  \"description\": \"\",\r\n  \"main\": \"index.js\",\r\n  \"scripts\": {\r\n    \"start\": \"node index.js\"\r\n  },\r\n  \"keywords\": [],\r\n  \"author\": \"\",\r\n  \"license\": \"ISC\",\r\n  \"type\": \"commonjs\",\r\n  \"dependencies\": {\r\n    \"axios\": \"^1.16.0\",\r\n    \"cors\": \"^2.8.6\",\r\n    \"dotenv\": \"^17.4.2\",\r\n    \"express\": \"^5.2.1\"\r\n  }\r\n}\r\n";
+const envContent = "PORT=3001\n# IP y Puerto del Reciclador de Billetes en la red local\nRECYCLER_IP=192.168.1.180\nRECYCLER_PORT=44333\n# Credenciales por defecto del reciclador (modificar si son diferentes)\nRECYCLER_USERNAME=ApiUserOne\nRECYCLER_PASSWORD=ApiPassword1\n";
+
+const readmeContent = `# Agente de Hardware Local (Cash Recycler)
 
 Este agente sirve de puente entre el Punto de Venta web y el reciclador de billetes físico (CashGenic).
 
@@ -33,22 +19,30 @@ Este agente sirve de puente entre el Punto de Venta web y el reciclador de bille
 1. Extrae el contenido de este archivo ZIP en una carpeta local de tu computadora (por ejemplo, en \`C:\\hardware-agent\` o en el Escritorio).
 2. Abre la terminal o consola de comandos (cmd o PowerShell) en esa carpeta.
 3. Ejecuta el siguiente comando para descargar los componentes necesarios:
-   \`\`\`bash
+   \```bash
    npm install
-   \`\`\`
+   \```
 4. Una vez completado, inicia el puente de comunicación ejecutando:
-   \`\`\`bash
+   \```bash
    npm start
-   \`\`\`
+   \```
 
 El agente comenzará a ejecutarse y escuchará en http://localhost:3001 para conectar de forma automática el Punto de Venta con el Reciclador de Billetes.
 
 ## Configuración (.env)
 Si la IP del reciclador cambia en la red, puedes abrir el archivo \`.env\` con cualquier editor de texto y actualizar la IP asignada:
-\`\`\`env
+\```env
 RECYCLER_IP=192.168.1.180
-\`\`\`
+\```
 `;
+
+export async function GET() {
+  try {
+    const zip = new JSZip();
+    
+    zip.file("index.js", indexJsContent);
+    zip.file("package.json", packageJsonContent);
+    zip.file(".env", envContent);
     zip.file("README.md", readmeContent);
 
     // Generar el archivo ZIP

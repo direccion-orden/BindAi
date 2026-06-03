@@ -11,10 +11,13 @@ export async function GET() {
   try {
     const zip = new JSZip();
     
+    const batContent = `@echo off\r\ncd /d "%~dp0"\r\nnode index.js\r\npause\r\n`;
+
     zip.file("index.js", indexJsContent);
     zip.file("package.json", packageJsonContent);
     zip.file(".env", envContent);
     zip.file("README.md", readmeContent);
+    zip.file("iniciar-agente.bat", batContent);
 
     // Generar el archivo ZIP
     const buffer = await zip.generateAsync({ type: "uint8array" });

@@ -2,25 +2,34 @@ import * as admin from 'firebase-admin';
 
 let isConfigured = false;
 
+const projectId = process.env.FIREBASE_PROJECT_ID?.replace(/^["']|["']$/g, '');
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.replace(/^["']|["']$/g, '');
+const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')?.replace(/^["']|["']$/g, '');
+
 if (!admin.apps.length) {
   try {
-    if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    if (projectId && clientEmail && privateKey) {
       admin.initializeApp({
         credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+          projectId,
+          clientEmail,
+          privateKey,
         }),
       });
       isConfigured = true;
+      console.log("🚀 Firebase Admin SDK initialized successfully with Project ID:", projectId);
     } else {
-      console.warn("⚠️ Firebase Admin credentials not found in process.env. Admin SDK will run as null.");
+      console.warn("⚠️ Firebase Admin credentials not found in process.env. Admin SDK will run as null. Missing:", {
+        projectId: !projectId,
+        clientEmail: !clientEmail,
+        privateKey: !privateKey
+      });
     }
   } catch (error) {
     console.error('Firebase admin initialization error', error);
   }
 } else {
-  isConfigured = true;
+  isConfigured = !!(projectId && clientEmail && privateKey);
 }
 
 export const isFirebaseAdminConfigured = isConfigured;

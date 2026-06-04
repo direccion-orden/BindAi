@@ -177,8 +177,13 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
 
   return (
     <div 
-      className="print-only thermal-ticket mx-auto bg-white text-black p-1"
-      style={{ width: widthValue === "80mm" ? "100%" : "280px" }} // Screen size control
+      className="print-only thermal-ticket bg-white text-black p-6 border border-slate-200 rounded shadow-sm"
+      style={{ 
+        width: widthValue === "80mm" ? "320px" : "240px",
+        maxWidth: "100%",
+        maxHeight: "85vh",
+        overflowY: "auto"
+      }} // Screen size control
     >
       <div className="text-center mb-3">
         {/* Logo rendering */}
@@ -317,12 +322,14 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
               qrUrl = `${qrUrl}${separator}companyId=${companyId}`;
             }
 
+            const formattedTotal = Number(total).toFixed(2);
+
             if (qrUrl.includes('{folio}') || qrUrl.includes('{total}')) {
               qrUrl = qrUrl.replace('{folio}', encodeURIComponent(folioText))
-                           .replace('{total}', encodeURIComponent(total.toString()));
+                           .replace('{total}', encodeURIComponent(formattedTotal));
             } else {
               const separator = qrUrl.includes('?') ? '&' : '?';
-              qrUrl = `${qrUrl}${separator}folio=${encodeURIComponent(folioText)}&total=${encodeURIComponent(total.toString())}`;
+              qrUrl = `${qrUrl}${separator}folio=${encodeURIComponent(folioText)}&total=${encodeURIComponent(formattedTotal)}`;
             }
             return (
               <div className="flex flex-col items-center pt-1.5">
@@ -378,9 +385,13 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
             left: 0 !important;
             width: ${widthValue} !important;
             max-width: ${widthValue} !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
             margin: 0 !important;
             padding: 4mm !important;
             background-color: white;
+            border: none !important;
             filter: grayscale(100%) contrast(1000) !important;
           }
           .print-only img {

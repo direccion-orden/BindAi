@@ -737,6 +737,12 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         text += `\nCon esta compra acumulaste *${pointsEarned} puntos* de lealtad. 🎁`;
     }
     text += `\n\nTicket: ${savedSaleId}`;
+
+    const folioText = savedSaleData?.orderNumber?.replace("POS-", "") || savedSaleData?.remissionNumber || savedSaleId?.slice(0, 8).toUpperCase() || "";
+    const formattedTotal = Number(total).toFixed(2);
+    const billingUrl = `https://bind-ai-6f1fc.web.app/autofactura?companyId=${companyId}&folio=${encodeURIComponent(folioText)}&total=${encodeURIComponent(formattedTotal)}`;
+    text += `\n\nPara generar tu factura en línea, ingresa aquí:\n${billingUrl}`;
+
     if (companySettings?.name) {
         text += `\n\nAtentamente,\n*${companySettings.name}*`;
     }
@@ -780,7 +786,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       const changeAmount = changePaid ? Object.entries(changePaid).reduce((acc, [k,v])=>acc+parseFloat(k)*v,0) : 0;
 
       return (
-          <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 gap-8">
               <div className="bg-card border rounded-xl shadow-xl w-full max-w-md p-8 flex flex-col items-center text-center space-y-4 animate-in fade-in zoom-in">
                   <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-2">
                       <CheckCircle2 className="w-10 h-10 text-green-600" />

@@ -73,6 +73,21 @@ const mapRemissionToSale = (r: any) => {
   };
 };
 
+const parseSafeDate = (createdAt: any): Date => {
+  if (!createdAt) return new Date();
+  if (typeof createdAt.toDate === "function") {
+    return createdAt.toDate();
+  }
+  if (createdAt.seconds) {
+    return new Date(createdAt.seconds * 1000);
+  }
+  if (typeof createdAt === "string" || typeof createdAt === "number") {
+    const parsed = new Date(createdAt);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+};
+
 export function ReturnsModal({ onClose }: ReturnsModalProps) {
   const { user, companyId } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
@@ -121,16 +136,58 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
         }
       }
 
-      // Buscar en las últimas 100 remisiones del POS
+      // Buscar en las últimas remisiones del POS
       const formattedTerm = term.startsWith("rem-") ? term.toUpperCase() : term;
       const formattedPosTerm = term.startsWith("pos-") ? term.toUpperCase() : `POS-${term.toUpperCase()}`;
       
-      const q = query(collection(db, "companies", companyId, "remisiones"), orderBy("createdAt", "desc"), limit(100));
-      const snap = await getDocs(q);
-      
-      const matches = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }) as any)
-        .filter(r => r.isPosSale === true)
+      const promises = [];
+
+      // Consulta 1: Coincidencia exacta en orderNumber (ej: POS-1002)
+      promises.push(
+        getDocs(query(
+          collection(db, "companies", companyId, "remisiones"),
+          where("orderNumber", "==", formattedPosTerm)
+        ))
+      );
+
+      // Consulta 2: Coincidencia exacta en remissionNumber (ej: 1002)
+      promises.push(
+        getDocs(query(
+          collection(db, "companies", companyId, "remisiones"),
+          where("remissionNumber", "==", formattedTerm)
+        ))
+      );
+
+      // Consulta 3: Coincidencia exacta en clientName
+      promises.push(
+        getDocs(query(
+          collection(db, "companies", companyId, "remisiones"),
+          where("clientName", "==", searchTerm.trim())
+        ))
+      );
+
+      // Consulta 4: Obtener ventas generales del POS recientes para filtrado en memoria
+      promises.push(
+        getDocs(query(
+          collection(db, "companies", companyId, "remisiones"),
+          where("isPosSale", "==", true),
+          limit(200)
+        ))
+      );
+
+      const snaps = await Promise.all(promises);
+      const docMap = new Map<string, any>();
+
+      snaps.forEach(snap => {
+        snap.docs.forEach(d => {
+          const data = d.data();
+          if (data.isPosSale) {
+            docMap.set(d.id, { id: d.id, ...data });
+          }
+        });
+      });
+
+      const matches = Array.from(docMap.values())
         .map(mapRemissionToSale)
         .filter((s: any) => {
           const folio = (s.folio || "").toUpperCase();
@@ -144,6 +201,13 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                  s.id.toLowerCase() === term || 
                  name.includes(term);
         });
+
+      // Ordenar por fecha de creación desc
+      matches.sort((a, b) => {
+        const timeA = parseSafeDate(a.createdAt).getTime();
+        const timeB = parseSafeDate(b.createdAt).getTime();
+        return timeB - timeA;
+      });
 
       if (matches.length === 0) {
         setError("No se encontraron remisiones de POS recientes para esta búsqueda.");
@@ -375,7 +439,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                 >
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-semibold text-primary">{formatMoney(res.financials.total)}</span>
-                    <span className="text-xs text-muted-foreground">{res.createdAt?.toDate().toLocaleDateString()}</span>
+                    <span className="text-xs text-muted-foreground">{parseSafeDate(res.createdAt).toLocaleDateString('es-MX')}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <User className="w-3 h-3" />
@@ -393,7 +457,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                 <p className="text-sm font-semibold mb-1">Detalles de Venta</p>
                 <div className="text-xs text-muted-foreground space-y-1">
                   <p>Cliente: {sale.client?.name || "Público en General"}</p>
-                  <p>Fecha: {sale.createdAt?.toDate().toLocaleString()}</p>
+                  <p>Fecha: {parseSafeDate(sale.createdAt).toLocaleString('es-MX')}</p>
                   <p>Total Original: {formatMoney(sale.financials.total)}</p>
                 </div>
               </div>

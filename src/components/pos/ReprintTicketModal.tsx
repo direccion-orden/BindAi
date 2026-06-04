@@ -1,11 +1,26 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { collection, query, where, limit, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { X, Search, Printer, Loader2 } from "lucide-react";
 import { ThermalTicket } from "@/components/pos/ThermalTicket";
+
+const parseSafeDate = (createdAt: any): Date => {
+  if (!createdAt) return new Date();
+  if (typeof createdAt.toDate === "function") {
+    return createdAt.toDate();
+  }
+  if (createdAt.seconds) {
+    return new Date(createdAt.seconds * 1000);
+  }
+  if (typeof createdAt === "string" || typeof createdAt === "number") {
+    const parsed = new Date(createdAt);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+};
 
 interface ReprintTicketModalProps {
   onClose: () => void;
@@ -31,13 +46,12 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
       if (!companyId) return;
       const q = query(
         collection(db, "companies", companyId, "remisiones"),
-        orderBy("createdAt", "desc"),
+        where("isPosSale", "==", true),
         limit(100)
       );
       const snapshot = await getDocs(q);
       const data = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as any))
-        .filter(r => r.isPosSale === true)
         .map(r => ({
           ...r,
           folio: r.orderNumber?.replace("POS-", "") || r.remissionNumber,
@@ -54,6 +68,14 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
             discountPercentage: item.discountPercentage || 0
           })) || []
         }));
+
+      // Ordenar en memoria por fecha de creación desc
+      data.sort((a, b) => {
+        const timeA = parseSafeDate(a.createdAt).getTime();
+        const timeB = parseSafeDate(b.createdAt).getTime();
+        return timeB - timeA;
+      });
+
       setSales(data);
       setFilteredSales(data);
     } catch (error) {

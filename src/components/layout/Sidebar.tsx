@@ -102,6 +102,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/catalogos/etapas-produccion", label: "Etapas Producción", icon: ClipboardList },
         { href: "/configuracion/dispositivos", label: "Dispositivos y Hardware", icon: Cpu },
         { href: "/configuracion/disenador-ticket", label: "Diseñador de Tickets", icon: Printer },
+        { href: "/configuracion/shopify", label: "Integración Shopify", icon: ArrowRightLeft },
       ]
     }
   ];

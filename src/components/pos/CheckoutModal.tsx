@@ -740,6 +740,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
     const folioText = savedSaleData?.orderNumber?.replace("POS-", "") || savedSaleData?.remissionNumber || savedSaleId?.slice(0, 8).toUpperCase() || "";
     const formattedTotal = Number(total).toFixed(2);
+    const ticketUrl = `https://bind-ai-6f1fc.web.app/ticket/${companyId}/${savedSaleId}`;
+    text += `\n\nDescarga tu ticket en PDF aquí:\n${ticketUrl}`;
+
     const billingUrl = `https://bind-ai-6f1fc.web.app/autofactura?companyId=${companyId}&folio=${encodeURIComponent(folioText)}&total=${encodeURIComponent(formattedTotal)}`;
     text += `\n\nPara generar tu factura en línea, ingresa aquí:\n${billingUrl}`;
 

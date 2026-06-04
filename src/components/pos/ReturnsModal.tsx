@@ -129,7 +129,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
         const remissionRef = doc(db, "companies", companyId, "remisiones", searchTerm.trim());
         const remissionSnap = await getDoc(remissionRef);
         
-        if (remissionSnap.exists() && remissionSnap.data().isPosSale) {
+        if (remissionSnap.exists()) {
           setSale(mapRemissionToSale({ id: remissionSnap.id, ...remissionSnap.data() }));
           setLoading(false);
           return;
@@ -213,9 +213,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
       snaps.forEach(snap => {
         snap.docs.forEach(d => {
           const data = d.data();
-          if (data.isPosSale) {
-            docMap.set(d.id, { id: d.id, ...data });
-          }
+          docMap.set(d.id, { id: d.id, ...data });
         });
       });
 

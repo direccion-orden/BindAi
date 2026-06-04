@@ -20,6 +20,12 @@ function parseXLS(path) {
   return xlsx.utils.sheet_to_json(sheet);
 }
 
+// Parse number with thousands separator comma safely
+function parseNumber(val) {
+  if (val === undefined || val === null) return 0;
+  return parseFloat(String(val).replace(/[^0-9.-]/g, "")) || 0;
+}
+
 // Clean and extract all possible numbers from string
 function getCleanNumbers(numStr) {
   if (!numStr) return [];
@@ -127,9 +133,9 @@ function mergeData() {
       }
     }
     
-    const qty = parseFloat(row['Cantidad']) || 0;
-    const subtotalLine = parseFloat(row['Subtotal']) || 0;
-    const discountLine = parseFloat(row['Descuento']) || 0;
+    const qty = parseNumber(row['Cantidad']);
+    const subtotalLine = parseNumber(row['Subtotal']);
+    const discountLine = parseNumber(row['Descuento']);
     
     // Calculate values before discount
     const unitPrice = qty > 0 ? (subtotalLine / qty) : 0;

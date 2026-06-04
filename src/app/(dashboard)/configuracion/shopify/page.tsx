@@ -468,14 +468,13 @@ export default function ShopifyIntegrationPage() {
           <div className="bg-[#96bf48]/10 border border-[#96bf48]/20 p-6 rounded-xl space-y-3">
             <div className="flex items-center gap-2 text-[#7ba53c] font-bold">
               <Info className="w-5 h-5" />
-              <span>¿Cómo crear tus credenciales?</span>
+              <span>¿Cómo crear tus credenciales? (Shopify 2026)</span>
             </div>
             
             <ol className="text-xs text-slate-850 space-y-2 list-decimal pl-4 leading-relaxed">
-              <li>Ingresa a tu administrador de Shopify.</li>
-              <li>Ve a **Configuración &gt; Apps y canales de venta**.</li>
-              <li>Haz clic en **Desarrollar apps** en la esquina superior derecha.</li>
-              <li>Crea una app y otorga permisos de lectura/escritura a:
+              <li>Ve al **Shopify Partner Dashboard** (o haz clic en *Desarrollar apps en Dev Dashboard* desde tu tienda).</li>
+              <li>Bajo **Empezar desde Dev Dashboard**, escribe un nombre (ej. `ERP Integracion`) y haz clic en **Crear**.</li>
+              <li>Ve a **Configuración de la API** (API access) y selecciona los siguientes alcances (*scopes*):
                 <br />
                 <span className="font-mono bg-white/50 px-1 rounded">write_products</span>, 
                 <span className="font-mono bg-white/50 px-1 rounded">read_inventory</span>,
@@ -483,7 +482,10 @@ export default function ShopifyIntegrationPage() {
                 <span className="font-mono bg-white/50 px-1 rounded">read_orders</span>,
                 <span className="font-mono bg-white/50 px-1 rounded">write_orders</span>
               </li>
-              <li>Instala la app para obtener el **Admin API Access Token**.</li>
+              <li>Ve a la sección de **Distribución** en el menú de la app.</li>
+              <li>Selecciona **Distribución personalizada (Custom distribution)** e ingresa el dominio de tu tienda (ej. `ordendelascosas.store`).</li>
+              <li>Genera el **enlace de instalación**, ábrelo en tu navegador y haz clic en **Instalar app**.</li>
+              <li>Copia el **Token de acceso a la API administrativa** (`shpat_...`) generado e introdúcelo en este formulario.</li>
             </ol>
           </div>
 

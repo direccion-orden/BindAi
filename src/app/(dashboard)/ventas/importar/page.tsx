@@ -776,9 +776,9 @@ export default function ImportarHistorialPage() {
                 if (!productName) continue;
 
                 const sku = String(line["Producto_SKU"] || "").trim();
-                const qty = parseFloat(line["Producto_Cantidad"]) || 0;
-                const unitPrice = parseFloat(line["Producto_PrecioUnitario"]) || 0;
-                const discountPercentage = parseFloat(line["Producto_DescuentoPorcentaje"]) || 0;
+                const qty = parseFloat(String(line["Producto_Cantidad"] || "").replace(/[^0-9.-]/g, "")) || 0;
+                const unitPrice = parseFloat(String(line["Producto_PrecioUnitario"] || "").replace(/[^0-9.-]/g, "")) || 0;
+                const discountPercentage = parseFloat(String(line["Producto_DescuentoPorcentaje"] || "").replace(/[^0-9.-]/g, "")) || 0;
 
                 // Resolve Product on the fly
                 let product = null;

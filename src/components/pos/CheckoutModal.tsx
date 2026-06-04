@@ -23,6 +23,7 @@ interface PaymentEntry {
   amount: number;
   denominationsIn?: DenominationCounts;
   denominationsOut?: DenominationCounts; // Para el cambio
+  reference?: string;
 }
 
 function sanitizeFirestoreData<T>(data: T): T {
@@ -63,6 +64,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   
   // States for change (cambio) when cash exceeds remaining
   const [changeDenoms, setChangeDenoms] = useState<DenominationCounts>({});
+  const [currentReference, setCurrentReference] = useState<string>("");
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -343,7 +345,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                           
                           setPayments(prev => [...prev, {
                             method: 'efectivo',
-                            amount: appliedAmount
+                            amount: appliedAmount,
+                            reference: txId || undefined
                           }]);
                           
                           setCurrentMethod(null);
@@ -473,10 +476,12 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       amount: appliedAmount,
       denominationsIn: currentMethod === 'efectivo' ? currentDenomsIn : undefined,
       denominationsOut: currentMethod === 'efectivo' && changeToGive > 0 ? changeDenoms : undefined,
+      reference: currentReference.trim() || undefined
     }]);
 
     setCurrentMethod(null);
     setCurrentAmount("");
+    setCurrentReference("");
     setCurrentDenomsIn({});
     setChangeDenoms({});
   };
@@ -547,6 +552,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         orderNumber: `POS-${remNumber}`,
         clientId: client?.id || "public",
         clientName: client?.name || "Público en General",
+        pointsEarned: pointsEarned,
         items: activeAccount.items.map(item => {
           const matchingVariant = item.product.variants?.find((v: any) => v.sku === item.product.sku) || item.product.variants?.[0];
           const variantId = matchingVariant?.id || item.product.id || "";
@@ -593,7 +599,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             method: p.method || "",
             amount: p.amount || 0,
             denominationsIn: p.denominationsIn || null,
-            denominationsOut: p.denominationsOut || null
+            denominationsOut: p.denominationsOut || null,
+            reference: p.reference || null
         }))
       });
 
@@ -679,7 +686,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           amount: p.amount,
           date: new Date().toISOString().split("T")[0],
           method: p.method === 'efectivo' ? 'Efectivo' : p.method === 'tarjeta' ? 'Tarjeta' : p.method === 'transferencia' ? 'Transferencia' : p.method,
-          reference: `Venta POS ${remNumber}`,
+          reference: p.reference ? `Venta POS ${remNumber} (Ref: ${p.reference})` : `Venta POS ${remNumber}`,
+          paymentReference: p.reference || null,
           documentId: remId,
           documentType: "remision",
           documentNumber: remNumber,
@@ -868,6 +876,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       <span className="uppercase text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
                         {p.method}
                       </span>
+                      {p.reference && (
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          ({p.reference})
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-bold">{formatMoney(p.amount)}</span>
@@ -1040,7 +1053,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                           </Button>
                           
                           {/* Simulación de Respaldo */}
-                          <div className="mt-8 bg-background p-4 rounded-lg shadow-sm border space-y-4">
+                          <div className="mt-8 bg-background p-4 rounded-lg shadow-sm border space-y-4 text-left">
                             <p className="text-xs font-semibold text-orange-600 uppercase">Modo Respaldo (Simulación)</p>
                             <div className="flex items-center gap-2">
                               <Input 
@@ -1058,6 +1071,16 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                               >
                                 Max
                               </Button>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-muted-foreground uppercase">Referencia de Pago (Reciclador)</label>
+                              <Input 
+                                  type="text" 
+                                  className="mt-1 bg-muted/10 h-11"
+                                  placeholder="N° de transacción o Folio"
+                                  value={currentReference}
+                                  onChange={(e) => setCurrentReference(e.target.value)}
+                              />
                             </div>
                           </div>
                         </div>
@@ -1103,6 +1126,18 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       <p className="text-xs text-muted-foreground mt-2">
                         Disponible: {formatMoney(currentMethod === 'puntos' ? clientPoints : clientWallet)}
                       </p>
+                    )}
+                    {(currentMethod === 'tarjeta' || currentMethod === 'transferencia') && (
+                      <div className="mt-4">
+                        <label className="text-xs font-semibold text-muted-foreground uppercase">Referencia de Pago</label>
+                        <Input 
+                            type="text" 
+                            className="mt-1 bg-muted/10 h-11"
+                            placeholder="Ej. Autorización, N° de transacción"
+                            value={currentReference}
+                            onChange={(e) => setCurrentReference(e.target.value)}
+                        />
+                      </div>
                     )}
                   </div>
                 )}

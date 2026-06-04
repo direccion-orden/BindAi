@@ -180,6 +180,9 @@ service cloud.firestore {
       match /credentials/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /ticketConfig/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
       match /expenses_inbox/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }

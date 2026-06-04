@@ -44,30 +44,46 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
   const fetchRecentSales = async () => {
     try {
       if (!companyId) return;
+      
       const q = query(
         collection(db, "companies", companyId, "remisiones"),
         where("isPosSale", "==", true),
         limit(100)
       );
       const snapshot = await getDocs(q);
+
+      // Obtener todos los clientes para cruzar teléfono y correo
+      const clientsSnap = await getDocs(collection(db, "companies", companyId, "clients"));
+      const clientsMap = new Map<string, any>();
+      clientsSnap.docs.forEach(doc => {
+        clientsMap.set(doc.id, doc.data());
+      });
+
       const data = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as any))
-        .map(r => ({
-          ...r,
-          folio: r.orderNumber?.replace("POS-", "") || r.remissionNumber,
-          client: { name: r.clientName },
-          financials: {
-            subtotal: r.subtotal || 0,
-            tax: r.tax || 0,
-            total: r.totalAmount || 0
-          },
-          items: r.items?.map((item: any) => ({
-            title: item.productName || item.title || "",
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            discountPercentage: item.discountPercentage || 0
-          })) || []
-        }));
+        .map(r => {
+          const clientData = r.clientId ? clientsMap.get(r.clientId) : null;
+          return {
+            ...r,
+            folio: r.orderNumber?.replace("POS-", "") || r.remissionNumber,
+            client: { 
+              name: r.clientName || "Público General",
+              phone: clientData?.phone || "",
+              email: clientData?.email || ""
+            },
+            financials: {
+              subtotal: r.subtotal || 0,
+              tax: r.tax || 0,
+              total: r.totalAmount || 0
+            },
+            items: r.items?.map((item: any) => ({
+              title: item.productName || item.title || "",
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              discountPercentage: item.discountPercentage || 0
+            })) || []
+          };
+        });
 
       // Ordenar en memoria por fecha de creación desc
       data.sort((a, b) => {

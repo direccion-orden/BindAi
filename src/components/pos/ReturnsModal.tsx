@@ -136,6 +136,28 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
         }
       }
 
+      // 1. Buscar clientes por teléfono o email exacto
+      const cleanPhone = term.replace(/\D/g, "");
+      const clientQueries = [
+        getDocs(query(collection(db, "companies", companyId, "clients"), where("phone", "==", searchTerm.trim()))),
+        getDocs(query(collection(db, "companies", companyId, "clients"), where("email", "==", searchTerm.trim().toLowerCase())))
+      ];
+      if (cleanPhone && cleanPhone !== searchTerm.trim() && cleanPhone.length >= 8) {
+        clientQueries.push(
+          getDocs(query(collection(db, "companies", companyId, "clients"), where("phone", "==", cleanPhone)))
+        );
+      }
+
+      const clientSnaps = await Promise.all(clientQueries);
+      const clientIds: string[] = [];
+      clientSnaps.forEach(snap => {
+        snap.docs.forEach(d => {
+          if (!clientIds.includes(d.id)) {
+            clientIds.push(d.id);
+          }
+        });
+      });
+
       // Buscar en las últimas remisiones del POS
       const formattedTerm = term.startsWith("rem-") ? term.toUpperCase() : term;
       const formattedPosTerm = term.startsWith("pos-") ? term.toUpperCase() : `POS-${term.toUpperCase()}`;
@@ -166,7 +188,17 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
         ))
       );
 
-      // Consulta 4: Obtener ventas generales del POS recientes para filtrado en memoria
+      // Consulta 4: Por clientIds encontrados (por teléfono o email)
+      clientIds.forEach(cId => {
+        promises.push(
+          getDocs(query(
+            collection(db, "companies", companyId, "remisiones"),
+            where("clientId", "==", cId)
+          ))
+        );
+      });
+
+      // Consulta 5: Obtener ventas generales del POS recientes para filtrado en memoria
       promises.push(
         getDocs(query(
           collection(db, "companies", companyId, "remisiones"),
@@ -199,7 +231,8 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                  remNum === formattedTerm || 
                  orderNum === formattedPosTerm ||
                  s.id.toLowerCase() === term || 
-                 name.includes(term);
+                 name.includes(term) ||
+                 clientIds.includes(s.clientId);
         });
 
       // Ordenar por fecha de creación desc

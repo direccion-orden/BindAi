@@ -78,6 +78,8 @@ export default function ShopifyIntegrationPage() {
         name: doc.data().name || "Almacén Sin Nombre" 
       }));
       setErpWarehouses(data);
+    }, (error) => {
+      console.error("Error loading warehouses in Shopify settings:", error);
     });
 
     // Fetch Saved Shopify Settings

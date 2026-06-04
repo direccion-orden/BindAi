@@ -5,7 +5,9 @@ import { ShopifyClient } from "@/lib/shopify/client";
 
 export interface ShopifySettings {
   shopName: string;
-  accessToken: string;
+  accessToken?: string;
+  clientId?: string;
+  clientSecret?: string;
   webhookSecret: string;
   isActive: boolean;
   syncInventory: boolean;
@@ -59,10 +61,12 @@ export async function saveShopifySettings(
 
 export async function testShopifyConnection(
   shopName: string,
-  accessToken: string
+  accessToken?: string,
+  clientId?: string,
+  clientSecret?: string
 ): Promise<{ success: boolean; locations?: any[]; error?: string }> {
   try {
-    const client = new ShopifyClient({ shopName, accessToken });
+    const client = new ShopifyClient({ shopName, accessToken, clientId, clientSecret });
     const response = await client.getLocations();
     return { success: true, locations: response.locations };
   } catch (error: any) {
@@ -80,13 +84,15 @@ export async function registerShopifyWebhooksAction(
   if (!adminDb) return { success: false, error: "Firebase Admin is not configured" };
   try {
     const settings = await getShopifySettings(companyId);
-    if (!settings || !settings.accessToken || !settings.shopName) {
+    if (!settings || !settings.shopName || (!settings.accessToken && (!settings.clientId || !settings.clientSecret))) {
       return { success: false, error: "Shopify settings are not configured or missing credentials." };
     }
 
     const client = new ShopifyClient({
       shopName: settings.shopName,
-      accessToken: settings.accessToken
+      accessToken: settings.accessToken,
+      clientId: settings.clientId,
+      clientSecret: settings.clientSecret
     });
 
     const webhooksToRegister = [
@@ -130,13 +136,15 @@ export async function syncProductsFromShopify(
   if (!adminDb) return { success: false, error: "Firebase Admin is not configured" };
   try {
     const settings = await getShopifySettings(companyId);
-    if (!settings || !settings.accessToken || !settings.shopName) {
-      return { success: false, error: "Shopify settings are not configured." };
+    if (!settings || !settings.shopName || (!settings.accessToken && (!settings.clientId || !settings.clientSecret))) {
+      return { success: false, error: "Shopify settings are not configured or missing credentials." };
     }
 
     const client = new ShopifyClient({
       shopName: settings.shopName,
-      accessToken: settings.accessToken
+      accessToken: settings.accessToken,
+      clientId: settings.clientId,
+      clientSecret: settings.clientSecret
     });
 
     let hasMore = true;

@@ -1,11 +1,15 @@
 export interface ShopifyClientConfig {
   shopName: string;
-  accessToken: string;
+  accessToken?: string;
+  clientId?: string;
+  clientSecret?: string;
 }
 
 export class ShopifyClient {
   private shopName: string;
-  private accessToken: string;
+  private accessToken?: string;
+  private clientId?: string;
+  private clientSecret?: string;
   private apiVersion = "2024-04";
 
   constructor(config: ShopifyClientConfig) {
@@ -16,18 +20,57 @@ export class ShopifyClient {
       cleanShop = `${cleanShop}.myshopify.com`;
     }
     this.shopName = cleanShop;
-    this.accessToken = config.accessToken.trim();
+    this.accessToken = config.accessToken?.trim();
+    this.clientId = config.clientId?.trim();
+    this.clientSecret = config.clientSecret?.trim();
   }
 
   private getBaseUrl(): string {
     return `https://${this.shopName}/admin/api/${this.apiVersion}`;
   }
 
+  private async getOrFetchAccessToken(): Promise<string> {
+    if (this.accessToken) {
+      return this.accessToken;
+    }
+
+    if (!this.clientId || !this.clientSecret) {
+      throw new Error("Shopify Client configuration is missing access token or API credentials.");
+    }
+
+    const url = `https://${this.shopName}/admin/oauth/access_token`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: this.clientId,
+        client_secret: this.clientSecret,
+        grant_type: "client_credentials",
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to exchange Shopify credentials for access token: ${errorText}`);
+    }
+
+    const data = (await response.json()) as any;
+    if (!data.access_token) {
+      throw new Error("Shopify did not return an access token in the credentials grant response.");
+    }
+
+    this.accessToken = data.access_token;
+    return this.accessToken!;
+  }
+
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.getBaseUrl()}${endpoint}`;
+    const token = await this.getOrFetchAccessToken();
     const headers = {
       "Content-Type": "application/json",
-      "X-Shopify-Access-Token": this.accessToken,
+      "X-Shopify-Access-Token": token,
       ...options.headers,
     };
 

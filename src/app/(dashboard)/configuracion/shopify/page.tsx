@@ -18,7 +18,9 @@ import {
   MapPin,
   Store,
   Layers,
-  ArrowRightLeft
+  ArrowRightLeft,
+  KeyRound,
+  ShieldAlert
 } from "lucide-react";
 import { 
   getShopifySettings, 
@@ -39,7 +41,10 @@ export default function ShopifyIntegrationPage() {
 
   // Settings state
   const [shopName, setShopName] = useState("");
+  const [authMethod, setAuthMethod] = useState<"oauth" | "legacy">("oauth");
   const [accessToken, setAccessToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [isActive, setIsActive] = useState(false);
   const [syncInventory, setSyncInventory] = useState(false);
@@ -82,15 +87,29 @@ export default function ShopifyIntegrationPage() {
         if (saved) {
           setShopName(saved.shopName || "");
           setAccessToken(saved.accessToken || "");
+          setClientId(saved.clientId || "");
+          setClientSecret(saved.clientSecret || "");
           setWebhookSecret(saved.webhookSecret || "");
           setIsActive(!!saved.isActive);
           setSyncInventory(!!saved.syncInventory);
           setSyncOrders(!!saved.syncOrders);
           setLocationMappings(saved.locationMappings || {});
 
+          // Determine auth method based on saved credentials
+          if (saved.clientId && saved.clientSecret) {
+            setAuthMethod("oauth");
+          } else if (saved.accessToken) {
+            setAuthMethod("legacy");
+          }
+
           // Fetch Shopify locations if connected
-          if (saved.shopName && saved.accessToken) {
-            const res = await testShopifyConnection(saved.shopName, saved.accessToken);
+          if (saved.shopName && (saved.accessToken || (saved.clientId && saved.clientSecret))) {
+            const res = await testShopifyConnection(
+              saved.shopName,
+              saved.accessToken,
+              saved.clientId,
+              saved.clientSecret
+            );
             if (res.success && res.locations) {
               setShopifyLocations(res.locations);
               setConnectionStatus("success");
@@ -112,15 +131,29 @@ export default function ShopifyIntegrationPage() {
   }, [companyId]);
 
   const handleTestConnection = async () => {
-    if (!shopName || !accessToken) {
-      alert("Por favor ingresa el nombre de la tienda y el Token de Acceso.");
+    if (!shopName) {
+      alert("Por favor ingresa el nombre de la tienda.");
       return;
     }
+    if (authMethod === "legacy" && !accessToken) {
+      alert("Por favor ingresa el Token de Acceso.");
+      return;
+    }
+    if (authMethod === "oauth" && (!clientId || !clientSecret)) {
+      alert("Por favor ingresa el Client ID y el Client Secret.");
+      return;
+    }
+
     setTesting(true);
     setConnectionStatus("idle");
     setConnectionError("");
     try {
-      const res = await testShopifyConnection(shopName, accessToken);
+      const res = await testShopifyConnection(
+        shopName,
+        authMethod === "legacy" ? accessToken : undefined,
+        authMethod === "oauth" ? clientId : undefined,
+        authMethod === "oauth" ? clientSecret : undefined
+      );
       if (res.success && res.locations) {
         setShopifyLocations(res.locations);
         setConnectionStatus("success");
@@ -144,7 +177,9 @@ export default function ShopifyIntegrationPage() {
     try {
       const settingsPayload: ShopifySettings = {
         shopName,
-        accessToken,
+        accessToken: authMethod === "legacy" ? accessToken : "",
+        clientId: authMethod === "oauth" ? clientId : "",
+        clientSecret: authMethod === "oauth" ? clientSecret : "",
         webhookSecret,
         isActive,
         syncInventory,
@@ -275,21 +310,73 @@ export default function ShopifyIntegrationPage() {
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Shopify Admin API Access Token</label>
-                <Input 
-                  required
-                  type="password"
-                  value={accessToken}
-                  onChange={e => setAccessToken(e.target.value)}
-                  placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                />
-                <p className="text-xs text-muted-foreground">
-                  El token de acceso API creado en la configuración de Apps del panel de administración de tu tienda Shopify.
-                </p>
+              {/* Authentication Mode Selector Tabs */}
+              <div className="space-y-2 pt-2">
+                <label className="text-sm font-medium">Método de Autenticación</label>
+                <div className="flex bg-muted p-1 rounded-lg border max-w-sm">
+                  <button
+                    type="button"
+                    onClick={() => setAuthMethod("oauth")}
+                    className={`flex-1 text-center text-xs font-bold py-1.5 px-3 rounded-md transition-all duration-200 ${authMethod === "oauth" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Shopify 2026 (OAuth)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMethod("legacy")}
+                    className={`flex-1 text-center text-xs font-bold py-1.5 px-3 rounded-md transition-all duration-200 ${authMethod === "legacy" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Acceso Heredado (Static Token)
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-2">
+              {authMethod === "oauth" ? (
+                <div className="space-y-4 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">ID de cliente (Client ID)</label>
+                    <Input 
+                      required={authMethod === "oauth"}
+                      value={clientId}
+                      onChange={e => setClientId(e.target.value)}
+                      placeholder="Identificador único de la app de Shopify"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Secreto de cliente (Client Secret)</label>
+                    <Input 
+                      required={authMethod === "oauth"}
+                      type="password"
+                      value={clientSecret}
+                      onChange={e => setClientSecret(e.target.value)}
+                      placeholder="shpss_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      El Secreto (Client Secret) generado en tu Dev Dashboard para la app.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
+                  <label className="text-sm font-medium">Shopify Admin API Access Token</label>
+                  <Input 
+                    required={authMethod === "legacy"}
+                    type="password"
+                    value={accessToken}
+                    onChange={e => setAccessToken(e.target.value)}
+                    placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  />
+                  <div className="flex gap-2 items-start p-2.5 bg-amber-55/10 border border-amber-500/20 rounded-lg text-amber-800 text-[11px] leading-tight">
+                    <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Nota sobre apps heredadas</strong>: Shopify ya no permite crear nuevos tokens estáticos a partir de 2026. Utiliza este método solo si posees una app creada con anterioridad.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 border-t pt-4">
                 <label className="text-sm font-medium">Shopify Webhook Secret (Opcional)</label>
                 <Input 
                   type="password"
@@ -298,7 +385,7 @@ export default function ShopifyIntegrationPage() {
                   placeholder="Secreto de firma de webhooks"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Requerido para la autenticación de webhook firma HMAC. Se obtiene en la sección de Notificaciones de Shopify.
+                  Copia el Secreto (Client Secret) de tu app para verificar las firmas HMAC de los webhooks entrantes en tiempo real.
                 </p>
               </div>
             </div>

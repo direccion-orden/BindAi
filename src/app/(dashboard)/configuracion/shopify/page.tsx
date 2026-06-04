@@ -569,7 +569,8 @@ export default function ShopifyIntegrationPage() {
                 <span className="font-mono bg-white/50 px-1 rounded">read_inventory</span>,
                 <span className="font-mono bg-white/50 px-1 rounded">write_inventory</span>,
                 <span className="font-mono bg-white/50 px-1 rounded">read_orders</span>,
-                <span className="font-mono bg-white/50 px-1 rounded">write_orders</span>
+                <span className="font-mono bg-white/50 px-1 rounded">write_orders</span>,
+                <span className="font-mono bg-white/50 px-1 rounded">read_locations</span>
               </li>
               <li>Ve a la sección de **Distribución** en el menú de la app.</li>
               <li>Selecciona **Distribución personalizada (Custom distribution)** e ingresa el dominio de tu tienda (ej. `ordendelascosas.store`).</li>

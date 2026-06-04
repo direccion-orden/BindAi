@@ -280,7 +280,7 @@ export function POSCatalogPanel({ width }: { width?: number }) {
           >
             {allCategories.map(cat => (
               <option key={cat} value={cat}>
-                {cat === "TODAS" ? "📂 Mostrar Todas las Categorías" : `📁 ${cat}`}
+                {cat === "TODAS" ? "Todas las Categorías" : cat}
               </option>
             ))}
           </select>

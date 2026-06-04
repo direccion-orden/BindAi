@@ -271,24 +271,24 @@ export function POSCatalogPanel({ width }: { width?: number }) {
           <Barcode className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground opacity-50" />
         </div>
 
-        {/* Categorías */}
-        <div 
-          className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          {allCategories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
-                selectedCategory === cat
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-background border text-muted-foreground hover:bg-muted/50"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+        {/* Selector de Categorías (Lista de Selección) */}
+        <div className="relative">
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="w-full h-10 px-3 pr-10 bg-background border border-input rounded-md text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer appearance-none transition-all duration-150"
+          >
+            {allCategories.map(cat => (
+              <option key={cat} value={cat}>
+                {cat === "TODAS" ? "📂 Mostrar Todas las Categorías" : `📁 ${cat}`}
+              </option>
+            ))}
+          </select>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground">
+            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+              <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+            </svg>
+          </div>
         </div>
       </div>
       

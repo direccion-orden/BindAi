@@ -18,6 +18,10 @@ if (!admin.apps.length) {
       });
       isConfigured = true;
       console.log("🚀 Firebase Admin SDK initialized successfully with Project ID:", projectId);
+    } else if (process.env.FIREBASE_CONFIG || process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT) {
+      admin.initializeApp();
+      isConfigured = true;
+      console.log("🚀 Firebase Admin SDK initialized using GCP environment credentials");
     } else {
       console.warn("⚠️ Firebase Admin credentials not found in process.env. Admin SDK will run as null. Missing:", {
         projectId: !projectId,
@@ -29,7 +33,7 @@ if (!admin.apps.length) {
     console.error('Firebase admin initialization error', error);
   }
 } else {
-  isConfigured = !!(projectId && clientEmail && privateKey);
+  isConfigured = true;
 }
 
 export const isFirebaseAdminConfigured = isConfigured;

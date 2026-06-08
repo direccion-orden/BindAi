@@ -2,6 +2,65 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { adminDb } from "@/lib/firebase/admin";
 
+async function findExistingProductDoc(
+  productsCol: any,
+  shopifyProductId: string,
+  skus: string[]
+): Promise<any | null> {
+  try {
+    // 1. Direct Shopify ID check as document ID
+    const docRef = productsCol.doc(shopifyProductId);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      return docSnap;
+    }
+
+    // 2. Check if shopifyId field matches in other documents
+    const qShopifyId = await productsCol.where("shopifyId", "==", shopifyProductId).limit(1).get();
+    if (!qShopifyId.empty) {
+      return qShopifyId.docs[0];
+    }
+
+    // 3. Match by SKUs if available
+    const safeSkus = skus.filter(sku => sku && sku.trim() !== "").slice(0, 30);
+    if (safeSkus.length > 0) {
+      const [qSku, qCode, qVarSkus] = await Promise.all([
+        productsCol.where("SKU", "in", safeSkus).limit(1).get(),
+        productsCol.where("Code", "in", safeSkus).limit(1).get(),
+        productsCol.where("variantSkus", "array-contains-any", safeSkus).limit(1).get()
+      ]);
+
+      if (!qSku.empty) return qSku.docs[0];
+      if (!qCode.empty) return qCode.docs[0];
+      if (!qVarSkus.empty) return qVarSkus.docs[0];
+    }
+  } catch (err) {
+    console.error("Error in findExistingProductDoc webhook helper:", err);
+  }
+  return null;
+}
+
+async function findProductRefByShopifyId(
+  productsCol: any,
+  shopifyProductId: string
+): Promise<any | null> {
+  try {
+    const docRef = productsCol.doc(shopifyProductId);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      return docRef;
+    }
+
+    const q = await productsCol.where("shopifyId", "==", shopifyProductId).limit(1).get();
+    if (!q.empty) {
+      return q.docs[0].ref;
+    }
+  } catch (err) {
+    console.error("Error in findProductRefByShopifyId webhook helper:", err);
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const companyId = searchParams.get("companyId");
@@ -39,17 +98,21 @@ export async function POST(req: NextRequest) {
     // Read raw body to verify signature
     const rawBody = await req.text();
 
-    // Verify signature if secret is configured
-    if (settings.webhookSecret) {
+    // Verify signature using webhookSecret or clientSecret (Shopify signs with client secret)
+    const signingSecret = settings.webhookSecret || settings.clientSecret;
+    if (signingSecret && hmacHeader) {
       const hash = crypto
-        .createHmac("sha256", settings.webhookSecret)
+        .createHmac("sha256", signingSecret)
         .update(rawBody, "utf8")
         .digest("base64");
 
       if (hash !== hmacHeader) {
-        console.warn(`[Shopify Webhook] Invalid HMAC signature for company: ${companyId}`);
+        console.warn(`[Shopify Webhook] Invalid HMAC signature for company: ${companyId}. Expected: ${hash}, Got: ${hmacHeader}`);
         return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
       }
+      console.log(`[Shopify Webhook] HMAC signature verified for company: ${companyId}`);
+    } else {
+      console.warn(`[Shopify Webhook] No signing secret configured, skipping HMAC verification for company: ${companyId}`);
     }
 
     const payload = JSON.parse(rawBody);
@@ -61,9 +124,24 @@ export async function POST(req: NextRequest) {
     // 2. Handle Shopify topics
     if (topic === "products/create" || topic === "products/update") {
       const prodId = payload.id.toString();
+      const skus = (payload.variants || []).map((v: any) => v.sku).filter(Boolean);
+      const safeSkus = skus.filter((sku: any) => sku && sku.trim() !== "").slice(0, 30);
+
+      // Find existing product document
+      const existingDoc = await findExistingProductDoc(productsCol, prodId, safeSkus);
+
+      let targetDocId = prodId;
+      if (existingDoc) {
+        targetDocId = existingDoc.id;
+        console.log(`[Shopify Webhook] Found existing ERP product: ${targetDocId} for Shopify ID: ${prodId}`);
+      } else {
+        console.log(`[Shopify Webhook] No existing product found for Shopify ID: ${prodId}, SKUs: ${safeSkus.join(', ')}`);
+      }
       
-      const productData = {
-        id: prodId,
+      const primarySku = safeSkus[0] || "";
+      const productData: Record<string, any> = {
+        id: targetDocId,
+        shopifyId: prodId,
         title: payload.title || "",
         bodyHtml: payload.body_html || "",
         vendor: payload.vendor || "",
@@ -73,6 +151,7 @@ export async function POST(req: NextRequest) {
         publishedAt: payload.published_at || null,
         status: payload.status || "active",
         tags: payload.tags ? payload.tags.split(",").map((t: string) => t.trim()) : [],
+        variantSkus: safeSkus,
         options: (payload.options || []).map((o: any) => ({
           id: o.id?.toString() || "",
           name: o.name || "",
@@ -96,13 +175,28 @@ export async function POST(req: NextRequest) {
         }))
       };
 
-      await productsCol.doc(prodId).set(productData, { merge: true });
-      console.log(`[Shopify Webhook] Sync product ID: ${prodId} (${payload.title})`);
+      // Set SKU/Code at root level to match ERP convention
+      if (!existingDoc) {
+        productData.SKU = primarySku;
+        productData.Code = primarySku;
+      } else {
+        const existingData = existingDoc.data() || {};
+        if (!existingData.SKU && primarySku) productData.SKU = primarySku;
+        if (!existingData.Code && primarySku) productData.Code = primarySku;
+      }
+
+      await productsCol.doc(targetDocId).set(productData, { merge: true });
+      console.log(`[Shopify Webhook] Sync product ID: ${targetDocId} (${payload.title}), price: ${productData.variants[0]?.price}`);
 
     } else if (topic === "products/delete") {
       const prodId = payload.id.toString();
-      await productsCol.doc(prodId).delete();
-      console.log(`[Shopify Webhook] Deleted product ID: ${prodId}`);
+      const prodRef = await findProductRefByShopifyId(productsCol, prodId);
+      if (prodRef) {
+        await prodRef.delete();
+        console.log(`[Shopify Webhook] Deleted product ID: ${prodRef.id}`);
+      } else {
+        console.log(`[Shopify Webhook] Product delete skipped - not found for Shopify ID: ${prodId}`);
+      }
 
     } else if (topic === "orders/create") {
       if (!settings.syncOrders) {
@@ -159,46 +253,48 @@ export async function POST(req: NextRequest) {
           const variantIdStr = item.variant_id.toString();
           const quantity = item.quantity || 1;
 
-          const prodRef = productsCol.doc(prodIdStr);
-          const prodSnap = await prodRef.get();
+          const prodRef = await findProductRefByShopifyId(productsCol, prodIdStr);
 
-          if (prodSnap.exists) {
-            const productData = prodSnap.data() || {};
-            const variants = productData.variants || [];
-            
-            let variantFound = false;
-            const updatedVariants = variants.map((v: any) => {
-              if (v.id === variantIdStr) {
-                variantFound = true;
-                return {
-                  ...v,
-                  stock: Math.max(0, (v.stock || 0) - quantity)
-                };
+          if (prodRef) {
+            const prodSnap = await prodRef.get();
+            if (prodSnap.exists) {
+              const productData = prodSnap.data() || {};
+              const variants = productData.variants || [];
+              
+              let variantFound = false;
+              const updatedVariants = variants.map((v: any) => {
+                if (v.id === variantIdStr) {
+                  variantFound = true;
+                  return {
+                    ...v,
+                    stock: Math.max(0, (v.stock || 0) - quantity)
+                  };
+                }
+                return v;
+              });
+
+              if (variantFound) {
+                await prodRef.update({ variants: updatedVariants });
+                console.log(`[Shopify Webhook] Deducted stock of variant ID: ${variantIdStr} by: ${quantity}`);
+
+                // Log inventory movement
+                const movId = crypto.randomUUID();
+                await adminDb
+                  .collection("companies")
+                  .doc(companyId)
+                  .collection("inventory_movements")
+                  .doc(movId)
+                  .set({
+                    id: movId,
+                    productId: prodRef.id,
+                    variantId: variantIdStr,
+                    type: "OUT",
+                    quantity: quantity,
+                    reason: `Venta Shopify #${orderNumber}`,
+                    referenceId: orderId,
+                    createdAt: new Date().toISOString()
+                  });
               }
-              return v;
-            });
-
-            if (variantFound) {
-              await prodRef.update({ variants: updatedVariants });
-              console.log(`[Shopify Webhook] Deducted stock of variant ID: ${variantIdStr} by: ${quantity}`);
-
-              // Log inventory movement
-              const movId = crypto.randomUUID();
-              await adminDb
-                .collection("companies")
-                .doc(companyId)
-                .collection("inventory_movements")
-                .doc(movId)
-                .set({
-                  id: movId,
-                  productId: prodIdStr,
-                  variantId: variantIdStr,
-                  type: "OUT",
-                  quantity: quantity,
-                  reason: `Venta Shopify #${orderNumber}`,
-                  referenceId: orderId,
-                  createdAt: new Date().toISOString()
-                });
             }
           }
         }

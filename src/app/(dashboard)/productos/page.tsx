@@ -4,11 +4,12 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { collection, query, getDocs, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { Plus, Search, MoreHorizontal, Package } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Package, Store, Loader2, X, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShopifyProduct } from "@/types/product";
 import { useAuth } from "@/context/AuthContext";
+import { pushProductsToShopify } from "@/actions/shopify";
 
 export default function ProductosPage() {
   const [products, setProducts] = useState<ShopifyProduct[]>([]);
@@ -17,6 +18,43 @@ export default function ProductosPage() {
 
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
+
+  // Selection & Shopify sync state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ created: number; updated: number; errors: string[] } | null>(null);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredProducts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredProducts.map(p => p.id)));
+    }
+  };
+
+  const handlePushToShopify = async () => {
+    if (!companyId || selectedIds.size === 0) return;
+    setIsSyncing(true);
+    setSyncResult(null);
+    try {
+      const result = await pushProductsToShopify(companyId, Array.from(selectedIds));
+      setSyncResult({ created: result.created, updated: result.updated, errors: result.errors });
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      setSyncResult({ created: 0, updated: 0, errors: [err.message] });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const { companyId } = useAuth();
 
@@ -149,6 +187,14 @@ export default function ProductosPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground border-b">
               <tr>
+                <th className="pl-4 pr-2 py-4 w-10">
+                  <input
+                    type="checkbox"
+                    checked={filteredProducts.length > 0 && selectedIds.size === filteredProducts.length}
+                    onChange={toggleSelectAll}
+                    className="rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-6 py-4 font-semibold">Producto</th>
                 <th className="px-6 py-4 font-semibold">Estado</th>
                 <th className="px-6 py-4 font-semibold">Inventario</th>
@@ -160,13 +206,13 @@ export default function ProductosPage() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                     Cargando productos...
                   </td>
                 </tr>
               ) : filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center space-y-3">
                       <Package className="w-12 h-12 text-muted-foreground/30" />
                       <p>No se encontraron productos.</p>
@@ -195,7 +241,15 @@ export default function ProductosPage() {
                   const isDraft = product.status === 'DRAFT';
                   
                   return (
-                    <tr key={product.id} className="hover:bg-muted/30 transition-colors">
+                    <tr key={product.id} className={`hover:bg-muted/30 transition-colors ${selectedIds.has(product.id) ? 'bg-blue-50/50' : ''}`}>
+                      <td className="pl-4 pr-2 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(product.id)}
+                          onChange={() => toggleSelect(product.id)}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0 border overflow-hidden">
@@ -248,6 +302,56 @@ export default function ProductosPage() {
           </table>
         </div>
       </div>
+
+      {/* Floating action bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4 border border-slate-700">
+          <span className="text-sm font-medium">
+            {selectedIds.size} producto{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+          </span>
+          <Button
+            size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white gap-2"
+            onClick={handlePushToShopify}
+            disabled={isSyncing}
+          >
+            {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Store className="w-4 h-4" />}
+            {isSyncing ? 'Sincronizando...' : 'Enviar a Shopify'}
+          </Button>
+          <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Sync result toast */}
+      {syncResult && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white border rounded-xl shadow-2xl p-4 max-w-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {syncResult.errors.length === 0 ? (
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+              )}
+              <span className="font-semibold text-sm">Sincronización completada</span>
+            </div>
+            <button onClick={() => setSyncResult(null)} className="text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="text-xs text-muted-foreground space-y-1">
+            {syncResult.created > 0 && <p>✅ {syncResult.created} producto{syncResult.created !== 1 ? 's' : ''} creado{syncResult.created !== 1 ? 's' : ''} en Shopify</p>}
+            {syncResult.updated > 0 && <p>🔄 {syncResult.updated} producto{syncResult.updated !== 1 ? 's' : ''} actualizado{syncResult.updated !== 1 ? 's' : ''} en Shopify</p>}
+            {syncResult.errors.length > 0 && (
+              <div className="text-red-600">
+                <p>❌ {syncResult.errors.length} error{syncResult.errors.length !== 1 ? 'es' : ''}:</p>
+                {syncResult.errors.slice(0, 3).map((e, i) => <p key={i} className="truncate">• {e}</p>)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

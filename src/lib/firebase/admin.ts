@@ -1,4 +1,9 @@
-import * as admin from 'firebase-admin';
+// Use eval('require') to make the import completely opaque to Turbopack.
+// Turbopack has a bug where it renames external modules with a content hash
+// (e.g., 'firebase-admin-a14c8a5423a75469') even when listed in
+// serverExternalPackages. eval prevents static analysis of the require call.
+// eslint-disable-next-line no-eval
+const admin = eval('require')('firebase-admin') as typeof import('firebase-admin');
 
 let isConfigured = false;
 
@@ -40,18 +45,22 @@ export const isFirebaseAdminConfigured = isConfigured;
 
 export const adminDb = (() => {
   try {
-    if (!isConfigured) return null as unknown as admin.firestore.Firestore;
-    return admin.firestore();
+    if (!isConfigured || admin.apps.length === 0) return null as unknown as FirebaseFirestore.Firestore;
+    const app = (admin.apps.find(a => a?.name === '[DEFAULT]') || admin.apps[0]) as any;
+    return admin.firestore(app);
   } catch (e) {
-    return null as unknown as admin.firestore.Firestore;
+    return null as unknown as FirebaseFirestore.Firestore;
   }
 })();
 
 export const adminAuth = (() => {
   try {
-    if (!isConfigured) return null as unknown as admin.auth.Auth;
-    return admin.auth();
+    if (!isConfigured || admin.apps.length === 0) return null as unknown as import('firebase-admin').auth.Auth;
+    const app = (admin.apps.find(a => a?.name === '[DEFAULT]') || admin.apps[0]) as any;
+    return admin.auth(app);
   } catch (e) {
-    return null as unknown as admin.auth.Auth;
+    return null as unknown as import('firebase-admin').auth.Auth;
   }
 })();
+
+

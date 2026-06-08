@@ -34,35 +34,12 @@ export class ShopifyClient {
       return this.accessToken;
     }
 
-    if (!this.clientId || !this.clientSecret) {
-      throw new Error("Shopify Client configuration is missing access token or API credentials.");
-    }
-
-    const url = `https://${this.shopName}/admin/oauth/access_token`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
-        grant_type: "client_credentials",
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to exchange Shopify credentials for access token: ${errorText}`);
-    }
-
-    const data = (await response.json()) as any;
-    if (!data.access_token) {
-      throw new Error("Shopify did not return an access token in the credentials grant response.");
-    }
-
-    this.accessToken = data.access_token;
-    return this.accessToken!;
+    // If we have client credentials but no access token, the user needs to
+    // complete the OAuth authorization code flow first. The token exchange
+    // happens in /api/shopify/callback, not here.
+    throw new Error(
+      "No hay un Access Token configurado. Por favor conecta tu tienda usando el botón 'Conectar con Shopify' para completar el flujo de autorización OAuth."
+    );
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -98,10 +75,13 @@ export class ShopifyClient {
   }
 
   // --- Products ---
-  async getProducts(limit = 50, sinceId?: string): Promise<{ products: any[] }> {
+  async getProducts(limit = 50, sinceId?: string, status?: string): Promise<{ products: any[] }> {
     let endpoint = `/products.json?limit=${limit}`;
     if (sinceId) {
       endpoint += `&since_id=${sinceId}`;
+    }
+    if (status) {
+      endpoint += `&status=${status}`;
     }
     return this.request<{ products: any[] }>(endpoint);
   }
@@ -143,6 +123,21 @@ export class ShopifyClient {
   async deleteWebhook(webhookId: string | number): Promise<void> {
     await this.request<void>(`/webhooks/${webhookId}.json`, {
       method: "DELETE",
+    });
+  }
+
+  // --- Product Create/Update ---
+  async createProduct(productData: Record<string, any>): Promise<{ product: any }> {
+    return this.request<{ product: any }>("/products.json", {
+      method: "POST",
+      body: JSON.stringify({ product: productData }),
+    });
+  }
+
+  async updateProduct(shopifyProductId: string, productData: Record<string, any>): Promise<{ product: any }> {
+    return this.request<{ product: any }>(`/products/${shopifyProductId}.json`, {
+      method: "PUT",
+      body: JSON.stringify({ product: productData }),
     });
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { collection, query, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
@@ -65,6 +66,26 @@ export default function ShopifyIntegrationPage() {
   const [connectionError, setConnectionError] = useState("");
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [webhookResult, setWebhookResult] = useState<string | null>(null);
+  const [oauthStatus, setOauthStatus] = useState<"idle" | "success" | "error">("idle");
+  const [oauthError, setOauthError] = useState("");
+  const [productStatusFilter, setProductStatusFilter] = useState<string>("active");
+
+  const searchParams = useSearchParams();
+
+  // Handle OAuth redirect results
+  useEffect(() => {
+    const oauthResult = searchParams.get('oauth');
+    if (oauthResult === 'success') {
+      setOauthStatus('success');
+      setConnectionStatus('idle');
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (oauthResult === 'error') {
+      setOauthStatus('error');
+      setOauthError(searchParams.get('oauth_error') || 'Error desconocido en OAuth');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [searchParams]);
 
   // Load ERP Warehouses and saved settings
   useEffect(() => {
@@ -104,13 +125,11 @@ export default function ShopifyIntegrationPage() {
             setAuthMethod("legacy");
           }
 
-          // Fetch Shopify locations if connected
-          if (saved.shopName && (saved.accessToken || (saved.clientId && saved.clientSecret))) {
+          // Fetch Shopify locations if we have an access token
+          if (saved.shopName && saved.accessToken) {
             const res = await testShopifyConnection(
               saved.shopName,
-              saved.accessToken,
-              saved.clientId,
-              saved.clientSecret
+              saved.accessToken
             );
             if (res.success && res.locations) {
               setShopifyLocations(res.locations);
@@ -132,17 +151,40 @@ export default function ShopifyIntegrationPage() {
     };
   }, [companyId]);
 
+  const handleConnectOAuth = () => {
+    if (!companyId) {
+      alert("Error: No se encontró el ID de la empresa.");
+      return;
+    }
+    if (!shopName) {
+      alert("Por favor ingresa el nombre de la tienda primero.");
+      return;
+    }
+    if (!clientId) {
+      alert("Por favor ingresa el Client ID.");
+      return;
+    }
+    if (!clientSecret) {
+      alert("Por favor guarda la configuración con el Client Secret antes de conectar.");
+      return;
+    }
+
+    // Redirect to our OAuth initiation endpoint
+    const authUrl = `/api/shopify/auth?shop=${encodeURIComponent(shopName)}&clientId=${encodeURIComponent(clientId)}&companyId=${encodeURIComponent(companyId)}`;
+    window.location.href = authUrl;
+  };
+
   const handleTestConnection = async () => {
     if (!shopName) {
       alert("Por favor ingresa el nombre de la tienda.");
       return;
     }
-    if (authMethod === "legacy" && !accessToken) {
-      alert("Por favor ingresa el Token de Acceso.");
-      return;
-    }
-    if (authMethod === "oauth" && (!clientId || !clientSecret)) {
-      alert("Por favor ingresa el Client ID y el Client Secret.");
+    if (!accessToken) {
+      if (authMethod === "oauth") {
+        alert("No hay un Access Token. Primero conecta tu tienda usando el botón 'Conectar con Shopify'.");
+      } else {
+        alert("Por favor ingresa el Token de Acceso.");
+      }
       return;
     }
 
@@ -152,9 +194,7 @@ export default function ShopifyIntegrationPage() {
     try {
       const res = await testShopifyConnection(
         shopName,
-        authMethod === "legacy" ? accessToken : undefined,
-        authMethod === "oauth" ? clientId : undefined,
-        authMethod === "oauth" ? clientSecret : undefined
+        accessToken
       );
       if (res.success && res.locations) {
         setShopifyLocations(res.locations);
@@ -209,7 +249,7 @@ export default function ShopifyIntegrationPage() {
     setSyncingProducts(true);
     setSyncResult(null);
     try {
-      const res = await syncProductsFromShopify(companyId);
+      const res = await syncProductsFromShopify(companyId, productStatusFilter);
       if (res.success) {
         setSyncResult(`Sincronización completada. Se importaron/actualizaron ${res.count} productos exitosamente.`);
       } else {
@@ -358,6 +398,28 @@ export default function ShopifyIntegrationPage() {
                       El Secreto (Client Secret) generado en tu Dev Dashboard para la app.
                     </p>
                   </div>
+
+                  {/* OAuth Connect Button */}
+                  <div className="pt-2">
+                    <Button
+                      type="button"
+                      onClick={handleConnectOAuth}
+                      disabled={!shopName || !clientId || !clientSecret}
+                      className="w-full gap-2 bg-[#96bf48] hover:bg-[#7ba53c] text-white font-bold"
+                    >
+                      <KeyRound className="w-4 h-4" />
+                      Conectar con Shopify (OAuth)
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Primero guarda la configuración, luego haz clic para autorizar la conexión. Serás redirigido a Shopify.
+                    </p>
+                    {accessToken && (
+                      <div className="flex items-center gap-2 mt-2 p-2 bg-green-50 border border-green-200 rounded-lg text-green-700 text-xs">
+                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                        <span>Access Token obtenido exitosamente vía OAuth.</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
@@ -391,6 +453,24 @@ export default function ShopifyIntegrationPage() {
                 </p>
               </div>
             </div>
+
+            {/* OAuth result messages */}
+            {oauthStatus === "success" && (
+              <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
+                <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+                <span>¡Conexión OAuth con Shopify establecida exitosamente! El Access Token ha sido guardado.</span>
+              </div>
+            )}
+
+            {oauthStatus === "error" && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Error de OAuth:</p>
+                  <p className="text-xs">{oauthError}</p>
+                </div>
+              </div>
+            )}
 
             {/* Connection feedback message */}
             {connectionStatus === "success" && (
@@ -507,18 +587,30 @@ export default function ShopifyIntegrationPage() {
 
             <div className="space-y-4">
               <div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full gap-2 font-bold justify-start"
-                  onClick={handleSyncProducts}
-                  disabled={syncingProducts || connectionStatus !== "success"}
-                >
-                  {syncingProducts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-                  Importar Catálogo Completo
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 gap-2 font-bold justify-start"
+                    onClick={handleSyncProducts}
+                    disabled={syncingProducts || connectionStatus !== "success"}
+                  >
+                    {syncingProducts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+                    Importar Catálogo
+                  </Button>
+                  <select
+                    className="h-9 rounded-md border border-input bg-background px-2 text-xs font-medium ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={productStatusFilter}
+                    onChange={(e) => setProductStatusFilter(e.target.value)}
+                  >
+                    <option value="active">Solo Activos</option>
+                    <option value="draft">Solo Borradores</option>
+                    <option value="archived">Solo Archivados</option>
+                    <option value="">Todos</option>
+                  </select>
+                </div>
                 <p className="text-[10px] text-muted-foreground mt-1.5 pl-1.5">
-                  Descarga todos los productos, variantes y precios desde Shopify y los carga/actualiza en el inventario del ERP.
+                  Importa productos de Shopify según el filtro seleccionado. Por defecto solo importa los productos activos.
                 </p>
               </div>
 

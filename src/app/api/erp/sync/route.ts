@@ -4,6 +4,21 @@ export const dynamic = "force-dynamic";
 
 const API_BASE = "https://api.bind.com.mx/api";
 
+// Helper: fetch with retry on 429 rate limits
+async function bindFetchWithRetry(url: string, headers: Record<string, string>, maxRetries = 4): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, { headers, cache: "no-store" });
+    if (res.status === 429 && attempt < maxRetries) {
+      const waitMs = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s, 16s
+      console.log(`Bind API rate limited. Waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}...`);
+      await new Promise(r => setTimeout(r, waitMs));
+      continue;
+    }
+    return res;
+  }
+  throw new Error('Bind API rate limit exceeded after all retries');
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -31,7 +46,7 @@ export async function GET(request: Request) {
         url += "&$filter=" + encodeURIComponent(filter);
     }
 
-    const res = await fetch(url, { headers, cache: "no-store" });
+    const res = await bindFetchWithRetry(url, headers);
     
     if (!res.ok) {
        throw new Error("Bind API Error [" + res.status + "]: " + res.statusText);

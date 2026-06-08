@@ -4,32 +4,52 @@ import React, { useEffect, useState, use } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Printer } from "lucide-react";
+import { Loader2, Printer, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/icons/logo";
+import { useRouter } from "next/navigation";
 
 export default function PedidoPDFPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params);
   const { id } = unwrappedParams;
   const { companyId } = useAuth();
   const [order, setOrder] = useState<any>(null);
+  const [ticketConfig, setTicketConfig] = useState<any>(null);
+  const [companyName, setCompanyName] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    async function fetchOrder() {
+    async function fetchData() {
       if (!companyId || !id) return;
       try {
+        // Fetch order
         const docRef = doc(db, "companies", companyId, "pedidos", id);
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           setOrder(snap.data());
         }
+
+        // Fetch company profile
+        const companyRef = doc(db, "companies", companyId);
+        const companySnap = await getDoc(companyRef);
+        if (companySnap.exists()) {
+          setCompanyName(companySnap.data().name || "");
+        }
+
+        // Fetch ticket config
+        const configRef = doc(db, "companies", companyId, "ticketConfig", "settings");
+        const configSnap = await getDoc(configRef);
+        if (configSnap.exists()) {
+          setTicketConfig(configSnap.data());
+        }
       } catch (e) {
-        console.error(e);
+        console.error("Error loading PDF report data:", e);
       } finally {
         setLoading(false);
       }
     }
-    fetchOrder();
+    fetchData();
   }, [companyId, id]);
 
   if (loading) {
@@ -44,113 +64,169 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
     window.print();
   };
 
+  const formattedDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-MX') : "";
+
   return (
     <>
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           .no-print { display: none !important; }
           body { background-color: white !important; }
-          @page { margin: 0; size: letter; }
+          @page { margin: 15mm; size: letter; }
+        }
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
       `}} />
       
-      <div className="no-print bg-slate-900 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-50">
-        <p className="text-sm font-medium">Vista Previa de Impresión - {order.orderNumber}</p>
-        <Button onClick={handlePrint} className="gap-2 bg-indigo-600 hover:bg-indigo-700">
+      <div className="no-print bg-slate-900 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-50 shadow-md">
+        <div className="flex items-center gap-4">
+          <Button onClick={() => router.back()} variant="ghost" className="text-white hover:bg-slate-800 text-xs gap-2">
+            <ArrowLeft className="h-4 w-4" /> Regresar
+          </Button>
+          <p className="text-sm font-medium">Vista Previa de Impresión - {order.orderNumber}</p>
+        </div>
+        <Button onClick={handlePrint} className="gap-2 bg-primary hover:bg-primary/90 text-white font-bold transition-all hover:scale-105 active:scale-95">
           <Printer className="w-4 h-4" /> Imprimir / Guardar PDF
         </Button>
       </div>
 
-      <div className="bg-white min-h-screen pt-20 pb-10 px-4 flex justify-center">
-        <div className="w-full max-w-[800px] bg-white shadow-2xl print:shadow-none print:max-w-none print:w-full mx-auto relative overflow-hidden text-slate-800" style={{ minHeight: '1056px' }}>
+      <div className="bg-slate-50/50 min-h-screen pt-24 pb-20 px-4 flex justify-center print:pt-0 print:pb-0 print:px-0">
+        <div className="w-full max-w-[800px] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.05)] print:shadow-none print:max-w-none print:w-full mx-auto relative overflow-hidden text-foreground p-8 sm:p-16 min-h-[1056px] flex flex-col justify-between rounded-sm">
           
-          {/* Header */}
-          <div className="p-10 pb-6 flex justify-between items-start">
-            <div>
-              <h1 className="text-4xl font-black text-slate-900 tracking-tighter">PEDIDO DE VENTA</h1>
-              <p className="text-sm font-bold text-slate-500 mt-1 uppercase tracking-widest">{order.orderNumber}</p>
-              
-              <div className="mt-8 space-y-1 text-sm">
-                <p className="text-slate-500 font-semibold text-xs uppercase tracking-wider">Cliente:</p>
-                <p className="font-bold text-lg text-slate-900">{order.clientName}</p>
+          <div>
+            {/* Header */}
+            <div className="flex justify-between items-start mb-6">
+              {companyId === "0cb93750-138e-4b7d-832e-3a37b95c5093" ? (
+                <Logo className="h-8 sm:h-10 w-auto text-primary" />
+              ) : (ticketConfig?.logoBase64 || ticketConfig?.logoUrl) ? (
+                <img 
+                  src={ticketConfig.logoBase64 || ticketConfig.logoUrl} 
+                  alt="Logo" 
+                  className="h-8 sm:h-10 object-contain max-w-[180px]" 
+                />
+              ) : (
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-primary uppercase">
+                  {companyName || "ERP"}
+                </h1>
+              )}
+              <div className="text-right">
+                <h2 className="text-xl sm:text-2xl font-black text-foreground uppercase tracking-tight mb-1">PEDIDO DE VENTA</h2>
+                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em]">{order.orderNumber}</p>
               </div>
             </div>
-            <div className="text-right">
-              {/* Logo Placeholder */}
-              <div className="text-2xl font-black tracking-tighter text-indigo-900 mb-6">EL ORDEN DE LAS COSAS</div>
-              <div className="text-sm text-slate-500 space-y-1">
-                <p>Fecha: {new Date(order.createdAt).toLocaleDateString('es-MX')}</p>
-                {order.quoteNumber && <p>Ref. Cotización: {order.quoteNumber}</p>}
-                <p>Estatus: {order.status === 'remisionado' ? 'Remisionado (Entregado)' : 'En Proceso'}</p>
-              </div>
-            </div>
-          </div>
 
-          {/* Table */}
-          <div className="px-10 py-6">
-            <table className="w-full text-sm text-left">
-              <thead>
-                <tr className="border-b-2 border-slate-800 text-slate-900">
-                  <th className="py-3 font-bold uppercase tracking-wider text-xs">Descripción</th>
-                  <th className="py-3 font-bold uppercase tracking-wider text-xs text-center w-20">Cant.</th>
-                  <th className="py-3 font-bold uppercase tracking-wider text-xs text-right w-28">Precio Unit.</th>
-                  <th className="py-3 font-bold uppercase tracking-wider text-xs text-center w-20">Desc.</th>
-                  <th className="py-3 font-bold uppercase tracking-wider text-xs text-right w-32">Importe</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {order.items?.map((item: any, idx: number) => (
-                  <tr key={idx} className="group">
-                    <td className="py-4 flex items-center gap-3">
-                      {item.imageUrl && (
-                        <div className="w-10 h-10 rounded bg-slate-100 flex-shrink-0 overflow-hidden border border-slate-200">
-                          <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
-                        </div>
-                      )}
-                      <div>
-                        <p className="font-bold text-slate-900">{item.productName}</p>
-                        {item.variantTitle && <p className="text-xs text-slate-500 mt-0.5">{item.variantTitle}</p>}
-                      </div>
-                    </td>
-                    <td className="py-4 text-center font-medium">{item.quantity}</td>
-                    <td className="py-4 text-right">${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
-                    <td className="py-4 text-center text-emerald-600 font-semibold">{item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-'}</td>
-                    <td className="py-4 text-right font-bold text-slate-900">
-                      ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
-                    </td>
+            {/* Client Details and Date */}
+            <div className="flex justify-between items-end mb-8 border-b-2 border-primary/10 pb-4">
+              <div>
+                <h2 className="text-[10px] font-black text-primary uppercase tracking-[0.25em] mb-1">Cliente</h2>
+                <p className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">{order.clientName || 'Cliente'}</p>
+              </div>
+              <div className="text-right flex flex-col items-end gap-1 text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                <p>EMITIDO: {formattedDate}</p>
+                {order.quoteNumber && <p>REF. COTIZACIÓN: {order.quoteNumber}</p>}
+                <p>ESTATUS: {order.status === 'remisionado' ? 'Remisionado (Entregado)' : 'En Proceso'}</p>
+              </div>
+            </div>
+
+            {/* Slogan */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-6 w-1.5 bg-primary rounded-full" />
+              <h3 className="text-[11px] font-black text-foreground uppercase tracking-[0.25em]">
+                {companyId === "0cb93750-138e-4b7d-832e-3a37b95c5093" 
+                  ? "LA MEJOR DECORACIÓN ES EL ORDEN" 
+                  : (ticketConfig?.customCompanyName || companyName || "DOCUMENTO OFICIAL")}
+              </h3>
+            </div>
+
+            {/* Table */}
+            <div className="mb-8">
+              <table className="w-full border-t border-b border-muted/50 text-sm text-left">
+                <thead>
+                  <tr className="bg-muted/30 border-none">
+                    <th className="py-3 px-2 text-foreground font-black uppercase text-[10px] tracking-widest">Conceptos</th>
+                    <th className="py-3 px-2 text-center text-foreground font-black uppercase text-[10px] tracking-widest w-16">Cant.</th>
+                    <th className="py-3 px-2 text-right text-foreground font-black uppercase text-[10px] tracking-widest w-28">Precio U.</th>
+                    <th className="py-3 px-2 text-center text-foreground font-black uppercase text-[10px] tracking-widest w-16">Desc.</th>
+                    <th className="py-3 px-2 text-right text-foreground font-black uppercase text-[10px] tracking-widest w-32">Subtotal</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-muted/30">
+                  {order.items?.map((item: any, idx: number) => (
+                    <tr key={idx} className="border-muted/30 hover:bg-transparent">
+                      <td className="py-3 px-2 flex items-center gap-3 pr-4 sm:pr-8">
+                        {item.imageUrl && (
+                          <div className="w-10 h-10 rounded bg-slate-100 flex-shrink-0 overflow-hidden border border-slate-200">
+                            <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-semibold text-xs sm:text-sm leading-tight text-foreground/90">{item.productName}</p>
+                          {item.variantTitle && <p className="text-xs text-muted-foreground mt-0.5">{item.variantTitle}</p>}
+                        </div>
+                      </td>
+                      <td className="py-3 px-2 text-center font-medium text-xs sm:text-sm">{item.quantity}</td>
+                      <td className="py-3 px-2 text-right font-mono text-[10px] sm:text-xs">${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+                      <td className="py-3 px-2 text-center text-emerald-600 font-semibold text-xs sm:text-sm">{item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-'}</td>
+                      <td className="py-3 px-2 text-right font-mono font-black text-[10px] sm:text-xs">
+                        ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Totals */}
+            <div className="flex justify-end mb-8" style={{ breakInside: 'avoid' }}>
+              <div className="w-full max-w-full sm:max-w-[320px] bg-muted/5 py-3 px-6 rounded-2xl border-2 border-primary/20">
+                <div className="flex justify-between items-center text-xs mb-1">
+                  <span className="font-black text-muted-foreground uppercase tracking-widest text-[9px]">Subtotal</span>
+                  <span className="font-semibold text-foreground font-mono">${order.subtotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs mb-2 pb-2 border-b border-muted">
+                  <span className="font-black text-muted-foreground uppercase tracking-widest text-[9px]">IVA (16%)</span>
+                  <span className="font-semibold text-foreground font-mono">${order.tax?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-black text-foreground uppercase text-[9px] sm:text-[11px] tracking-[0.25em]">Total</span>
+                  <span className="font-black text-lg sm:text-xl text-primary font-mono tracking-tighter">${order.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Totals */}
-          <div className="px-10 flex justify-end">
-            <div className="w-72 bg-slate-50 p-6 rounded-xl border border-slate-100">
-              <div className="flex justify-between text-sm mb-3">
-                <span className="text-slate-500 font-medium">Subtotal</span>
-                <span className="font-semibold">${order.subtotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+          <div>
+            {/* Notes */}
+            {order.notes && (
+              <div className="text-[10px] text-muted-foreground border-t-2 border-muted/30 pt-6 mt-10" style={{ breakInside: 'avoid' }}>
+                <div className="space-y-3 max-w-md">
+                  <h4 className="font-black uppercase text-foreground tracking-widest border-b border-primary/20 pb-2">Instrucciones Especiales</h4>
+                  <p className="opacity-90 leading-relaxed text-justify">{order.notes}</p>
+                </div>
               </div>
-              <div className="flex justify-between text-sm mb-4">
-                <span className="text-slate-500 font-medium">IVA (16%)</span>
-                <span className="font-semibold">${order.tax?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-              </div>
-              <div className="flex justify-between items-center border-t border-slate-200 pt-4">
-                <span className="font-black text-slate-900 tracking-tight">TOTAL</span>
-                <span className="text-xl font-black text-indigo-900">${order.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-              </div>
-            </div>
-          </div>
+            )}
 
-          {/* Footer Signature */}
-          <div className="px-10 mt-20 pb-10 flex justify-between">
-            <div className="border-t border-slate-300 w-64 pt-2">
-              <p className="text-xs font-bold text-slate-800 text-center">Firma de Entrega / Surtido</p>
+            {/* Signature Deliver */}
+            <div className="flex justify-between mt-16 pb-6" style={{ breakInside: 'avoid' }}>
+              <div className="border-t border-slate-300 w-64 pt-2">
+                <p className="text-xs font-bold text-slate-800 text-center">Firma de Entrega / Surtido</p>
+              </div>
+              <div className="border-t border-slate-300 w-64 pt-2">
+                <p className="text-xs font-bold text-slate-800 text-center">Firma de Recibido de Conformidad</p>
+                <p className="text-[10px] text-slate-400 text-center mt-1">{order.clientName}</p>
+              </div>
             </div>
-            <div className="border-t border-slate-300 w-64 pt-2">
-              <p className="text-xs font-bold text-slate-800 text-center">Firma de Recibido</p>
-              <p className="text-[10px] text-slate-400 text-center mt-1">{order.clientName}</p>
-            </div>
+
+            {/* Footer Slogan */}
+            <footer className="text-center border-t border-muted/10 pt-6">
+              <p className="text-[10px] uppercase tracking-[0.5em] font-black text-muted-foreground/20">
+                {companyId === "0cb93750-138e-4b7d-832e-3a37b95c5093" 
+                  ? "El Orden de las Cosas | Siente la Paz" 
+                  : `${companyName || "ERP"} | Documento Oficial`}
+              </p>
+            </footer>
           </div>
 
         </div>

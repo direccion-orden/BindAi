@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, doc, writeBatch, getDocs, addDoc, increment } from "firebase/firestore";
+import { collection, query, doc, writeBatch, getDocs, addDoc, increment, runTransaction } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { 
@@ -314,10 +314,18 @@ export default function ImportarHistorialPage() {
             setProgressText("Agrupando partidas por Folio...");
 
             // Group flat lines by Folio
+            let maxImportedFolio = 0;
             const groupedQuotes = new Map<string, any[]>();
             records.forEach((record: any) => {
               const folio = String(getFlexibleValue(record, ["folio", "numero", "num", "id", "codigo", "referencia", "quotenumber", "quote", "foliodecotizacion"])).trim();
               if (!folio) return;
+
+              const match = folio.match(/^[A-Z]*[- ]*(\d+)/i);
+              const numVal = match ? parseInt(match[1], 10) : parseInt(folio.replace(/[^0-9]/g, ""), 10);
+              if (numVal && numVal > maxImportedFolio) {
+                maxImportedFolio = numVal;
+              }
+
               if (!groupedQuotes.has(folio)) {
                 groupedQuotes.set(folio, []);
               }
@@ -429,6 +437,25 @@ export default function ImportarHistorialPage() {
               setProgressText(`Guardando lote ${i + 1} de ${batches.length}...`);
             }
 
+            if (maxImportedFolio > 0) {
+              try {
+                const counterRef = doc(db, "companies", companyId, "counters", "sequences");
+                await runTransaction(db, async (transaction) => {
+                  const counterDoc = await transaction.get(counterRef);
+                  let currentVal = 0;
+                  if (counterDoc.exists() && counterDoc.data().cotizaciones !== undefined) {
+                    currentVal = counterDoc.data().cotizaciones;
+                  }
+                  if (maxImportedFolio > currentVal) {
+                    transaction.set(counterRef, { cotizaciones: maxImportedFolio }, { merge: true });
+                    addLog("info", `Folio de cotizaciones actualizado a la numeración Bind: ${maxImportedFolio}`);
+                  }
+                });
+              } catch (seqErr: any) {
+                console.error("Error updating sequence for cotizaciones:", seqErr);
+              }
+            }
+
             setStats(prev => ({ ...prev, quotesImported: prev.quotesImported + successQuotes }));
             addLog("success", `¡Sincronización completa! Se importaron ${successQuotes} cotizaciones históricas.`);
           } catch (err: any) {
@@ -477,10 +504,18 @@ export default function ImportarHistorialPage() {
             setProgressText("Agrupando pedidos por Número y ordenando cronológicamente...");
             
             // Deduplicate Pedidos: Group by Numero, sort by Creation Date, and pick the latest record.
+            let maxImportedFolio = 0;
             const groupedPedidos = new Map<string, any[]>();
             records.forEach((record: any) => {
               const num = String(getFlexibleValue(record, ["numero", "num", "folio", "pedido", "id", "codigo", "referencia", "ordernumber", "order", "numerodepedido", "foliodepedido"])).trim();
               if (!num) return;
+
+              const match = num.match(/^[A-Z]*[- ]*(\d+)/i);
+              const numVal = match ? parseInt(match[1], 10) : parseInt(num.replace(/[^0-9]/g, ""), 10);
+              if (numVal && numVal > maxImportedFolio) {
+                maxImportedFolio = numVal;
+              }
+
               if (!groupedPedidos.has(num)) {
                 groupedPedidos.set(num, []);
               }
@@ -669,6 +704,25 @@ export default function ImportarHistorialPage() {
               setProgressText(`Guardando lote ${i + 1} de ${batches.length}...`);
             }
 
+            if (maxImportedFolio > 0) {
+              try {
+                const counterRef = doc(db, "companies", companyId, "counters", "sequences");
+                await runTransaction(db, async (transaction) => {
+                  const counterDoc = await transaction.get(counterRef);
+                  let currentVal = 0;
+                  if (counterDoc.exists() && counterDoc.data().pedidos !== undefined) {
+                    currentVal = counterDoc.data().pedidos;
+                  }
+                  if (maxImportedFolio > currentVal) {
+                    transaction.set(counterRef, { pedidos: maxImportedFolio }, { merge: true });
+                    addLog("info", `Folio de pedidos actualizado a la numeración Bind: ${maxImportedFolio}`);
+                  }
+                });
+              } catch (seqErr: any) {
+                console.error("Error updating sequence for pedidos:", seqErr);
+              }
+            }
+
             setStats(prev => ({ ...prev, ordersImported: prev.ordersImported + successOrders }));
             addLog("success", `¡Sincronización completa! Se importaron ${successOrders} pedidos históricos.`);
           } catch (err: any) {
@@ -738,12 +792,28 @@ export default function ImportarHistorialPage() {
             let successRemissions = 0;
             let successInvoices = 0;
 
+            let maxImportedRemision = 0;
+            let maxImportedFactura = 0;
+
             setProgressText("Procesando cabeceras y resolviendo partidas...");
 
             for (const [docKey, lines] of groupedDocs.entries()) {
               const firstLine = lines[0];
               const docType = String(getFlexibleValue(firstLine, ["documento", "tipodocumento", "tipo", "documenttype", "type"]) || "").trim().toLowerCase();
               const numero = String(getFlexibleValue(firstLine, ["numero", "num", "folio", "id", "codigo", "referencia", "documentnumber"])).trim();
+
+              const match = numero.match(/^[A-Z]*[- ]*(\d+)/i);
+              const numVal = match ? parseInt(match[1], 10) : parseInt(numero.replace(/[^0-9]/g, ""), 10);
+
+              if (docType.includes("factur")) {
+                if (numVal && numVal > maxImportedFactura) {
+                  maxImportedFactura = numVal;
+                }
+              } else {
+                if (numVal && numVal > maxImportedRemision) {
+                  maxImportedRemision = numVal;
+                }
+              }
               
               const clientName = String(getFlexibleValue(firstLine, ["cliente", "client", "nombrecliente", "clientname", "customer", "razonsocial", "nombre", "clientenombre"]) || "").trim();
               
@@ -895,6 +965,34 @@ export default function ImportarHistorialPage() {
             for (let i = 0; i < batches.length; i++) {
               await batches[i].commit();
               setProgressText(`Guardando lote ${i + 1} de ${batches.length}...`);
+            }
+
+            try {
+              const counterRef = doc(db, "companies", companyId, "counters", "sequences");
+              await runTransaction(db, async (transaction) => {
+                const counterDoc = await transaction.get(counterRef);
+                let currentRem = 0;
+                let currentInv = 0;
+                if (counterDoc.exists()) {
+                  const data = counterDoc.data();
+                  if (data.remisiones !== undefined) currentRem = data.remisiones;
+                  if (data.facturas !== undefined) currentInv = data.facturas;
+                }
+                const updates: any = {};
+                if (maxImportedRemision > currentRem) {
+                  updates.remisiones = maxImportedRemision;
+                  addLog("info", `Folio de remisiones actualizado a la numeración Bind: ${maxImportedRemision}`);
+                }
+                if (maxImportedFactura > currentInv) {
+                  updates.facturas = maxImportedFactura;
+                  addLog("info", `Folio de facturas actualizado a la numeración Bind: ${maxImportedFactura}`);
+                }
+                if (Object.keys(updates).length > 0) {
+                  transaction.set(counterRef, updates, { merge: true });
+                }
+              });
+            } catch (seqErr: any) {
+              console.error("Error updating sequence for remisiones/facturas:", seqErr);
             }
 
             setStats(prev => ({ 

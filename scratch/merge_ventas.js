@@ -2,8 +2,8 @@ const fs = require('fs');
 const xlsx = require('xlsx');
 const Papa = require('papaparse');
 
-const csvPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas (4).csv';
-const xlsPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas (30).xls';
+const csvPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas (5).csv';
+const xlsPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas (31).xls';
 const outputPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas_Detalladas.csv';
 
 function parseCSV(path) {

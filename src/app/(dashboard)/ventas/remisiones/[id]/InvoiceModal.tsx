@@ -104,7 +104,7 @@ export function InvoiceModal({
           
           return {
             ProductCode: item.satProductCode || "01010101",
-            IdentificationNumber: item.variantId || "SKU",
+            IdentificationNumber: item.variantId || item.id || "SKU",
             Description: item.productName,
             Unit: item.satUnitName || "PIEZA",
             UnitCode: item.satUnitCode || "H87",

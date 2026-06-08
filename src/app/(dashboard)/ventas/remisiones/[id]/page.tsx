@@ -76,7 +76,7 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
           if (productDoc.exists()) {
             const productData = productDoc.data();
             const updatedVariants = productData.variants?.map((v: any) => {
-              if (v.id === item.variantId) {
+              if (v.id === (item.variantId || item.id)) {
                 return { ...v, stock: (v.stock || 0) + item.quantity }; // Add back
               }
               return v;
@@ -90,7 +90,7 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
               setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
                 id: movId,
                 productId: item.productId,
-                variantId: item.variantId,
+                variantId: item.variantId || item.id || "",
                 type: "IN",
                 quantity: item.quantity,
                 reason: `Cancelación de Remisión ${remission.remissionNumber}`,

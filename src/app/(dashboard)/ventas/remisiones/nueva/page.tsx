@@ -18,6 +18,7 @@ import { Percent } from "lucide-react";
 interface OrderItem {
   productId: string;
   variantId: string;
+  id?: string;
   productName: string;
   variantTitle: string;
   quantity: number;
@@ -269,7 +270,7 @@ export default function NuevaRemisionPage() {
         if (productDoc.exists()) {
           const productData = productDoc.data();
           const updatedVariants = productData.variants?.map((v: any) => {
-            if (v.id === item.variantId) {
+            if (v.id === (item.variantId || item.id)) {
               return { ...v, stock: Math.max(0, (v.stock || 0) - item.quantity) };
             }
             return v;
@@ -282,7 +283,7 @@ export default function NuevaRemisionPage() {
           await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
             id: movId,
             productId: item.productId,
-            variantId: item.variantId,
+            variantId: item.variantId || item.id || "",
             type: "OUT",
             quantity: item.quantity,
             reason: `Remisión Directa ${remNumber}`,

@@ -17,6 +17,7 @@ import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/di
 interface OrderItem {
   productId: string;
   variantId: string;
+  id?: string;
   productName: string;
   variantTitle: string;
   quantity: number;
@@ -318,7 +319,7 @@ export default function NuevaFacturaPage() {
         if (productDoc.exists()) {
           const productData = productDoc.data();
           const updatedVariants = productData.variants?.map((v: any) => {
-            if (v.id === item.variantId) {
+            if (v.id === (item.variantId || item.id)) {
               return { ...v, stock: Math.max(0, (v.stock || 0) - item.quantity) };
             }
             return v;
@@ -331,7 +332,7 @@ export default function NuevaFacturaPage() {
           await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
             id: movId,
             productId: item.productId,
-            variantId: item.variantId,
+            variantId: item.variantId || item.id || "",
             type: "OUT",
             quantity: item.quantity,
             reason: `Venta Directa Facturada FAC-${invNumber}`,

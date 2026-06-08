@@ -339,7 +339,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
             if (pSnap.exists()) {
               const productData = pSnap.data();
               const updatedVariants = productData.variants?.map((v: any) => {
-                if (v.id === origItem.variantId) {
+                if (v.id === (origItem.variantId || origItem.id)) {
                   return { ...v, stock: (v.stock || 0) + returning };
                 }
                 return v;
@@ -351,7 +351,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
               await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), sanitizeFirestoreData({
                 id: movId,
                 productId: origItem.productId,
-                variantId: origItem.variantId,
+                variantId: origItem.variantId || origItem.id || "",
                 type: "IN",
                 quantity: returning,
                 reason: `Devolución POS (Remisión ${sale.remissionNumber})`,

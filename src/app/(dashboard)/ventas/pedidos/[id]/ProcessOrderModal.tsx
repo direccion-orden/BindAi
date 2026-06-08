@@ -110,7 +110,7 @@ export function ProcessOrderModal({
       if (productDoc.exists()) {
         const productData = productDoc.data();
         const updatedVariants = productData.variants?.map((v: any) => {
-          if (v.id === item.variantId) {
+          if (v.id === (item.variantId || item.id)) {
             return { ...v, stock: (v.stock || 0) - item.quantity };
           }
           return v;
@@ -122,7 +122,7 @@ export function ProcessOrderModal({
         await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
           id: movId,
           productId: item.productId,
-          variantId: item.variantId,
+          variantId: item.variantId || item.id || "",
           type: "OUT",
           quantity: item.quantity,
           reason: `Remisión ${remNumber} (Pedido ${order.orderNumber})`,
@@ -156,7 +156,7 @@ export function ProcessOrderModal({
         const subtotalItem = (item.quantity * item.unitPrice) - discountAmt;
         return {
           ProductCode: item.satProductCode || "01010101",
-          IdentificationNumber: item.variantId || "SKU",
+          IdentificationNumber: item.variantId || item.id || "SKU",
           Description: item.productName,
           Unit: item.satUnitName || "PIEZA",
           UnitCode: item.satUnitCode || "H87",

@@ -131,14 +131,22 @@ export default function ImportarHistorialPage() {
     const clientMap = new Map<string, string>();
     snap.docs.forEach(doc => {
       const data = doc.data();
-      const nameKey = String(data.name || "").trim().toLowerCase();
-      clientMap.set(nameKey, doc.id);
-      if (data.rfc) {
-        clientMap.set(String(data.rfc).trim().toLowerCase(), doc.id);
+      const name = data.LegalName || data.CommercialName || data.ClientName || data.legalName || data.name || data.razonSocial || "";
+      const nameKey = String(name).trim().toLowerCase();
+      if (nameKey) {
+        clientMap.set(nameKey, doc.id);
+      }
+      const rfc = data.RFC || data.rfc || "";
+      const rfcKey = String(rfc).trim().toLowerCase();
+      if (rfcKey) {
+        clientMap.set(rfcKey, doc.id);
       }
     });
     return clientMap;
   };
+
+
+
 
   // Helper: Load facturas map from Firestore
   const loadFacturasMap = async () => {

@@ -101,7 +101,11 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
   const getFilteredClients = () => {
     if (!clientSearch) return [];
     const term = clientSearch.toLowerCase();
-    return clients.filter(c => c.name.toLowerCase().includes(term) || (c.rfc && c.rfc.toLowerCase().includes(term)));
+    return clients.filter(c => {
+      const nameVal = (c.LegalName || c.CommercialName || c.name || "").toLowerCase();
+      const rfcVal = (c.RFC || c.rfc || "").toLowerCase();
+      return nameVal.includes(term) || rfcVal.includes(term);
+    });
   };
 
   const getFilteredProducts = () => {
@@ -115,7 +119,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
 
   const handleSelectClient = (c: Client) => {
     setClientId(c.id);
-    setClientSearch(c.name);
+    const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";
+    setClientSearch(clientName);
     setProjectId("");
   };
 
@@ -192,7 +197,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         return;
       }
       const client = clients.find(c => c.id === finalClientId);
-      finalClientName = client?.name || "Desconocido";
+      finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
       clientRefDoc = client;
     }
 
@@ -382,8 +387,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
                         className="p-3 hover:bg-muted/50 cursor-pointer" 
                         onClick={() => handleSelectClient(c)}
                       >
-                        <div className="font-medium text-sm">{c.name}</div>
-                        {c.rfc && <div className="text-xs text-muted-foreground">RFC: {c.rfc}</div>}
+                        <div className="font-medium text-sm">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
+                        {(c.RFC || c.rfc) && <div className="text-xs text-muted-foreground">RFC: {c.RFC || c.rfc}</div>}
                       </div>
                     ))}
                     {getFilteredClients().length === 0 && (

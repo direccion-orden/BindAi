@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { FolderOpen } from "lucide-react";
 import { FileText, Package, Trash2, Edit2, Save, Search, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
-import { doc, updateDoc, collection, query, getDocs } from "firebase/firestore";
+import { doc, updateDoc, collection, query, getDocs, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { generateQuoteImage } from "@/actions/generate-image";
+import { calculateOrderTotals, EngineDiscount, EngineItem } from "@/lib/utils/discountEngine";
+import { Percent } from "lucide-react";
 
 export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: () => void, stages: any[] }) {
   const { companyId } = useAuth();
@@ -19,6 +21,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
   const [products, setProducts] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [productSearch, setProductSearch] = useState("");
+  const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
 
   useEffect(() => {
     if (quote) {
@@ -35,6 +38,9 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
       getDocs(collection(db, "companies", companyId, "projects")).then(snap => {
         setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
+      getDocs(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active"))).then(snap => {
+        setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
+      });
     }
   }, [isEditing, companyId, products.length]);
 
@@ -44,14 +50,22 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
     if (!companyId) return;
     setLoading(true);
     try {
-      // Recalculate totals
-      const grossSubtotal = editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
-      const totalDiscount = editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0);
-      const subtotal = isEditing ? grossSubtotal : (editData.subtotal || grossSubtotal);
-      const discount = isEditing ? totalDiscount : (editData.totalDiscount || totalDiscount);
-      const taxableSubtotal = subtotal - discount;
-      const tax = taxableSubtotal * 0.16;
-      const totalAmount = taxableSubtotal + tax;
+      // Recalculate totals using calculateOrderTotals
+      const engineItems: EngineItem[] = (editData.items || []).map((i: any) => ({
+        id: i.variantId || i.id,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        manualDiscountPercentage: i.discountPercentage || 0,
+        categoryIds: i.categoryIds || []
+      }));
+      
+      const calc = calculateOrderTotals(
+        engineItems,
+        availableDiscounts,
+        editData.promoCode || null,
+        editData.globalDiscountType || "none",
+        editData.globalDiscountValue || 0
+      );
 
       // Handle AI Image Update if prompt changed via Server Action
       let imageUrl = editData.imageUrl;
@@ -71,10 +85,13 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
       const updatedQuote = {
         ...editData,
         projectName: finalProjectName,
-        subtotal,
-        totalDiscount: discount,
-        tax,
-        totalAmount,
+        subtotal: calc.subtotal,
+        totalDiscount: calc.totalDiscount,
+        globalDiscountType: editData.globalDiscountType || "none",
+        globalDiscountValue: editData.globalDiscountValue || 0,
+        globalDiscountAmount: calc.globalDiscountTotal,
+        tax: calc.tax,
+        totalAmount: calc.total,
         imageUrl
       };
 
@@ -151,24 +168,43 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
     );
   };
 
-  // Recalc UI totals on the fly during edit
-  const grossSubtotal = editData.items && Array.isArray(editData.items)
-    ? editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0)
-    : 0;
-  const totalDiscount = editData.items && Array.isArray(editData.items)
-    ? editData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0)
-    : 0;
+  // Helpers to update global discount in state
+  const handleGlobalDiscountTypeChange = (val: string) => {
+    setEditData((prev: any) => ({
+      ...prev,
+      globalDiscountType: val,
+      globalDiscountValue: 0
+    }));
+  };
 
-  const displaySubtotal = isEditing ? grossSubtotal : (editData.subtotal || grossSubtotal);
-  const displayDiscount = isEditing ? totalDiscount : (editData.totalDiscount || totalDiscount);
-  const taxableSubtotal = displaySubtotal - displayDiscount;
+  const handleGlobalDiscountValueChange = (val: number) => {
+    setEditData((prev: any) => ({
+      ...prev,
+      globalDiscountValue: val
+    }));
+  };
 
-  const displayTax = isEditing
-    ? taxableSubtotal * 0.16
-    : (editData.tax !== undefined ? editData.tax : taxableSubtotal * 0.16);
-  const displayTotal = isEditing
-    ? taxableSubtotal + displayTax
-    : (editData.totalAmount !== undefined ? editData.totalAmount : taxableSubtotal + displayTax);
+  // Recalc UI totals on the fly during edit using calculateOrderTotals
+  const engineItems: EngineItem[] = (editData.items || []).map((i: any) => ({
+    id: i.variantId || i.id,
+    quantity: i.quantity,
+    unitPrice: i.unitPrice,
+    manualDiscountPercentage: i.discountPercentage || 0,
+    categoryIds: i.categoryIds || []
+  }));
+
+  const calcTotals = calculateOrderTotals(
+    engineItems,
+    availableDiscounts,
+    editData.promoCode || null,
+    editData.globalDiscountType || "none",
+    editData.globalDiscountValue || 0
+  );
+
+  const displaySubtotal = isEditing ? calcTotals.subtotal : (editData.subtotal || calcTotals.subtotal);
+  const displayDiscount = isEditing ? calcTotals.totalDiscount : (editData.totalDiscount || calcTotals.totalDiscount);
+  const displayTax = isEditing ? calcTotals.tax : (editData.tax !== undefined ? editData.tax : calcTotals.tax);
+  const displayTotal = isEditing ? calcTotals.total : (editData.totalAmount !== undefined ? editData.totalAmount : calcTotals.total);
 
   return (
     <Dialog open={!!quote} onOpenChange={(open) => !open && onClose()}>
@@ -359,6 +395,37 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
 
           <div className="flex justify-end pt-4 border-t">
             <div className="w-64 space-y-1 text-sm">
+              {isEditing && (
+                <div className="space-y-1 pb-3 border-b border-dashed mb-3">
+                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                     <Percent className="w-3 h-3"/> Descuento Global
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      className="flex h-8 w-24 rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                      value={editData.globalDiscountType || "none"}
+                      onChange={(e) => handleGlobalDiscountTypeChange(e.target.value)}
+                    >
+                      <option value="none">Ninguno</option>
+                      <option value="percentage">Porcentaje (%)</option>
+                      <option value="fixed_amount">Monto ($)</option>
+                    </select>
+                    {(editData.globalDiscountType && editData.globalDiscountType !== "none") && (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={editData.globalDiscountType === "percentage" ? 100 : undefined}
+                        step={editData.globalDiscountType === "percentage" ? 1 : 0.01}
+                        placeholder={editData.globalDiscountType === "percentage" ? "10" : "100.00"}
+                        value={editData.globalDiscountValue !== undefined ? editData.globalDiscountValue : ""}
+                        onChange={(e) => handleGlobalDiscountValueChange(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="h-8 text-sm"
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between text-muted-foreground">
                 <span>Subtotal</span>
                 <span>${displaySubtotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>

@@ -25,8 +25,9 @@ export interface DiscountEngineResult {
   subtotal: number; // Sum of price * quantity
   itemDiscountsTotal: number; // Sum of manual line item discounts
   subtotalAfterItemDiscounts: number; // subtotal - itemDiscountsTotal
+  globalDiscountTotal: number; // Manual global discount amount
   promoDiscountTotal: number; // Discount from the promo codes/automatic rules
-  totalDiscount: number; // itemDiscountsTotal + promoDiscountTotal
+  totalDiscount: number; // itemDiscountsTotal + globalDiscountTotal + promoDiscountTotal
   taxableSubtotal: number; // subtotal - totalDiscount
   tax: number; // 16% of taxableSubtotal
   total: number; // taxableSubtotal + tax
@@ -40,16 +41,21 @@ export interface DiscountEngineResult {
  * 
  * Rules:
  * 1. Manual line item discounts are applied FIRST.
- * 2. Then, the engine looks at all automatic discounts + the optional entered promo code.
- * 3. It finds the *best* applicable discount (the one that gives the most savings) and applies ONLY that one. 
+ * 2. Then, the manual global discount is applied.
+ * 3. Then, the engine looks at all automatic discounts + the optional entered promo code.
+ * 4. It finds the *best* applicable discount (the one that gives the most savings) and applies ONLY that one. 
  *    (Cascading the global promo over the already manual-discounted subtotal).
- * 4. Calculates IVA (16%) on the final taxable subtotal.
+ * 5. Calculates IVA (16%) on the final taxable subtotal.
  */
 export function calculateOrderTotals(
   items: EngineItem[],
   availableDiscounts: EngineDiscount[],
-  enteredPromoCode?: string | null
+  enteredPromoCode?: string | null,
+  globalDiscountType: "percentage" | "fixed_amount" | "none" = "none",
+  globalDiscountValue: number = 0
 ): DiscountEngineResult {
+  const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+
   // 1. Calculate Base Subtotals & Manual Discounts
   let subtotal = 0;
   let itemDiscountsTotal = 0;
@@ -61,7 +67,20 @@ export function calculateOrderTotals(
     itemDiscountsTotal += itemDiscount;
   });
 
-  const subtotalAfterItemDiscounts = subtotal - itemDiscountsTotal;
+  subtotal = round2(subtotal);
+  itemDiscountsTotal = round2(itemDiscountsTotal);
+  const subtotalAfterItemDiscounts = round2(subtotal - itemDiscountsTotal);
+
+  // Apply Manual Global Discount
+  let globalDiscountTotal = 0;
+  if (globalDiscountType === "percentage") {
+    globalDiscountTotal = subtotalAfterItemDiscounts * (globalDiscountValue / 100);
+  } else if (globalDiscountType === "fixed_amount") {
+    globalDiscountTotal = Math.min(globalDiscountValue, subtotalAfterItemDiscounts);
+  }
+  globalDiscountTotal = round2(globalDiscountTotal);
+
+  const subtotalAfterGlobal = round2(subtotalAfterItemDiscounts - globalDiscountTotal);
 
   // 2. Filter Candidate Promos (Automatics + Valid Code)
   let candidatePromos: EngineDiscount[] = availableDiscounts.filter(d => d.method === "automatic");
@@ -84,9 +103,9 @@ export function calculateOrderTotals(
   let maxPromoSavings = 0;
 
   for (const promo of candidatePromos) {
-    // Check minimum requirements (evaluated against subtotalAfterItemDiscounts)
+    // Check minimum requirements (evaluated against subtotalAfterGlobal)
     if (promo.minRequirement?.type === "min_amount" && promo.minRequirement.value) {
-      if (subtotalAfterItemDiscounts < promo.minRequirement.value) {
+      if (subtotalAfterGlobal < promo.minRequirement.value) {
         if (promo.code?.toUpperCase() === enteredPromoCode?.toUpperCase()) {
           codeError = `El código requiere una compra mínima de $${promo.minRequirement.value}.`;
         }
@@ -98,9 +117,9 @@ export function calculateOrderTotals(
 
     if (promo.targetType === "order") {
       if (promo.type === "percentage") {
-        currentSavings = subtotalAfterItemDiscounts * (promo.value / 100);
+        currentSavings = subtotalAfterGlobal * (promo.value / 100);
       } else if (promo.type === "fixed_amount") {
-        currentSavings = Math.min(promo.value, subtotalAfterItemDiscounts); // Cant discount more than we have
+        currentSavings = Math.min(promo.value, subtotalAfterGlobal); // Cant discount more than we have
       }
     } else if (promo.targetType === "specific_categories" && promo.targetIds && promo.targetIds.length > 0) {
       // Calculate eligible subtotal
@@ -111,8 +130,9 @@ export function calculateOrderTotals(
           promo.targetIds!.some(tId => tId.trim().toLowerCase() === id.trim().toLowerCase())
         );
         if (isEligible) {
-          const itemNet = (item.unitPrice * item.quantity) * (1 - (item.manualDiscountPercentage || 0) / 100);
-          eligibleSubtotal += itemNet;
+          const itemNetBeforeGlobal = (item.unitPrice * item.quantity) * (1 - (item.manualDiscountPercentage || 0) / 100);
+          const itemGlobal = subtotalAfterItemDiscounts > 0 ? globalDiscountTotal * (itemNetBeforeGlobal / subtotalAfterItemDiscounts) : 0;
+          eligibleSubtotal += (itemNetBeforeGlobal - itemGlobal);
         }
       });
 
@@ -139,24 +159,26 @@ export function calculateOrderTotals(
     }
   }
 
-  const promoDiscountTotal = maxPromoSavings;
-  const totalDiscount = itemDiscountsTotal + promoDiscountTotal;
-  const taxableSubtotal = Math.max(0, subtotal - totalDiscount);
-  const tax = taxableSubtotal * 0.16; // 16% IVA
-  const total = taxableSubtotal + tax;
+  const promoDiscountTotal = round2(maxPromoSavings);
+  const totalDiscount = round2(itemDiscountsTotal + globalDiscountTotal + promoDiscountTotal);
+  const taxableSubtotal = round2(Math.max(0, subtotal - totalDiscount));
+  const tax = round2(taxableSubtotal * 0.16); // 16% IVA
+  const total = round2(taxableSubtotal + tax);
 
   // 4. Distribute discounts to items for CFDI/Invoice generation
   const processedItems = items.map(item => {
     const itemGross = item.unitPrice * item.quantity;
     const itemManualDiscount = itemGross * ((item.manualDiscountPercentage || 0) / 100);
-    const itemNetBeforePromo = itemGross - itemManualDiscount;
+    const itemNetBeforeGlobal = itemGross - itemManualDiscount;
+    const itemGlobalDiscount = subtotalAfterItemDiscounts > 0 ? globalDiscountTotal * (itemNetBeforeGlobal / subtotalAfterItemDiscounts) : 0;
+    const itemNetAfterGlobal = itemNetBeforeGlobal - itemGlobalDiscount;
     
     let itemPromoDiscount = 0;
     
     if (bestPromo && promoDiscountTotal > 0) {
       if (bestPromo.targetType === "order") {
-        // Distribute proportionally based on itemNetBeforePromo / subtotalAfterItemDiscounts
-        const ratio = subtotalAfterItemDiscounts > 0 ? (itemNetBeforePromo / subtotalAfterItemDiscounts) : 0;
+        // Distribute proportionally based on itemNetAfterGlobal / subtotalAfterGlobal
+        const ratio = subtotalAfterGlobal > 0 ? (itemNetAfterGlobal / subtotalAfterGlobal) : 0;
         itemPromoDiscount = promoDiscountTotal * ratio;
       } else if (bestPromo.targetType === "specific_categories" && bestPromo.targetIds) {
         const isEligible = item.categoryIds?.some(id => 
@@ -167,10 +189,14 @@ export function calculateOrderTotals(
           let eligibleSubtotal = 0;
           items.forEach(i => {
             if (i.categoryIds?.some(id => bestPromo?.targetIds!.some(tId => tId.trim().toLowerCase() === id.trim().toLowerCase()))) {
-              eligibleSubtotal += (i.unitPrice * i.quantity) * (1 - (i.manualDiscountPercentage || 0) / 100);
+              const iGross = i.unitPrice * i.quantity;
+              const iManual = iGross * ((i.manualDiscountPercentage || 0) / 100);
+              const iNetBeforeGlobal = iGross - iManual;
+              const iGlobal = subtotalAfterItemDiscounts > 0 ? globalDiscountTotal * (iNetBeforeGlobal / subtotalAfterItemDiscounts) : 0;
+              eligibleSubtotal += (iNetBeforeGlobal - iGlobal);
             }
           });
-          const ratio = eligibleSubtotal > 0 ? (itemNetBeforePromo / eligibleSubtotal) : 0;
+          const ratio = eligibleSubtotal > 0 ? (itemNetAfterGlobal / eligibleSubtotal) : 0;
           itemPromoDiscount = promoDiscountTotal * ratio;
         }
       }
@@ -178,8 +204,8 @@ export function calculateOrderTotals(
 
     return {
       ...item,
-      finalDiscountAmt: itemManualDiscount + itemPromoDiscount,
-      finalSubtotal: itemGross - (itemManualDiscount + itemPromoDiscount)
+      finalDiscountAmt: round2(itemManualDiscount + itemGlobalDiscount + itemPromoDiscount),
+      finalSubtotal: round2(itemGross - (itemManualDiscount + itemGlobalDiscount + itemPromoDiscount))
     };
   });
 
@@ -187,6 +213,7 @@ export function calculateOrderTotals(
     subtotal,
     itemDiscountsTotal,
     subtotalAfterItemDiscounts,
+    globalDiscountTotal,
     promoDiscountTotal,
     totalDiscount,
     taxableSubtotal,

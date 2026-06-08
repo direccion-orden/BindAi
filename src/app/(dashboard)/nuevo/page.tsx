@@ -48,7 +48,7 @@ export default function NuevoAnticipoPage() {
       try {
         const q = firestoreQuery(collection(db, "companies", companyId, "bankAccounts"));
         const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().Name || doc.data().name || "Cuenta sin nombre" }));
         setBankAccounts(data);
         if (data && data.length > 0) setSelectedAccountId(data[0].id);
       } catch (error) {
@@ -62,24 +62,28 @@ export default function NuevoAnticipoPage() {
     if (!query || !companyId) return;
     setIsSearching(true);
     try {
-      // Basic search simulating a 'like' query in Firestore (Firestore doesn't have native case-insensitive LIKE, so we'll fetch all and filter in memory since the list won't be huge at first, or we can just fetch all once. For now, fetch all and filter).
       const q = firestoreQuery(collection(db, "companies", companyId, "clients"));
       const snapshot = await getDocs(q);
       const allClients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       
       const searchTerm = query.toLowerCase();
-      const results = allClients.filter(c => 
-        c.name?.toLowerCase().includes(searchTerm) || 
-        c.rfc?.toLowerCase().includes(searchTerm) ||
-        c.email?.toLowerCase().includes(searchTerm)
-      );
+      const results = allClients.filter(c => {
+        const nameVal = (c.LegalName || c.CommercialName || c.ClientName || c.legalName || c.name || c.razonSocial || "").toLowerCase();
+        const rfcVal = (c.RFC || c.rfc || "").toLowerCase();
+        const emailVal = (c.Email || c.email || "").toLowerCase();
+        return nameVal.includes(searchTerm) || rfcVal.includes(searchTerm) || emailVal.includes(searchTerm);
+      });
       
       // Map to expected structure
-      const mapped = results.map(c => ({
-        id: c.id,
-        legalName: c.name,
-        rfc: c.rfc || ""
-      }));
+      const mapped = results.map(c => {
+        const nameVal = c.LegalName || c.CommercialName || c.ClientName || c.legalName || c.name || c.razonSocial || "Cliente sin nombre";
+        const rfcVal = c.RFC || c.rfc || "";
+        return {
+          id: c.id,
+          legalName: nameVal,
+          rfc: rfcVal
+        };
+      });
       
       setClients(mapped);
     } catch (error) {

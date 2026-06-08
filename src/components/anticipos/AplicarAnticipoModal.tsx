@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 import { ErpDocument } from "@/app/actions/erp";
-import { doc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, getDocs, addDoc, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 
@@ -47,37 +47,74 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
   const loadDocuments = async () => {
     setLoadingDocs(true);
     try {
-      // 1. Obtener directo de Bind ERP vía API interna
-      const resDocs = await fetch(`/api/erp/documents?clientId=${anticipo.clientId}`);
-      let docs: ErpDocument[] = await resDocs.json();
-
-      // 2. Localizar aplicaciones "Ciegas" en la base de datos de los Anticipos existentes
       if (!companyId) return;
-      const q = query(collection(db, "companies", companyId, "anticipos"), where("clientId", "==", anticipo.clientId));
-      const snaps = await getDocs(q);
-      
-      const blindDeductions: Record<string, number> = {};
-      snaps.forEach(snap => {
-        const aData = snap.data();
-        if (aData.applications) {
-          aData.applications.forEach((app: any) => {
-            // SÓLO descontamos Órdenes ciegas. (Bind ERP descuenta las Facturas/Remisiones nativamente en vivo)
-            if (app.erpDocumentType === "Order") {
-               blindDeductions[app.erpDocumentId] = (blindDeductions[app.erpDocumentId] || 0) + app.amount;
-            }
-          });
+
+      const [pedidosSnap, remisionesSnap, facturasSnap] = await Promise.all([
+        getDocs(query(collection(db, "companies", companyId, "pedidos"), where("clientId", "==", anticipo.clientId))),
+        getDocs(query(collection(db, "companies", companyId, "remisiones"), where("clientId", "==", anticipo.clientId))),
+        getDocs(query(collection(db, "companies", companyId, "facturas"), where("clientId", "==", anticipo.clientId)))
+      ]);
+
+      const localDocs: ErpDocument[] = [];
+
+      pedidosSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        const status = String(d.status || "").trim().toLowerCase();
+        if (status !== "cancelado" && status !== "cancelada" && status !== "surtido" && status !== "remisionado" && status !== "completado") {
+          const total = Math.round(((parseFloat(d.totalAmount) || d.totalAmount || 0) + Number.EPSILON) * 100) / 100;
+          const paid = Math.round(((parseFloat(d.paidAmount) || d.paidAmount || 0) + Number.EPSILON) * 100) / 100;
+          const balance = Math.round((total - paid + Number.EPSILON) * 100) / 100;
+          if (balance > 0.01) {
+            localDocs.push({
+              id: docSnap.id,
+              type: "Order",
+              number: d.orderNumber || d.number || `PED-${docSnap.id.substring(0, 6)}`,
+              total,
+              balance
+            });
+          }
         }
       });
 
-      // 3. Ajustar los saldos de los documentos tipo "Order" y filtrar los ya pagados
-      docs = docs.map(d => {
-        if (d.type === "Order" && blindDeductions[d.id]) {
-           d.balance -= blindDeductions[d.id];
+      remisionesSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        const status = String(d.status || "").trim().toLowerCase();
+        if (status !== "cancelada" && status !== "cancelado" && status !== "facturada" && status !== "pagada") {
+          const total = Math.round(((parseFloat(d.totalAmount) || d.totalAmount || 0) + Number.EPSILON) * 100) / 100;
+          const paid = Math.round(((parseFloat(d.paidAmount) || d.paidAmount || 0) + Number.EPSILON) * 100) / 100;
+          const balance = Math.round((total - paid + Number.EPSILON) * 100) / 100;
+          if (balance > 0.01) {
+            localDocs.push({
+              id: docSnap.id,
+              type: "Remission",
+              number: d.remissionNumber || d.number || `REM-${docSnap.id.substring(0, 6)}`,
+              total,
+              balance
+            });
+          }
         }
-        return d;
-      }).filter(d => d.balance > 0.01);
+      });
 
-      setDocuments(docs);
+      facturasSnap.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        const status = String(d.status || "").trim().toLowerCase();
+        if (status !== "cancelada" && status !== "cancelado" && status !== "pagada") {
+          const total = Math.round(((parseFloat(d.totalAmount) || d.totalAmount || 0) + Number.EPSILON) * 100) / 100;
+          const paid = Math.round(((parseFloat(d.paidAmount) || d.paidAmount || 0) + Number.EPSILON) * 100) / 100;
+          const balance = Math.round((total - paid + Number.EPSILON) * 100) / 100;
+          if (balance > 0.01) {
+            localDocs.push({
+              id: docSnap.id,
+              type: "Invoice",
+              number: d.invoiceNumber ? `FAC-${d.invoiceNumber}` : `FAC-${docSnap.id.substring(0, 6)}`,
+              total,
+              balance
+            });
+          }
+        }
+      });
+
+      setDocuments(localDocs);
     } catch (error) {
       console.error(error);
     } finally {
@@ -108,32 +145,55 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
     setIsApplying(true);
 
     try {
-      // Por cada documento donde hay un monto, enviarlo al ERP (o al Flujo Ciego)
+      if (!companyId) throw new Error("No company ID");
+      
       const docsToApply = Object.entries(applications).filter(([_, amount]) => amount > 0);
       const newApplications = [];
       
       for (const [docId, amount] of docsToApply) {
         const docObj = documents.find(d => d.id === docId);
-        const payload = {
-          documentId: docId,
-          docType: docObj?.type || "Unknown",
+        
+        // 1. Registrar pago localmente en Firestore
+        const paymentData = {
           amount: amount,
+          date: paymentDate,
+          method: "Anticipo",
+          reference: `Aplicación de Anticipo - ANT-${anticipo.folio ? String(anticipo.folio).padStart(4, '0') : anticipo.id.substring(0, 5).toUpperCase()}`,
+          documentId: docId,
+          documentType: docObj?.type === "Invoice" ? "factura" : (docObj?.type === "Remission" ? "remision" : "pedido"),
+          documentNumber: docObj?.number || docId,
+          clientId: anticipo.clientId || "",
+          clientName: anticipo.clientName || "",
           bankAccountId: anticipo.bankAccountId || "CUENTA_MOCK",
-          paymentTerm: anticipo.paymentTermId || 3,
-          reference: `Anticipo de ${anticipo.clientName}`,
-          date: paymentDate
+          createdAt: new Date().toISOString()
         };
 
-        const resApply = await fetch('/api/erp/apply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        
-        const result = await resApply.json();
+        await addDoc(collection(db, "companies", companyId, "payments"), paymentData);
 
-        if (result && result.success === false) {
-          throw new Error(result.error || "Falla al aplicar pago en ERP");
+        // 2. Actualizar el saldo pagado (paidAmount) en el documento de destino
+        let collectionName = "";
+        if (docObj?.type === "Order") collectionName = "pedidos";
+        else if (docObj?.type === "Remission") collectionName = "remisiones";
+        else if (docObj?.type === "Invoice") collectionName = "facturas";
+
+        if (collectionName) {
+          const docRef = doc(db, "companies", companyId, collectionName, docId);
+          
+          const totalAmount = docObj?.total || 0;
+          const prevPaidAmount = totalAmount - (docObj?.balance || 0);
+          const newPaidAmount = prevPaidAmount + amount;
+
+          const updates: any = {
+            paidAmount: increment(amount)
+          };
+
+          if (newPaidAmount >= totalAmount - 0.01) {
+            if (docObj?.type === "Invoice" || docObj?.type === "Remission") {
+              updates.status = "pagada";
+            }
+          }
+
+          await updateDoc(docRef, updates);
         }
 
         // Tracking paramétrico para el Dashboard y Flujo Ciego
@@ -158,7 +218,6 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
 
       const existingApps = anticipo.applications || [];
 
-      if (!companyId) throw new Error("No company ID");
       const ref = doc(db, "companies", companyId, "anticipos", anticipo.id);
       await updateDoc(ref, {
         balance: newBalance,
@@ -171,7 +230,7 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
       onOpenChange(false);
     } catch (error) {
       console.error("Error al aplicar", error);
-      alert("Hubo un error al aplicar el anticipo al ERP.");
+      alert("Hubo un error al aplicar el anticipo.");
     } finally {
       setIsApplying(false);
     }
@@ -220,7 +279,7 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
 
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-              <h4 className="text-sm font-medium">Documentos Abiertos (ERP)</h4>
+              <h4 className="text-sm font-medium">Documentos Abiertos</h4>
               
               <div className="flex gap-2 w-full sm:w-auto">
                 <Input 

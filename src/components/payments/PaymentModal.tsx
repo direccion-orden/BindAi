@@ -16,9 +16,9 @@ interface PaymentModalProps {
 export function PaymentModal({ isOpen, onClose, document, documentType, companyId }: PaymentModalProps) {
   const [loading, setLoading] = useState(false);
   
-  const totalAmount = document?.totalAmount || 0;
-  const paidAmount = document?.paidAmount || 0;
-  const saldoPendiente = totalAmount - paidAmount;
+  const totalAmount = Math.round(((document?.totalAmount || 0) + Number.EPSILON) * 100) / 100;
+  const paidAmount = Math.round(((document?.paidAmount || 0) + Number.EPSILON) * 100) / 100;
+  const saldoPendiente = Math.max(0, totalAmount - paidAmount);
 
   const [amount, setAmount] = useState<number>(0);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);

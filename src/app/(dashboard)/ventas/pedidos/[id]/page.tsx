@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { doc, getDoc, updateDoc, collection, getDocs, setDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Package, ArrowLeft, Save, Edit2, Trash2, Search, Truck, FileText, CheckCircle2, XCircle, DollarSign } from "lucide-react";
+import { Loader2, Package, ArrowLeft, Save, Edit2, Trash2, Search, Truck, FileText, CheckCircle2, XCircle, DollarSign, Percent } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { ProcessOrderModal } from "./ProcessOrderModal";
 import { PaymentModal } from "@/components/payments/PaymentModal";
 import { getNextSequence } from "@/lib/firebase/counters";
+import { calculateOrderTotals, EngineDiscount, EngineItem } from "@/lib/utils/discountEngine";
 
 export default function PedidoDetallePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = React.use(paramsPromise);
@@ -30,6 +31,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [products, setProducts] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [productSearch, setProductSearch] = useState("");
+  const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
 
   useEffect(() => {
     if (!companyId || !params.id) return;
@@ -57,6 +59,9 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
       getDocs(collection(db, "companies", companyId, "projects")).then(snap => {
         setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
+      getDocs(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active"))).then(snap => {
+        setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
+      });
     }
   }, [isEditing, companyId, products.length]);
 
@@ -72,36 +77,39 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     if (!companyId) return;
     setSaving(true);
     try {
-      const grossSubtotal = order.items && Array.isArray(order.items)
-        ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0)
-        : 0;
-      const totalDiscount = order.items && Array.isArray(order.items)
-        ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0)
-        : 0;
+      const engineItems: EngineItem[] = (order.items || []).map((i: any) => ({
+        id: i.variantId || i.id,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        manualDiscountPercentage: i.discountPercentage || 0,
+        categoryIds: i.categoryIds || []
+      }));
+      
+      const calc = calculateOrderTotals(
+        engineItems,
+        availableDiscounts,
+        order.promoCode || null,
+        order.globalDiscountType || "none",
+        order.globalDiscountValue || 0
+      );
 
-      const subtotal = isItemsModified ? grossSubtotal : (order.subtotal || grossSubtotal);
-      const discount = isItemsModified ? totalDiscount : (order.totalDiscount || totalDiscount);
-      const taxableSubtotal = subtotal - discount;
-
-      const tax = isItemsModified
-        ? taxableSubtotal * 0.16
-        : (order.tax !== undefined ? order.tax : taxableSubtotal * 0.16);
-      const totalAmount = isItemsModified
-        ? taxableSubtotal + tax
-        : (order.totalAmount !== undefined ? order.totalAmount : taxableSubtotal + tax);
-
-      let finalProjectName = order.projectName;
+      let finalProjectName = order.projectName || null;
       if (order.projectId) {
         finalProjectName = projects.find(p => p.id === order.projectId)?.name || null;
+      } else {
+        finalProjectName = null;
       }
 
       const updatedOrder = {
         ...order,
         projectName: finalProjectName,
-        subtotal,
-        totalDiscount: discount,
-        tax,
-        totalAmount,
+        subtotal: calc.subtotal,
+        totalDiscount: calc.totalDiscount,
+        globalDiscountType: order.globalDiscountType || "none",
+        globalDiscountValue: order.globalDiscountValue || 0,
+        globalDiscountAmount: calc.globalDiscountTotal,
+        tax: calc.tax,
+        totalAmount: calc.total,
       };
 
       await updateDoc(doc(db, "companies", companyId, "pedidos", order.id), updatedOrder);
@@ -184,23 +192,46 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     }
   };
 
-  const grossSubtotal = order.items && Array.isArray(order.items)
-    ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0)
-    : 0;
-  const totalDiscount = order.items && Array.isArray(order.items)
-    ? order.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (item.discountPercentage || 0) / 100), 0)
-    : 0;
+  // Helpers to update global discount in state
+  const handleGlobalDiscountTypeChange = (val: string) => {
+    setIsItemsModified(true);
+    setOrder((prev: any) => ({
+      ...prev,
+      globalDiscountType: val,
+      globalDiscountValue: 0
+    }));
+  };
 
-  const displaySubtotal = isItemsModified ? grossSubtotal : (order.subtotal || grossSubtotal);
-  const displayDiscount = isItemsModified ? totalDiscount : (order.totalDiscount || totalDiscount);
-  const taxableSubtotal = displaySubtotal - displayDiscount;
+  const handleGlobalDiscountValueChange = (val: number) => {
+    setIsItemsModified(true);
+    setOrder((prev: any) => ({
+      ...prev,
+      globalDiscountValue: val
+    }));
+  };
 
-  const displayTax = isItemsModified
-    ? taxableSubtotal * 0.16
-    : (order.tax !== undefined ? order.tax : taxableSubtotal * 0.16);
-  const displayTotal = isItemsModified
-    ? taxableSubtotal + displayTax
-    : (order.totalAmount !== undefined ? order.totalAmount : taxableSubtotal + displayTax);
+  // Recalc UI totals on the fly using calculateOrderTotals
+  const engineItems: EngineItem[] = (order.items || []).map((i: any) => ({
+    id: i.variantId || i.id,
+    quantity: i.quantity,
+    unitPrice: i.unitPrice,
+    manualDiscountPercentage: i.discountPercentage || 0,
+    categoryIds: i.categoryIds || []
+  }));
+
+  const calcTotals = calculateOrderTotals(
+    engineItems,
+    availableDiscounts,
+    order.promoCode || null,
+    order.globalDiscountType || "none",
+    order.globalDiscountValue || 0
+  );
+
+  const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+  const displaySubtotal = round2(isEditing || isItemsModified ? calcTotals.subtotal : (order.subtotal || calcTotals.subtotal));
+  const displayDiscount = round2(isEditing || isItemsModified ? calcTotals.totalDiscount : (order.totalDiscount || calcTotals.totalDiscount));
+  const displayTax = round2(isEditing || isItemsModified ? calcTotals.tax : (order.tax !== undefined ? order.tax : calcTotals.tax));
+  const displayTotal = round2(isEditing || isItemsModified ? calcTotals.total : (order.totalAmount !== undefined ? order.totalAmount : calcTotals.total));
 
   return (
     <div className="flex flex-col space-y-6 max-w-5xl mx-auto pb-10">
@@ -400,6 +431,37 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
 
         <div className="flex justify-end pt-6 border-t mt-6">
           <div className="w-72 space-y-2 text-sm bg-slate-50 p-4 rounded-lg border">
+            {isEditing && (
+              <div className="space-y-1 pb-3 border-b border-dashed mb-3">
+                <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                   <Percent className="w-3 h-3"/> Descuento Global
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    className="flex h-8 w-24 rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                    value={order.globalDiscountType || "none"}
+                    onChange={(e) => handleGlobalDiscountTypeChange(e.target.value)}
+                  >
+                    <option value="none">Ninguno</option>
+                    <option value="percentage">Porcentaje (%)</option>
+                    <option value="fixed_amount">Monto ($)</option>
+                  </select>
+                  {(order.globalDiscountType && order.globalDiscountType !== "none") && (
+                    <Input
+                      type="number"
+                      min={0}
+                      max={order.globalDiscountType === "percentage" ? 100 : undefined}
+                      step={order.globalDiscountType === "percentage" ? 1 : 0.01}
+                      placeholder={order.globalDiscountType === "percentage" ? "10" : "100.00"}
+                      value={order.globalDiscountValue !== undefined ? order.globalDiscountValue : ""}
+                      onChange={(e) => handleGlobalDiscountValueChange(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="h-8 text-sm"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between text-slate-500">
               <span>Subtotal</span>
               <span>${displaySubtotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>

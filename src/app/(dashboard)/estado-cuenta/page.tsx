@@ -27,6 +27,7 @@ import { useAuth } from "@/context/AuthContext";
 interface ErpClient {
   id: string;
   legalName: string;
+  rfc?: string;
 }
 
 interface AccountStatementLine {
@@ -186,7 +187,8 @@ export default function EstadoCuentaPage() {
         const d = docSnap.data();
         return {
           id: docSnap.id,
-          legalName: d.legalName || d.name || d.razonSocial || "Cliente sin nombre"
+          legalName: d.LegalName || d.CommercialName || d.ClientName || d.legalName || d.name || d.razonSocial || "Cliente sin nombre",
+          rfc: d.RFC || d.rfc || ""
         };
       });
       setAllClients(list);
@@ -205,7 +207,7 @@ export default function EstadoCuentaPage() {
     setIsSearching(true);
     const term = query.toLowerCase();
     const results = allClients.filter(c => 
-      c.legalName.toLowerCase().includes(term)
+      c.legalName.toLowerCase().includes(term) || (c.rfc && c.rfc.toLowerCase().includes(term))
     );
     setClients(results);
     setIsSearching(false);
@@ -287,6 +289,13 @@ export default function EstadoCuentaPage() {
       paymentsSnap.docs.forEach(docSnap => {
         const d = docSnap.data();
         const amt = parseFloat(d.amount) || 0;
+
+        // Exclude payments that are applications of anticipos to avoid double-counting
+        const refLower = (d.reference || "").toLowerCase();
+        if (refLower.includes("anticipo")) {
+          return;
+        }
+
         if (amt > 0.01) {
           lines.push({
             date: extractDate(d.createdAt),
@@ -314,7 +323,7 @@ export default function EstadoCuentaPage() {
           number: folio,
           description: `Anticipo - ${ant.paymentTermName || "Pago"}${ant.reference ? " | Ref: " + ant.reference : ""}`,
           cargo: 0,
-          abono: ant.balance !== undefined ? (parseFloat(ant.balance) || 0) : (parseFloat(ant.amount) || 0),
+          abono: parseFloat(ant.amount) || 0,
           runningBalance: 0
         });
 
@@ -669,7 +678,8 @@ export default function EstadoCuentaPage() {
                     className="p-3 hover:bg-muted cursor-pointer text-sm transition-colors"
                     onClick={() => handleSelectClient(c)}
                   >
-                    {c.legalName}
+                    <div className="font-medium">{c.legalName}</div>
+                    {c.rfc && <div className="text-xs text-muted-foreground">RFC: {c.rfc}</div>}
                   </div>
                 ))}
               </div>

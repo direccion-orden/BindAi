@@ -59,6 +59,9 @@ export default function NuevoPedidoPage() {
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [enteredPromoCode, setEnteredPromoCode] = useState("");
 
+  const [globalDiscountType, setGlobalDiscountType] = useState<"percentage" | "fixed_amount" | "none">("none");
+  const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
+
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -111,7 +114,11 @@ export default function NuevoPedidoPage() {
   const getFilteredClients = () => {
     if (!clientSearch) return [];
     const term = clientSearch.toLowerCase();
-    return clients.filter(c => c.name.toLowerCase().includes(term) || (c.rfc && c.rfc.toLowerCase().includes(term)));
+    return clients.filter(c => {
+      const nameVal = (c.LegalName || c.CommercialName || c.name || "").toLowerCase();
+      const rfcVal = (c.RFC || c.rfc || "").toLowerCase();
+      return nameVal.includes(term) || rfcVal.includes(term);
+    });
   };
 
   const getFilteredProducts = () => {
@@ -125,7 +132,8 @@ export default function NuevoPedidoPage() {
 
   const handleSelectClient = (c: Client) => {
     setClientId(c.id);
-    setClientSearch(c.name);
+    const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";
+    setClientSearch(clientName);
     setProjectId("");
   };
 
@@ -172,7 +180,13 @@ export default function NuevoPedidoPage() {
     categoryIds: i.categoryIds || []
   }));
 
-  const totals = calculateOrderTotals(engineItems, availableDiscounts, enteredPromoCode);
+  const totals = calculateOrderTotals(
+    engineItems,
+    availableDiscounts,
+    enteredPromoCode,
+    globalDiscountType,
+    globalDiscountValue
+  );
 
   const handleSave = async () => {
     if (!companyId) return;
@@ -192,7 +206,7 @@ export default function NuevoPedidoPage() {
         return;
       }
       const client = clients.find(c => c.id === finalClientId);
-      finalClientName = client?.name || "Desconocido";
+      finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
     }
 
     if (items.length === 0) {
@@ -234,10 +248,13 @@ export default function NuevoPedidoPage() {
         subtotal: totals.subtotal,
         totalDiscount: totals.totalDiscount,
         promoCode: totals.appliedPromo?.code || null,
+        globalDiscountType,
+        globalDiscountValue,
+        globalDiscountAmount: totals.globalDiscountTotal,
         tax: totals.tax,
         totalAmount: totals.total,
         projectId: projectId || null,
-        projectName: projectId ? projects.find(p => p.id === projectId)?.name : null,
+        projectName: projectId ? (projects.find(p => p.id === projectId)?.name || null) : null,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || "",
         accountId,
@@ -339,8 +356,8 @@ export default function NuevoPedidoPage() {
                         className="p-3 hover:bg-muted/50 cursor-pointer" 
                         onClick={() => handleSelectClient(c)}
                       >
-                        <div className="font-medium text-sm">{c.name}</div>
-                        {c.rfc && <div className="text-xs text-muted-foreground">RFC: {c.rfc}</div>}
+                        <div className="font-medium text-sm">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
+                        {(c.RFC || c.rfc) && <div className="text-xs text-muted-foreground">RFC: {c.RFC || c.rfc}</div>}
                       </div>
                     ))}
                     {getFilteredClients().length === 0 && (
@@ -535,6 +552,38 @@ export default function NuevoPedidoPage() {
             </div>
 
             <div className="p-5 border-t bg-muted/30 flex flex-col items-end gap-2">
+              <div className="w-full max-w-[300px] mb-4 space-y-2 border-b pb-4 border-dashed">
+                 <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                    <Percent className="w-3 h-3"/> Descuento Global
+                 </label>
+                 <div className="flex gap-2">
+                   <select
+                     className="flex h-9 w-32 rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                     value={globalDiscountType}
+                     onChange={(e) => {
+                       setGlobalDiscountType(e.target.value as any);
+                       setGlobalDiscountValue(0);
+                     }}
+                   >
+                     <option value="none">Ninguno</option>
+                     <option value="percentage">Porcentaje (%)</option>
+                     <option value="fixed_amount">Monto ($)</option>
+                   </select>
+                   {globalDiscountType !== "none" && (
+                     <Input
+                       type="number"
+                       min={0}
+                       max={globalDiscountType === "percentage" ? 100 : undefined}
+                       step={globalDiscountType === "percentage" ? 1 : 0.01}
+                       placeholder={globalDiscountType === "percentage" ? "10" : "100.00"}
+                       value={globalDiscountValue || ""}
+                       onChange={(e) => setGlobalDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                       className="h-9 text-sm"
+                     />
+                   )}
+                 </div>
+              </div>
+
               <div className="w-full max-w-[300px] mb-4">
                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1 mb-1">
                     <Percent className="w-3 h-3"/> Código Promocional
@@ -544,7 +593,7 @@ export default function NuevoPedidoPage() {
                     onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
                     placeholder="Ej. VERANO20"
                     className="h-8 text-sm font-mono uppercase"
-                 />
+                  />
                  {totals.error && enteredPromoCode && (
                    <p className="text-[10px] text-red-500 mt-1 font-medium">{totals.error}</p>
                  )}

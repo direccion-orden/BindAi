@@ -39,13 +39,30 @@ export default function OnboardingPage() {
 
     setSaving(true);
     try {
+      // Find the next companyCode
+      let nextCompanyCode = 100781;
+      try {
+        const { getDocs, query, collection, orderBy, limit } = await import("firebase/firestore");
+        const q = query(collection(db, "companies"), orderBy("companyCode", "desc"), limit(1));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          const maxCode = qSnap.docs[0].data().companyCode;
+          if (typeof maxCode === 'number') {
+            nextCompanyCode = Math.max(100780, maxCode) + 1;
+          }
+        }
+      } catch (err) {
+        console.error("Error querying max companyCode, using default:", err);
+      }
+
       // 1. Create Company
       const newCompanyId = crypto.randomUUID();
       await setDoc(doc(db, "companies", newCompanyId), {
         name: companyName.trim(),
         createdAt: serverTimestamp(),
         ownerId: user.uid,
-        status: "ACTIVE"
+        status: "ACTIVE",
+        companyCode: nextCompanyCode
       });
 
       // 2. Assign user to company as OWNER
@@ -73,27 +90,43 @@ export default function OnboardingPage() {
 
     setJoining(true);
     try {
-      // 1. Verify if the company exists
-      const companyDocSnap = await getDoc(doc(db, "companies", cleanId));
-      
-      if (!companyDocSnap.exists()) {
-        alert("No se encontró ninguna empresa con el ID proporcionado. Por favor, solicita el ID correcto al administrador de tu empresa.");
-        setJoining(false);
-        return;
-      }
+      let companyDocId = cleanId;
+      let companyNameFound = "";
 
-      const companyData = companyDocSnap.data();
+      // If it's a number, look it up by companyCode
+      if (/^\d+$/.test(cleanId)) {
+        const { getDocs, query, collection, where } = await import("firebase/firestore");
+        const q = query(collection(db, "companies"), where("companyCode", "==", Number(cleanId)));
+        const qSnap = await getDocs(q);
+        if (qSnap.empty) {
+          alert("No se encontró ninguna empresa con el código proporcionado.");
+          setJoining(false);
+          return;
+        }
+        companyDocId = qSnap.docs[0].id;
+        companyNameFound = qSnap.docs[0].data().name;
+      } else {
+        // Fallback: Verify if the company exists by UUID
+        const companyDocSnap = await getDoc(doc(db, "companies", cleanId));
+        
+        if (!companyDocSnap.exists()) {
+          alert("No se encontró ninguna empresa con el ID proporcionado. Por favor, solicita el ID correcto al administrador de tu empresa.");
+          setJoining(false);
+          return;
+        }
+        companyNameFound = companyDocSnap.data().name;
+      }
 
       // 2. Assign user to company as EMPLOYEE
       await setDoc(doc(db, "users", user.uid), {
         email: user.email,
         name: user.displayName,
-        companyId: cleanId,
+        companyId: companyDocId,
         role: "EMPLOYEE",
         createdAt: serverTimestamp()
       }, { merge: true });
 
-      alert(`Te has unido con éxito a la empresa "${companyData.name || "Negocio"}".`);
+      alert(`Te has unido con éxito a la empresa "${companyNameFound || "Negocio"}".`);
       // Force reload so AuthContext captures the new profile
       window.location.href = "/punto-de-venta";
     } catch (error) {
@@ -238,22 +271,22 @@ export default function OnboardingPage() {
             </div>
             <h1 className="text-2xl font-bold tracking-tight">Únete a tu equipo</h1>
             <p className="text-muted-foreground text-sm">
-              Escribe el ID único de la empresa a la que deseas ingresar.
+              Escribe el código o ID de la empresa a la que deseas ingresar.
             </p>
           </div>
 
           <form onSubmit={handleJoinCompany} className="space-y-4 pt-2">
             <div className="space-y-2 text-left">
-              <label className="text-sm font-semibold">ID de la Empresa *</label>
+              <label className="text-sm font-semibold">Código o ID de la Empresa *</label>
               <Input 
-                placeholder="Pegar el ID aquí..."
+                placeholder="Ej. 100780 o el ID largo..."
                 value={inputCompanyId}
                 onChange={(e) => setInputCompanyId(e.target.value)}
                 className="h-12 text-sm font-mono"
                 autoFocus
                 required
               />
-              <p className="text-xs text-muted-foreground">Solicita este ID al dueño o administrador principal de tu empresa (lo puede encontrar en Configuración &rarr; Perfil).</p>
+              <p className="text-xs text-muted-foreground">Solicita este código al administrador de tu empresa (lo puede encontrar en Configuración &rarr; Perfil).</p>
             </div>
 
             <Button 

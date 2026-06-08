@@ -14,6 +14,7 @@ export default function CompanyProfilePage() {
   const [saving, setSaving] = useState(false);
   const [fielSaving, setFielSaving] = useState(false);
   const [fielStatus, setFielStatus] = useState<"none" | "configured">("none");
+  const [companyCode, setCompanyCode] = useState<number | null>(null);
   
   const [fielData, setFielData] = useState({
     cerBase64: "",
@@ -45,6 +46,9 @@ export default function CompanyProfilePage() {
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const data = snap.data();
+        if (typeof data.companyCode === 'number') {
+          setCompanyCode(data.companyCode);
+        }
         setFormData({
           name: data.name || "",
           razonSocial: data.razonSocial || "",
@@ -166,20 +170,22 @@ export default function CompanyProfilePage() {
       {companyId && (
         <div className="bg-slate-900/5 dark:bg-slate-900/30 border border-slate-200/60 dark:border-slate-800 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">ID de tu Empresa (para invitar colaboradores)</p>
-            <p className="font-mono text-base font-extrabold text-indigo-600 dark:text-indigo-400 select-all mt-1">{companyId}</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Código de tu Empresa (para invitar colaboradores)</p>
+            <p className="font-mono text-2xl font-black text-indigo-600 dark:text-indigo-400 select-all mt-1">{companyCode || "Generando..."}</p>
+            <span className="text-[10px] text-slate-400 font-mono block mt-1">ID Interno: {companyId}</span>
           </div>
           <Button 
             type="button"
             variant="outline" 
             size="sm" 
             onClick={() => {
-              navigator.clipboard.writeText(companyId);
-              alert("ID de la empresa copiado al portapapeles.");
+              const textToCopy = companyCode ? String(companyCode) : companyId;
+              navigator.clipboard.writeText(textToCopy);
+              alert("Código de la empresa copiado al portapapeles.");
             }}
             className="shrink-0 font-semibold"
           >
-            Copiar ID
+            Copiar Código
           </Button>
         </div>
       )}

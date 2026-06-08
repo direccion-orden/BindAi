@@ -261,6 +261,19 @@ export async function downloadCfdi(facturamaId: string, format: 'pdf' | 'xml') {
   }
 }
 
+async function resolveCompanyId(companyId: string): Promise<string> {
+  if (!companyId) return "";
+  const trimmed = companyId.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const codeNum = Number(trimmed);
+    const snap = await adminDb.collection("companies").where("companyCode", "==", codeNum).limit(1).get();
+    if (!snap.empty) {
+      return snap.docs[0].id;
+    }
+  }
+  return trimmed;
+}
+
 export async function getRemissionForAutofactura(companyId: string, folio: string, total: number): Promise<
   | { success: true; alreadyInvoiced: boolean; data: any }
   | { success: false; error: string }
@@ -276,6 +289,12 @@ export async function getRemissionForAutofactura(companyId: string, folio: strin
     if (!companyId || !folio || !total) {
       return { success: false, error: "Datos incompletos para buscar el ticket." };
     }
+
+    const resolvedCompanyId = await resolveCompanyId(companyId);
+    if (!resolvedCompanyId) {
+      return { success: false, error: "No se encontró la empresa con el código o ID proporcionado." };
+    }
+    companyId = resolvedCompanyId;
 
     const remissionsCol = adminDb.collection("companies").doc(companyId).collection("remisiones");
 
@@ -386,6 +405,12 @@ export async function createAutofactura(companyId: string, remissionId: string, 
         error: "Firebase Admin credentials are not configured in your .env.local file. Please add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY, and restart your server."
       };
     }
+
+    const resolvedCompanyId = await resolveCompanyId(companyId);
+    if (!resolvedCompanyId) {
+      return { success: false, error: "No se encontró la empresa con el código o ID proporcionado." };
+    }
+    companyId = resolvedCompanyId;
 
     const remissionRef = adminDb.collection("companies").doc(companyId).collection("remisiones").doc(remissionId);
     const remissionSnap = await remissionRef.get();

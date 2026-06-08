@@ -70,25 +70,25 @@ export async function GET(request: NextRequest) {
     const sku = searchParams.get('sku');
     if (sku) {
       diagnostics.skuSearch = {};
-      
+
       const productsCol = adminDb.collection('companies').doc(companyId).collection('products');
-      
+
       // Method 1: SKU field at root level
       const q1 = await productsCol.where('SKU', '==', sku).limit(3).get();
       diagnostics.skuSearch.byRootSKU = q1.docs.map(d => ({ id: d.id, title: d.data().title, SKU: d.data().SKU }));
-      
+
       // Method 2: Code field at root level
       const q2 = await productsCol.where('Code', '==', sku).limit(3).get();
       diagnostics.skuSearch.byRootCode = q2.docs.map(d => ({ id: d.id, title: d.data().title, Code: d.data().Code }));
-      
+
       // Method 3: variantSkus array
       const q3 = await productsCol.where('variantSkus', 'array-contains', sku).limit(3).get();
       diagnostics.skuSearch.byVariantSkus = q3.docs.map(d => ({ id: d.id, title: d.data().title, variantSkus: d.data().variantSkus }));
-      
+
       // Method 4: shopifyId field
       const q4 = await productsCol.where('shopifyId', '==', sku).limit(3).get();
       diagnostics.skuSearch.byShopifyId = q4.docs.map(d => ({ id: d.id, title: d.data().title, shopifyId: d.data().shopifyId }));
-      
+
       // Method 5: Get first 5 products to see structure
       const q5 = await productsCol.limit(5).get();
       diagnostics.sampleProducts = q5.docs.map(d => {

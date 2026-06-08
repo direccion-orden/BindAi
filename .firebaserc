@@ -11,6 +11,9 @@
         ],
         "legacy-site": [
           "anticipos"
+        ],
+        "staging": [
+          "pruebas-erp"
         ]
       }
     }

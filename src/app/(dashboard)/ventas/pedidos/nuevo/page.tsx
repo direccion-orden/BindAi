@@ -82,7 +82,15 @@ export default function NuevoPedidoPage() {
 
     // Fetch Locations (Branches)
     const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
-      setLocations(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLocations(snap.docs.map(d => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          ...data,
+          name: data.name || data.Name || "Sucursal sin nombre",
+          address: data.address || data.Address || ""
+        };
+      }));
     });
 
     // Fetch Accounts (Ingresos)

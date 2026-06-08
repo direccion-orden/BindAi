@@ -68,8 +68,8 @@ export default function SucursalesPage() {
   const handleOpenForm = (location?: Location) => {
     if (location) {
       setCurrentId(location.id);
-      setName(location.name);
-      setAddress(location.address || "");
+      setName(location.name || location.Name || "");
+      setAddress(location.address || location.Address || "");
       setWarehouses(location.warehouses || []);
     } else {
       setCurrentId("");

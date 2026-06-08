@@ -31,7 +31,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 async function run() {
-  const companyId = "9b92345b-343f-4667-a110-53db7b3e1592";
+  const companyId = "0cb93750-138e-4b7d-832e-3a37b95c5093";
   const snap = await db.collection("companies").doc(companyId).collection("locations").get();
   console.log("LOCATIONS COUNT:", snap.size);
   snap.forEach(doc => {

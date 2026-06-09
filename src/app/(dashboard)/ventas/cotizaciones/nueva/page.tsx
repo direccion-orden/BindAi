@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, Calendar, FolderOpen } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, Calendar, FolderOpen, MapPin } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
@@ -57,6 +57,9 @@ export default function NuevaCotizacionPage() {
   const [productSearch, setProductSearch] = useState("");
   const [items, setItems] = useState<QuoteItem[]>([]);
   
+  const [locations, setLocations] = useState<any[]>([]);
+  const [locationId, setLocationId] = useState("");
+
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [enteredPromoCode, setEnteredPromoCode] = useState("");
 
@@ -89,7 +92,18 @@ export default function NuevaCotizacionPage() {
       setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); unsubD(); };
+    // Fetch Locations (Branches)
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          name: data.name || data.Name || "Sucursal sin nombre"
+        };
+      }));
+    });
+
+    return () => { unsubC(); unsubP(); unsubProj(); unsubD(); unsubLoc(); };
   }, [companyId]);
 
   const getFilteredClients = () => {
@@ -190,6 +204,11 @@ export default function NuevaCotizacionPage() {
       finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
     }
 
+    if (!locationId) {
+      alert("Selecciona una sucursal.");
+      return;
+    }
+
     if (items.length === 0) {
       alert("Agrega al menos un producto a la cotización.");
       return;
@@ -235,6 +254,8 @@ export default function NuevaCotizacionPage() {
         notes,
         imagePrompt,
         imageUrl,
+        locationId,
+        locationName: locations.find(l => l.id === locationId)?.name || "",
         status: "nueva", // Initial CRM Stage
         items: items,
         subtotal: totals.subtotal,
@@ -381,6 +402,23 @@ export default function NuevaCotizacionPage() {
                 </select>
               </div>
             )}
+            {/* Sucursal Selection (Required) */}
+            <div className="space-y-2 pt-2 border-t mt-4">
+              <label className="text-sm font-medium flex items-center gap-2 text-indigo-900">
+                <MapPin className="w-4 h-4 text-indigo-500" />
+                Sucursal
+              </label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background font-semibold"
+                value={locationId}
+                onChange={e => setLocationId(e.target.value)}
+              >
+                <option value="">Seleccionar Sucursal</option>
+                {locations.map(l => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            </div>
 
             <div className="space-y-2 pt-2">
               <label className="text-sm font-medium flex items-center gap-2">

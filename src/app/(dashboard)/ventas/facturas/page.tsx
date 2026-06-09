@@ -17,9 +17,11 @@ export default function FacturasPage() {
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sucursalFilter, setSucursalFilter] = useState("all");
   const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [locations, setLocations] = useState<any[]>([]);
 
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
@@ -76,7 +78,14 @@ export default function FacturasPage() {
       setLoading(false);
     });
 
-    return () => unsub();
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || d.data().Name || "Sucursal sin nombre"
+      })));
+    });
+
+    return () => { unsub(); unsubLoc(); };
   }, [companyId]);
 
   const filteredFacturas = facturas.filter(inv => {
@@ -89,6 +98,10 @@ export default function FacturasPage() {
     }
     // 2. Status filter
     if (statusFilter !== "all" && inv.status !== statusFilter) {
+      return false;
+    }
+    // 2.5. Sucursal filter
+    if (sucursalFilter !== "all" && (inv as any).locationId !== sucursalFilter) {
       return false;
     }
     // 3. Date range
@@ -159,6 +172,22 @@ export default function FacturasPage() {
             </select>
           </div>
 
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Sucursal
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={sucursalFilter}
+              onChange={(e) => setSucursalFilter(e.target.value)}
+            >
+              <option value="all">Todas</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-1 w-full sm:w-44">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Fecha
@@ -225,6 +254,7 @@ export default function FacturasPage() {
                   <th className="px-6 py-4">Folio</th>
                   <th className="px-6 py-4">Fecha</th>
                   <th className="px-6 py-4">Cliente</th>
+                  <th className="px-6 py-4">Sucursal</th>
                   <th className="px-6 py-4">Estatus</th>
                   <th className="px-6 py-4 text-right">Total</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
@@ -236,6 +266,9 @@ export default function FacturasPage() {
                     <td className="px-6 py-4 font-bold text-indigo-700">FAC-{inv.invoiceNumber}</td>
                     <td className="px-6 py-4 text-slate-600">{new Date(inv.createdAt).toLocaleDateString()}</td>
                     <td className="px-6 py-4 font-medium text-slate-900">{inv.clientName}</td>
+                    <td className="px-6 py-4 text-slate-600 text-sm">
+                      {(inv as any).locationName || "N/A"}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                         inv.status === 'timbrada' ? 'bg-emerald-100 text-emerald-700' : 

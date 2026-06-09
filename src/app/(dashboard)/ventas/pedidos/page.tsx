@@ -28,9 +28,11 @@ export default function PedidosPage() {
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sucursalFilter, setSucursalFilter] = useState("all");
   const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [locations, setLocations] = useState<any[]>([]);
 
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
@@ -86,7 +88,14 @@ export default function PedidosPage() {
       setLoading(false);
     });
 
-    return () => unsubQ();
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || d.data().Name || "Sucursal sin nombre"
+      })));
+    });
+
+    return () => { unsubQ(); unsubLoc(); };
   }, [companyId]);
 
   const filteredOrders = orders.filter(order => {
@@ -99,6 +108,10 @@ export default function PedidosPage() {
     }
     // 2. Status filter
     if (statusFilter !== "all" && order.status !== statusFilter) {
+      return false;
+    }
+    // 2.5. Sucursal filter
+    if (sucursalFilter !== "all" && (order as any).locationId !== sucursalFilter) {
       return false;
     }
     // 3. Date range
@@ -216,6 +229,22 @@ export default function PedidosPage() {
             </select>
           </div>
 
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Sucursal
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={sucursalFilter}
+              onChange={(e) => setSucursalFilter(e.target.value)}
+            >
+              <option value="all">Todas</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-1 w-full sm:w-44">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Fecha
@@ -292,6 +321,15 @@ export default function PedidosPage() {
                 </th>
                 <th 
                   className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("locationName")}
+                >
+                  <div className="flex items-center">
+                    Sucursal
+                    {renderSortIcon("locationName")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
                   onClick={() => handleSort("createdAt")}
                 >
                   <div className="flex items-center">
@@ -323,7 +361,7 @@ export default function PedidosPage() {
             <tbody className="divide-y">
               {sortedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                     <Package className="w-12 h-12 mx-auto mb-3 opacity-20" />
                     No se encontraron pedidos con los filtros aplicados.
                   </td>
@@ -337,6 +375,9 @@ export default function PedidosPage() {
                         <User className="w-4 h-4 text-slate-400" />
                         {order.clientName}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 text-slate-600 text-sm">
+                      {(order as any).locationName || "N/A"}
                     </td>
                     <td className="px-6 py-4 text-muted-foreground text-xs">
                       {new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}

@@ -22,6 +22,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
   const [projects, setProjects] = useState<any[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
 
   useEffect(() => {
     if (quote) {
@@ -37,6 +38,12 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
       });
       getDocs(collection(db, "companies", companyId, "projects")).then(snap => {
         setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      });
+      getDocs(collection(db, "companies", companyId, "locations")).then(snap => {
+        setLocations(snap.docs.map(d => {
+          const data = d.data();
+          return { id: d.id, name: data.name || data.Name || "Sucursal sin nombre" };
+        }));
       });
       getDocs(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active"))).then(snap => {
         setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
@@ -82,9 +89,15 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
         finalProjectName = projects.find(p => p.id === editData.projectId)?.name || null;
       }
 
+      let finalLocationName = editData.locationName || null;
+      if (editData.locationId) {
+        finalLocationName = locations.find(l => l.id === editData.locationId)?.name || editData.locationName || null;
+      }
+
       const updatedQuote = {
         ...editData,
         projectName: finalProjectName,
+        locationName: finalLocationName,
         subtotal: calc.subtotal,
         totalDiscount: calc.totalDiscount,
         globalDiscountType: editData.globalDiscountType || "none",
@@ -254,10 +267,14 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
         </DialogHeader>
 
         <div className="space-y-6 mt-4">
-          <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border">
+          <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Cliente</p>
               <p className="font-bold text-slate-900">{editData.clientName}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase">Sucursal</p>
+              <p className="font-bold text-slate-900">{editData.locationName || "N/A"}</p>
             </div>
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Estatus</p>
@@ -460,6 +477,24 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                   ))}
                 </select>
               </div>
+
+              {isEditing && (
+                <div className="space-y-1 mt-2">
+                  <label className="text-xs font-semibold text-indigo-900 flex items-center gap-1">
+                     Vincular a Sucursal
+                  </label>
+                  <select 
+                    className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-sm shadow-sm"
+                    value={editData.locationId || ""}
+                    onChange={e => setEditData({...editData, locationId: e.target.value})}
+                  >
+                    <option value="">Seleccionar Sucursal</option>
+                    {locations.map(l => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 

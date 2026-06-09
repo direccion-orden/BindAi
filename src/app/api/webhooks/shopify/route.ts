@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { adminDb } from "@/lib/firebase/admin";
+import { adminDb, admin } from "@/lib/firebase/admin";
 
 async function findExistingProductDoc(
   productsCol: any,
@@ -274,7 +274,10 @@ export async function POST(req: NextRequest) {
               });
 
               if (variantFound) {
-                await prodRef.update({ variants: updatedVariants });
+                await prodRef.update({ 
+                  variants: updatedVariants,
+                  salesCount: admin.firestore.FieldValue.increment(quantity)
+                });
                 console.log(`[Shopify Webhook] Deducted stock of variant ID: ${variantIdStr} by: ${quantity}`);
 
                 // Log inventory movement

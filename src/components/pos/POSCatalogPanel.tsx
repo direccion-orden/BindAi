@@ -16,7 +16,7 @@ export function POSCatalogPanel({ width }: { width?: number }) {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [branchWarehouses, setBranchWarehouses] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>("FORJACRIL");
+  const [selectedCategory, setSelectedCategory] = useState<string>("TODAS");
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -62,7 +62,8 @@ export function POSCatalogPanel({ width }: { width?: number }) {
           Category1ID: (data as any).Category1ID || null,
           Category2ID: (data as any).Category2ID || null,
           Category3ID: (data as any).Category3ID || null,
-          categoryId: data.categoryId || null
+          categoryId: data.categoryId || null,
+          salesCount: (data as any).salesCount || 0
         } as any;
       });
       setProducts(fetched);
@@ -169,8 +170,11 @@ export function POSCatalogPanel({ width }: { width?: number }) {
       );
     }
     
+    // Sort products by sales frequency descending
+    const sortedResult = [...result].sort((a, b) => ((b as any).salesCount || 0) - ((a as any).salesCount || 0));
+
     // Compute current inventory dynamically based on active warehouses for this branch
-    return result.map(p => {
+    return sortedResult.map(p => {
       let stock = 0;
       if (p.inventoryByWarehouse) {
          branchWarehouses.forEach(whId => {

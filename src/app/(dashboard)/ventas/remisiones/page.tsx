@@ -29,9 +29,11 @@ export default function RemisionesPage() {
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sucursalFilter, setSucursalFilter] = useState("all");
   const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [locations, setLocations] = useState<any[]>([]);
 
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
@@ -87,7 +89,14 @@ export default function RemisionesPage() {
       setLoading(false);
     });
 
-    return () => unsubQ();
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || d.data().Name || "Sucursal sin nombre"
+      })));
+    });
+
+    return () => { unsubQ(); unsubLoc(); };
   }, [companyId]);
 
   const filteredRemissions = remissions.filter(remission => {
@@ -100,6 +109,10 @@ export default function RemisionesPage() {
     }
     // 2. Status filter
     if (statusFilter !== "all" && remission.status !== statusFilter) {
+      return false;
+    }
+    // 2.5. Sucursal filter
+    if (sucursalFilter !== "all" && (remission as any).locationId !== sucursalFilter) {
       return false;
     }
     // 3. Date range
@@ -170,6 +183,22 @@ export default function RemisionesPage() {
             </select>
           </div>
 
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Sucursal
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={sucursalFilter}
+              onChange={(e) => setSucursalFilter(e.target.value)}
+            >
+              <option value="all">Todas</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-1 w-full sm:w-44">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Fecha
@@ -228,6 +257,7 @@ export default function RemisionesPage() {
               <tr>
                 <th className="px-6 py-4">No. Remisión</th>
                 <th className="px-6 py-4">Cliente</th>
+                <th className="px-6 py-4">Sucursal</th>
                 <th className="px-6 py-4">Total</th>
                 <th className="px-6 py-4">Fecha</th>
                 <th className="px-6 py-4">Estatus</th>
@@ -237,7 +267,7 @@ export default function RemisionesPage() {
             <tbody className="divide-y">
               {filteredRemissions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                     <Truck className="w-12 h-12 mx-auto mb-3 opacity-20" />
                     No se encontraron remisiones con los filtros aplicados.
                   </td>
@@ -251,6 +281,9 @@ export default function RemisionesPage() {
                         <User className="w-4 h-4 text-slate-400" />
                         {remission.clientName}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 text-slate-600 text-sm">
+                      {(remission as any).locationName || "N/A"}
                     </td>
                     <td className="px-6 py-4 font-bold text-emerald-700">
                       ${remission.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}

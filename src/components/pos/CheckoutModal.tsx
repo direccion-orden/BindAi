@@ -623,7 +623,10 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             return v;
           });
           
-          await updateDoc(productRef, { variants: updatedVariants });
+          await updateDoc(productRef, { 
+            variants: updatedVariants,
+            salesCount: increment(item.quantity)
+          });
           
           // Registrar movimiento de salida del kárdex
           const matchingVariant = productData.variants?.find((v: any) => v.sku === item.product.sku || v.id === item.product.id || productData.variants.length === 1);

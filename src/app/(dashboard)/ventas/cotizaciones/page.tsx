@@ -37,6 +37,8 @@ interface Quote {
   notes?: string;
   projectId?: string | null;
   projectName?: string | null;
+  locationId?: string | null;
+  locationName?: string | null;
 }
 
 const CRM_STAGES = [
@@ -59,9 +61,11 @@ export default function CotizacionesCRMPage() {
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sucursalFilter, setSucursalFilter] = useState("all");
   const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [locations, setLocations] = useState<any[]>([]);
 
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
@@ -117,7 +121,14 @@ export default function CotizacionesCRMPage() {
       setLoading(false);
     });
 
-    return () => unsubQ();
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || d.data().Name || "Sucursal sin nombre"
+      })));
+    });
+
+    return () => { unsubQ(); unsubLoc(); };
   }, [companyId]);
 
   const filteredQuotes = quotes.filter(quote => {
@@ -130,6 +141,10 @@ export default function CotizacionesCRMPage() {
     }
     // 2. Status filter
     if (statusFilter !== "all" && quote.status !== statusFilter) {
+      return false;
+    }
+    // 2.5. Sucursal filter
+    if (sucursalFilter !== "all" && quote.locationId !== sucursalFilter) {
       return false;
     }
     // 3. Date range
@@ -327,6 +342,22 @@ export default function CotizacionesCRMPage() {
             </select>
           </div>
 
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Sucursal
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={sucursalFilter}
+              onChange={(e) => setSucursalFilter(e.target.value)}
+            >
+              <option value="all">Todas</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-1 w-full sm:w-44">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Fecha
@@ -425,6 +456,7 @@ export default function CotizacionesCRMPage() {
                   <th className="px-6 py-4">No. Cotización</th>
                   <th className="px-6 py-4">Fecha</th>
                   <th className="px-6 py-4">Cliente</th>
+                  <th className="px-6 py-4">Sucursal</th>
                   <th className="px-6 py-4 text-right">Total</th>
                   <th className="px-6 py-4">Estatus</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
@@ -433,7 +465,7 @@ export default function CotizacionesCRMPage() {
               <tbody className="divide-y">
                 {filteredQuotes.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                    <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                       <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
                       No se encontraron cotizaciones con los filtros aplicados.
                     </td>
@@ -452,6 +484,9 @@ export default function CotizacionesCRMPage() {
                             <User className="w-4 h-4 text-slate-400" />
                             {quote.clientName}
                           </div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {quote.locationName || "N/A"}
                         </td>
                         <td className="px-6 py-4 text-right font-bold text-emerald-700">
                           ${quote.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}

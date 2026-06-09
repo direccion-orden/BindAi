@@ -63,4 +63,6 @@ export const adminAuth = (() => {
   }
 })();
 
+export { admin };
+
 

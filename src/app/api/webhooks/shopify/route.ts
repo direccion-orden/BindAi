@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
       // Map to Remision schema
       const remissionData = {
         id: orderId,
-        remissionNumber: orderNumber,
+        remissionNumber: `Ecom-${orderNumber}`,
         orderId: null,
         orderNumber: `SHOPIFY-${orderNumber}`,
         clientName: payload.customer 

@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FolderOpen } from "lucide-react";
-import { FileText, Package, Trash2, Edit2, Save, Search, Loader2, XCircle } from "lucide-react";
+import { FileText, Package, Trash2, Edit2, Save, Search, Loader2, XCircle, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { doc, updateDoc, collection, query, getDocs, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
@@ -136,7 +136,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
     }
   };
 
-  const updateItem = (variantId: string, field: string, value: number) => {
+  const updateItem = (variantId: string, field: string, value: any) => {
     setEditData((prev: any) => ({
       ...prev,
       items: prev.items.map((item: any) => 
@@ -165,7 +165,11 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
           quantity: 1,
           unitPrice: variant.price || 0,
           discountPercentage: 0,
-          imageUrl: product.images?.[0]?.src || ""
+          imageUrl: product.images?.[0]?.src || "",
+          isService: !!product.isService,
+          description: product.isService ? (product.bodyHtml || product.title || "") : "",
+          comment: "",
+          showComment: false
         }]
       }));
     }
@@ -316,54 +320,108 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
             
             <div className="space-y-3">
               {editData.items?.map((item: any, idx: number) => (
-                <div key={item.variantId || idx} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white border p-3 rounded-lg text-sm shadow-sm gap-4">
-                  <div className="flex-1 flex items-center gap-3">
-                    <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
-                      {item.imageUrl ? (
-                        <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
-                      ) : (
-                        <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-bold">{item.productName}</p>
-                      {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
-                    </div>
-                  </div>
-                  
-                  {isEditing ? (
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] text-slate-500 font-bold uppercase">Cant.</label>
-                        <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-16 h-8 text-center" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] text-slate-500 font-bold uppercase">Precio U.</label>
-                        <Input type="number" step={0.01} value={item.unitPrice} onChange={(e) => updateItem(item.variantId, 'unitPrice', parseFloat(e.target.value)||0)} className="w-24 h-8 text-right" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] text-emerald-600 font-bold uppercase">Desc %</label>
-                        <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-16 h-8 text-center text-emerald-600" />
-                      </div>
-                      <div className="flex flex-col gap-1 text-right min-w-[90px]">
-                        <label className="text-[10px] text-slate-500 font-bold uppercase">Subtotal</label>
-                        <span className="h-8 flex items-center justify-end font-bold text-slate-900 pr-1">
-                          ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
-                        </span>
-                      </div>
-                      <Button variant="ghost" size="icon" onClick={() => removeItem(item.variantId)} className="h-8 w-8 text-red-500 mt-4"><Trash2 className="w-4 h-4" /></Button>
-                    </div>
-                  ) : (
-                    <div className="text-right flex items-center gap-6">
-                      <div className="text-slate-500 text-xs">
-                        <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
-                        {item.discountPercentage > 0 && (
-                          <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
+                <div key={item.variantId ? `${item.variantId}-${idx}` : idx} className="flex flex-col bg-white border p-3 rounded-lg text-sm shadow-sm gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex-1 flex items-start gap-3">
+                      <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                        ) : (
+                          <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
                         )}
                       </div>
-                      <div className="font-bold text-slate-950 min-w-[100px] text-base">
-                        ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                      <div className="flex-1">
+                        {isEditing ? (
+                          item.isService ? (
+                            <textarea
+                              value={item.description || ""}
+                              onChange={(e) => updateItem(item.variantId, 'description', e.target.value)}
+                              placeholder="Descripción del servicio..."
+                              className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
+                              rows={2}
+                            />
+                          ) : (
+                            <>
+                              <p className="font-bold">{item.productName}</p>
+                              {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
+                            </>
+                          )
+                        ) : (
+                          item.isService ? (
+                            <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
+                          ) : (
+                            <>
+                              <p className="font-bold">{item.productName}</p>
+                              {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
+                            </>
+                          )
+                        )}
+
+                        {/* Comment in view mode */}
+                        {!isEditing && item.comment && (
+                          <p className="text-xs text-indigo-600 font-medium flex items-start gap-1 mt-1 bg-indigo-50/50 p-1.5 rounded border border-indigo-100/50 whitespace-pre-wrap">
+                            <MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                            <span>{item.comment}</span>
+                          </p>
+                        )}
                       </div>
+                    </div>
+                    
+                    {isEditing ? (
+                      <div className="flex flex-wrap items-center gap-3 justify-end">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] text-slate-500 font-bold uppercase">Cant.</label>
+                          <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-16 h-8 text-center" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] text-slate-500 font-bold uppercase">Precio U.</label>
+                          <Input type="number" step={0.01} value={item.unitPrice} onChange={(e) => updateItem(item.variantId, 'unitPrice', parseFloat(e.target.value)||0)} className="w-24 h-8 text-right" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] text-emerald-600 font-bold uppercase">Desc %</label>
+                          <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-16 h-8 text-center text-emerald-600" />
+                        </div>
+                        <div className="flex flex-col gap-1 text-right min-w-[90px]">
+                          <label className="text-[10px] text-slate-500 font-bold uppercase">Subtotal</label>
+                          <span className="h-8 flex items-center justify-end font-bold text-slate-900 pr-1">
+                            ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 mt-4">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className={`h-8 w-8 ${item.comment || item.showComment ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700' : 'text-muted-foreground hover:text-indigo-600'}`}
+                            onClick={() => updateItem(item.variantId, 'showComment', !item.showComment)}
+                            title="Agregar nota/comentario"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => removeItem(item.variantId)} className="h-8 w-8 text-red-500"><Trash2 className="w-4 h-4" /></Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-right flex items-center gap-6">
+                        <div className="text-slate-500 text-xs">
+                          <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                          {item.discountPercentage > 0 && (
+                            <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
+                          )}
+                        </div>
+                        <div className="font-bold text-slate-950 min-w-[100px] text-base">
+                          ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {isEditing && (item.showComment || item.comment) && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <Input
+                        placeholder="Escribe una nota o comentario sobre esta partida..."
+                        value={item.comment || ""}
+                        onChange={(e) => updateItem(item.variantId, 'comment', e.target.value)}
+                        className="text-xs bg-slate-50/50 border-slate-200 h-8"
+                      />
                     </div>
                   )}
                 </div>

@@ -39,9 +39,9 @@ export function NewOutflowModal({ isOpen, onClose, companyId }: NewOutflowModalP
     if (!isOpen || !companyId) return;
     const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
       const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setBankAccounts(allAcc.filter((a: any) => a.type === "ACTIVO" && a.level > 2 && (a.name.toLowerCase().includes("banco") || a.name.toLowerCase().includes("caja"))));
-      setExpenseAccounts(allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level > 2));
-      setVatAccounts(allAcc.filter((a: any) => a.code.startsWith("118") && a.level > 2));
+      setBankAccounts(allAcc.filter((a: any) => a.type === "ACTIVO" && a.level >= 2 && (a.name.toLowerCase().includes("banco") || a.name.toLowerCase().includes("caja"))));
+      setExpenseAccounts(allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2));
+      setVatAccounts(allAcc.filter((a: any) => a.code.startsWith("118") && a.level >= 2));
     });
     return () => unsubAcc();
   }, [isOpen, companyId]);

@@ -64,4 +64,5 @@ export interface ShopifyProduct {
   cost?: number;
   createdAt?: any;
   updatedAt?: any;
+  isService?: boolean;
 }

@@ -56,4 +56,14 @@
   body {
     @apply bg-background text-foreground font-body antialiased;
   }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="range"]):not([type="color"]), 
+  textarea, 
+  select {
+    background-color: #ffffff !important;
+  }
+  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="range"]):not([type="color"]), 
+  .dark textarea, 
+  .dark select {
+    background-color: hsl(var(--card)) !important;
+  }
 }

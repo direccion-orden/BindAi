@@ -172,8 +172,15 @@ export default function FacturaPDFPage({ params }: { params: Promise<{ id: strin
                       <tr key={idx} className="border-muted/30 hover:bg-transparent">
                         <td className="py-3 px-2 font-mono text-xs text-muted-foreground">01010101</td>
                         <td className="py-3 px-2 pr-4 sm:pr-8">
-                          <p className="font-semibold text-xs sm:text-sm leading-tight text-foreground/90">{item.productName}</p>
+                          <p className="font-semibold text-xs sm:text-sm leading-tight text-foreground/90 whitespace-pre-wrap">
+                            {item.isService ? (item.description || item.productName) : item.productName}
+                          </p>
                           {item.variantTitle && <p className="text-xs text-muted-foreground mt-0.5">{item.variantTitle}</p>}
+                          {item.comment && (
+                            <p className="text-[11px] text-indigo-600 mt-1 bg-indigo-50/50 px-2 py-1 rounded border border-indigo-100/30 whitespace-pre-wrap italic">
+                              Nota: {item.comment}
+                            </p>
+                          )}
                         </td>
                         <td className="py-3 px-2 text-center font-medium text-xs sm:text-sm">{item.quantity}</td>
                         <td className="py-3 px-2 text-right font-mono text-[10px] sm:text-xs">${netPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>

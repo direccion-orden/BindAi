@@ -18,6 +18,7 @@ export function POSCatalogPanel({ width }: { width?: number }) {
   const [branchWarehouses, setBranchWarehouses] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("TODAS");
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [selectedProductForVariants, setSelectedProductForVariants] = useState<Product | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [actualWidth, setActualWidth] = useState<number>(550);
@@ -39,15 +40,16 @@ export function POSCatalogPanel({ width }: { width?: number }) {
     try {
       if (!companyId) return;
       // Fetch active products (using the new Shopify schema)
-      const q = query(collection(db, "companies", companyId, "products"), where("status", "==", "ACTIVE"));
+      const q = query(collection(db, "companies", companyId, "products"), where("status", "in", ["ACTIVE", "active"]));
       const snapshot = await getDocs(q);
       const fetched: Product[] = snapshot.docs.map(doc => {
         const data = doc.data() as ShopifyProduct;
+        const hasMultipleVariants = data.variants && data.variants.length > 1 && data.variants[0]?.title !== "Default Title";
         const variant = data.variants && data.variants.length > 0 ? data.variants[0] : null;
         
         return {
           id: doc.id,
-          title: data.title + (variant && variant.title !== "Default Title" ? ` - ${variant.title}` : ""),
+          title: hasMultipleVariants ? data.title : (data.title + (variant && variant.title !== "Default Title" ? ` - ${variant.title}` : "")),
           sku: variant?.sku || '',
           code: variant?.barcode || '',
           cost: 0,
@@ -58,6 +60,10 @@ export function POSCatalogPanel({ width }: { width?: number }) {
           unit: 'pz',
           tags: data.tags || [],
           productType: data.productType,
+          isService: data.isService || false,
+          bodyHtml: data.bodyHtml || "",
+          variants: data.variants || [],
+          hasMultipleVariants,
           // Map category IDs from the Firestore document
           Category1ID: (data as any).Category1ID || null,
           Category2ID: (data as any).Category2ID || null,
@@ -197,7 +203,11 @@ export function POSCatalogPanel({ width }: { width?: number }) {
       );
       
       if (exactMatch) {
-        addItemToCart(exactMatch);
+        if (exactMatch.hasMultipleVariants) {
+          setSelectedProductForVariants(exactMatch);
+        } else {
+          addItemToCart(exactMatch);
+        }
         setSearchQuery(""); // Limpiar búsqueda
         return;
       }
@@ -205,23 +215,24 @@ export function POSCatalogPanel({ width }: { width?: number }) {
       // 2. Búsqueda de respaldo rápida (directamente en Firestore por SKU o Code)
       try {
         if (!companyId) return;
-        const qSku = query(collection(db, "companies", companyId, "products"), where("status", "==", "ACTIVE"), where("SKU", "==", term));
+        const qSku = query(collection(db, "companies", companyId, "products"), where("status", "in", ["ACTIVE", "active"]), where("SKU", "==", term));
         const snapSku = await getDocs(qSku);
         
         let foundDoc = snapSku.docs[0];
         
         if (!foundDoc) {
-          const qCode = query(collection(db, "companies", companyId, "products"), where("status", "==", "ACTIVE"), where("Code", "==", term));
+          const qCode = query(collection(db, "companies", companyId, "products"), where("status", "in", ["ACTIVE", "active"]), where("Code", "==", term));
           const snapCode = await getDocs(qCode);
           foundDoc = snapCode.docs[0];
         }
 
         if (foundDoc) {
           const data = foundDoc.data() as ShopifyProduct;
+          const hasMultipleVariants = data.variants && data.variants.length > 1 && data.variants[0]?.title !== "Default Title";
           const variant = data.variants && data.variants.length > 0 ? data.variants[0] : null;
           const directProduct: Product = {
             id: foundDoc.id,
-            title: data.title + (variant && variant.title !== "Default Title" ? ` - ${variant.title}` : ""),
+            title: hasMultipleVariants ? data.title : (data.title + (variant && variant.title !== "Default Title" ? ` - ${variant.title}` : "")),
             sku: variant?.sku || '',
             code: variant?.barcode || '',
             cost: 0,
@@ -231,9 +242,18 @@ export function POSCatalogPanel({ width }: { width?: number }) {
             inventoryByWarehouse: variant?.inventoryByWarehouse,
             unit: 'pz',
             tags: data.tags || [],
-            productType: data.productType
-          };
-          addItemToCart(directProduct);
+            productType: data.productType,
+            isService: data.isService || false,
+            bodyHtml: data.bodyHtml || "",
+            variants: data.variants || [],
+            hasMultipleVariants
+          } as any;
+          
+          if (hasMultipleVariants) {
+            setSelectedProductForVariants(directProduct);
+          } else {
+            addItemToCart(directProduct);
+          }
           setSearchQuery("");
           return;
         }
@@ -242,7 +262,12 @@ export function POSCatalogPanel({ width }: { width?: number }) {
       }
 
       if (filteredProducts.length === 1) {
-        addItemToCart(filteredProducts[0]);
+        const prod = filteredProducts[0];
+        if (prod.hasMultipleVariants) {
+          setSelectedProductForVariants(prod);
+        } else {
+          addItemToCart(prod);
+        }
         setSearchQuery("");
       }
     }
@@ -305,37 +330,120 @@ export function POSCatalogPanel({ width }: { width?: number }) {
          ) : (
            <div className={`grid ${gridColsClass} gap-3`}>
              {filteredProducts.map(product => (
-               <div 
-                 key={product.id} 
-                 onClick={() => addItemToCart(product)}
-                 className="bg-background border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col group hover:border-primary/50"
-               >
-                 <div className="aspect-square bg-muted/30 relative flex items-center justify-center overflow-hidden">
-                    {product.imageUrl ? (
-                        <img src={product.imageUrl} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                    ) : (
-                        <ImageIcon className="w-6 h-6 text-muted-foreground/30" />
-                    )}
-                 </div>
-                 <div className="p-2 flex-1 flex flex-col">
-                    <p className="text-[10px] text-muted-foreground mb-0.5 truncate">{product.sku}</p>
-                    <h3 className="font-medium text-xs leading-tight flex-1 line-clamp-2" title={product.title}>{product.title}</h3>
-                    <div className="flex items-end justify-between mt-1">
-                        <span className="font-bold text-primary text-xs">
-                            {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((product.price || 0) * 1.16)}
-                        </span>
-                    </div>
-                 </div>
-               </div>
-             ))}
-             {filteredProducts.length === 0 && !loading && (
-                  <div className="col-span-full py-10 text-center text-muted-foreground">
-                      No se encontraron productos. {searchQuery ? "Intenta otra búsqueda." : "No hay productos en esta categoría."}
+                <div 
+                  key={product.id} 
+                  onClick={() => {
+                    if (product.hasMultipleVariants) {
+                      setSelectedProductForVariants(product);
+                    } else {
+                      addItemToCart(product);
+                    }
+                  }}
+                  className="bg-background border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col group hover:border-primary/50 relative"
+                >
+                  {product.hasMultipleVariants && (
+                    <span className="absolute top-1.5 left-1.5 bg-indigo-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow z-10">
+                      Variantes
+                    </span>
+                  )}
+                  <div className="aspect-square bg-muted/30 relative flex items-center justify-center overflow-hidden">
+                     {product.imageUrl ? (
+                         <img src={product.imageUrl} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                     ) : (
+                         <ImageIcon className="w-6 h-6 text-muted-foreground/30" />
+                     )}
                   </div>
-              )}
+                  <div className="p-2 flex-1 flex flex-col">
+                     <p className="text-[10px] text-muted-foreground mb-0.5 truncate">{product.sku}</p>
+                     <h3 className="font-medium text-xs leading-tight flex-1 line-clamp-2" title={product.title}>{product.title}</h3>
+                     <div className="flex items-end justify-between mt-1">
+                         <span className="font-bold text-primary text-xs">
+                             {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((product.price || 0) * 1.16)}
+                         </span>
+                     </div>
+                  </div>
+                </div>
+              ))}
+              {filteredProducts.length === 0 && !loading && (
+                   <div className="col-span-full py-10 text-center text-muted-foreground">
+                       No se encontraron productos. {searchQuery ? "Intenta otra búsqueda." : "No hay productos en esta categoría."}
+                   </div>
+               )}
+            </div>
+          )}
+       </div>
+
+       {/* Modal de Selección de Variante */}
+       {selectedProductForVariants && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
+           <div className="bg-background rounded-lg shadow-lg w-full max-w-md p-6 space-y-4 animate-in zoom-in-95 duration-200 border">
+             <div className="flex justify-between items-start">
+               <div>
+                 <h3 className="text-lg font-bold text-foreground">{selectedProductForVariants.title}</h3>
+                 <p className="text-xs text-muted-foreground">Selecciona una variante para agregar al carrito</p>
+               </div>
+               <button 
+                 onClick={() => setSelectedProductForVariants(null)}
+                 className="text-muted-foreground hover:text-foreground text-xl font-medium"
+               >
+                 &times;
+               </button>
+             </div>
+             
+             <div className="max-h-60 overflow-y-auto divide-y border rounded-md">
+               {selectedProductForVariants.variants?.map((v: any) => {
+                 const inventory = v.inventoryQuantity ?? 0;
+                 return (
+                   <div 
+                     key={v.id} 
+                     className="p-3 flex items-center justify-between hover:bg-muted/30 transition-colors text-sm"
+                   >
+                     <div className="flex-1 min-w-0 pr-2">
+                       <div className="font-semibold text-foreground truncate">{v.title}</div>
+                       <div className="text-xs text-muted-foreground truncate">SKU: {v.sku}</div>
+                       <div className="text-xs font-medium text-slate-500">
+                         Disp: <span className={inventory > 0 ? "text-emerald-600" : "text-amber-600"}>{inventory}</span>
+                       </div>
+                     </div>
+                     <div className="flex items-center gap-3">
+                       <span className="font-bold text-primary">
+                         {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((v.price || 0) * 1.16)}
+                       </span>
+                       <button
+                         onClick={() => {
+                           const cartProd: Product = {
+                             ...selectedProductForVariants,
+                             title: `${selectedProductForVariants.title} - ${v.title}`,
+                             sku: v.sku,
+                             code: v.barcode || v.sku,
+                             price: v.price || 0,
+                             bindCurrentInventory: v.inventoryQuantity || 0,
+                             inventoryByWarehouse: v.inventoryByWarehouse
+                           };
+                           addItemToCart(cartProd);
+                           setSelectedProductForVariants(null);
+                         }}
+                         className="bg-primary text-primary-foreground font-semibold px-3 py-1.5 rounded-md text-xs hover:bg-primary/95 shadow-sm active:scale-95 transition-all"
+                       >
+                         Agregar
+                       </button>
+                     </div>
+                   </div>
+                 );
+               })}
+             </div>
+             
+             <div className="flex justify-end pt-2">
+               <button
+                 onClick={() => setSelectedProductForVariants(null)}
+                 className="px-4 py-2 border rounded-md text-sm font-medium hover:bg-muted/50 transition-colors"
+               >
+                 Cancelar
+               </button>
+             </div>
            </div>
-         )}
-      </div>
+         </div>
+       )}
     </div>
   );
 }

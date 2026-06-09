@@ -31,6 +31,7 @@ export default function EditarProductoPage() {
   const [productType, setProductType] = useState("");
   const [status, setStatus] = useState<'ACTIVE' | 'ARCHIVED' | 'DRAFT'>('DRAFT');
   const [inventoryRole, setInventoryRole] = useState<'PRODUCTO' | 'MATERIA_PRIMA' | 'AMBOS'>('PRODUCTO');
+  const [isService, setIsService] = useState(false);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>(
     [],
   );
@@ -71,6 +72,7 @@ export default function EditarProductoPage() {
   const [initialCost, setInitialCost] = useState("0");
 
   const [originalProduct, setOriginalProduct] = useState<Partial<ShopifyProduct> | null>(null);
+  const [variantsList, setVariantsList] = useState<any[]>([]);
 
   // AI State
   const [allImages, setAllImages] = useState<{id: string, file?: File, preview: string, isOriginal?: boolean, src?: string}[]>([]);
@@ -174,6 +176,7 @@ export default function EditarProductoPage() {
 
       const data = docSnap.data() as ShopifyProduct;
       setOriginalProduct(data);
+      setVariantsList(data.variants || []);
       if (data.images) setAllImages(data.images.map((img:any) => ({ id: img.id || crypto.randomUUID(), preview: img.src, isOriginal: true, src: img.src })));
       
       setTitle(data.title || "");
@@ -182,6 +185,7 @@ export default function EditarProductoPage() {
       setProductType(data.productType || "");
       setStatus(data.status || "DRAFT");
       setInventoryRole(data.inventoryRole || "PRODUCTO");
+      setIsService(!!data.isService);
       setSatProductCode(data.satProductCode || "");
       setSatProductName(data.satProductName || "");
       setSatUnitCode(data.satUnitCode || "");
@@ -311,37 +315,38 @@ export default function EditarProductoPage() {
       if (!companyId) return;
       const docRef = doc(db, "companies", companyId, "products", productId);
       
-      // We only update the first variant. We keep others if they exist.
-      let updatedVariants = originalProduct?.variants ? [...originalProduct.variants] : [];
+      let updatedVariants = [...variantsList];
       
-      if (updatedVariants.length === 0) {
-        // Create default variant if it didn't exist
-        updatedVariants.push({
-          id: crypto.randomUUID(),
-          title: "Default Title",
-          price: parseFloat(price) || 0,
-          sku: sku,
-          position: 1,
-          compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
-          option1: "Default Title",
-          option2: null,
-          option3: null,
-          taxable: true,
-          barcode: barcode,
-          weight: 0,
-          weightUnit: 'kg',
-          inventoryQuantity: parseInt(inventoryQuantity) || 0,
-        });
-      } else {
-        // Update only the first variant
-        updatedVariants[0] = {
-          ...updatedVariants[0],
-          price: parseFloat(price) || 0,
-          compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
-          sku: sku,
-          barcode: barcode,
-          inventoryQuantity: parseInt(inventoryQuantity) || 0,
-        };
+      if (updatedVariants.length <= 1) {
+        if (updatedVariants.length === 0) {
+          // Create default variant if it didn't exist
+          updatedVariants.push({
+            id: crypto.randomUUID(),
+            title: "Default Title",
+            price: parseFloat(price) || 0,
+            sku: sku,
+            position: 1,
+            compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+            option1: "Default Title",
+            option2: null,
+            option3: null,
+            taxable: true,
+            barcode: barcode,
+            weight: 0,
+            weightUnit: 'kg',
+            inventoryQuantity: parseInt(inventoryQuantity) || 0,
+          });
+        } else {
+          // Update only the first variant
+          updatedVariants[0] = {
+            ...updatedVariants[0],
+            price: parseFloat(price) || 0,
+            compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+            sku: sku,
+            barcode: barcode,
+            inventoryQuantity: parseInt(inventoryQuantity) || 0,
+          };
+        }
       }
 
       
@@ -365,6 +370,7 @@ export default function EditarProductoPage() {
         productType,
         status,
         inventoryRole,
+        isService,
         satProductCode,
         satProductName,
         satUnitCode,
@@ -511,98 +517,276 @@ export default function EditarProductoPage() {
             </label>
           </div>
 
-          {/* Pricing */}
-          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-            <h3 className="font-semibold mb-2">Precios</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-1.5 block">Precio</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    className="pl-7" 
-                    placeholder="0.00"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                  />
+          {variantsList.length > 1 ? (
+            <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex justify-between items-center mb-2">
+                <div>
+                  <h3 className="font-semibold text-base">Variantes del producto</h3>
+                  <p className="text-xs text-muted-foreground">Administra los precios, SKUs y códigos de barra de cada variante.</p>
                 </div>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    setVariantsList(prev => [
+                      ...prev,
+                      {
+                        id: crypto.randomUUID(),
+                        title: `Variante ${prev.length + 1}`,
+                        price: parseFloat(price) || 0,
+                        compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+                        sku: "",
+                        barcode: "",
+                        inventoryQuantity: 0,
+                        weight: 0,
+                        weightUnit: "kg"
+                      }
+                    ]);
+                  }}
+                  className="text-xs bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
+                >
+                  + Añadir Variante
+                </Button>
               </div>
-              <div>
-                <label className="text-sm font-medium mb-1.5 block">Precio de comparación</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    className="pl-7" 
-                    placeholder="0.00"
-                    value={compareAtPrice}
-                    onChange={(e) => setCompareAtPrice(e.target.value)}
-                  />
-                </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b text-muted-foreground text-left text-xs uppercase tracking-wider">
+                      <th className="pb-2 font-bold pr-2">Nombre / Opción</th>
+                      <th className="pb-2 font-bold pr-2">SKU</th>
+                      <th className="pb-2 font-bold pr-2">Código de barras</th>
+                      <th className="pb-2 font-bold pr-2 w-28 text-right">Precio</th>
+                      <th className="pb-2 font-bold pr-2 w-28 text-right">Comp. Precio</th>
+                      <th className="pb-2 font-bold w-12 text-center"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {variantsList.map((v, index) => (
+                      <tr key={v.id || index} className="hover:bg-muted/10">
+                        <td className="py-2.5 pr-2">
+                          <Input 
+                            value={v.title || ""} 
+                            onChange={(e) => {
+                              const newList = [...variantsList];
+                              newList[index] = { ...newList[index], title: e.target.value };
+                              setVariantsList(newList);
+                            }}
+                            placeholder="Ej. Chico, Rojo..."
+                            className="h-8 text-xs font-semibold"
+                          />
+                        </td>
+                        <td className="py-2.5 pr-2">
+                          <Input 
+                            value={v.sku || ""} 
+                            onChange={(e) => {
+                              const newList = [...variantsList];
+                              newList[index] = { ...newList[index], sku: e.target.value };
+                              setVariantsList(newList);
+                            }}
+                            placeholder="SKU"
+                            className="h-8 text-xs"
+                          />
+                        </td>
+                        <td className="py-2.5 pr-2">
+                          <Input 
+                            value={v.barcode || ""} 
+                            onChange={(e) => {
+                              const newList = [...variantsList];
+                              newList[index] = { ...newList[index], barcode: e.target.value };
+                              setVariantsList(newList);
+                            }}
+                            placeholder="Código barras"
+                            className="h-8 text-xs"
+                          />
+                        </td>
+                        <td className="py-2.5 pr-2">
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">$</span>
+                            <Input 
+                              type="number" 
+                              step="0.01" 
+                              value={v.price !== undefined ? v.price : ""} 
+                              onChange={(e) => {
+                                const newList = [...variantsList];
+                                newList[index] = { ...newList[index], price: parseFloat(e.target.value) || 0 };
+                                setVariantsList(newList);
+                              }}
+                              placeholder="0.00"
+                              className="h-8 pl-5 text-xs text-right font-medium"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2.5 pr-2">
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">$</span>
+                            <Input 
+                              type="number" 
+                              step="0.01" 
+                              value={v.compareAtPrice !== undefined && v.compareAtPrice !== null ? v.compareAtPrice : ""} 
+                              onChange={(e) => {
+                                const newList = [...variantsList];
+                                newList[index] = { ...newList[index], compareAtPrice: e.target.value ? parseFloat(e.target.value) : null };
+                                setVariantsList(newList);
+                              }}
+                              placeholder="0.00"
+                              className="h-8 pl-5 text-xs text-right"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-center">
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => {
+                              setVariantsList(prev => prev.filter((_, i) => i !== index));
+                            }}
+                            className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                * Las cantidades de stock de cada variante solo se pueden modificar mediante el módulo de Movimientos de Inventario.
+              </p>
             </div>
-            
-            <div className="pt-4 border-t grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-1.5 block">Costo Inicial</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                  <Input 
-                    type="number"
-                    value={initialCost}
-                    onChange={(e) => setInitialCost(e.target.value)}
-                    className="pl-7"
-                    placeholder="0.00"
-                  />
+          ) : (
+            <>
+              {/* Pricing */}
+              <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
+                <h3 className="font-semibold mb-2">Precios</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Precio</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                      <Input 
+                        type="number" 
+                        step="0.01" 
+                        className="pl-7" 
+                        placeholder="0.00"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Precio de comparación</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                      <Input 
+                        type="number" 
+                        step="0.01" 
+                        className="pl-7" 
+                        placeholder="0.00"
+                        value={compareAtPrice}
+                        onChange={(e) => setCompareAtPrice(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="pt-4 border-t grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Costo Inicial</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                      <Input 
+                        type="number"
+                        value={initialCost}
+                        onChange={(e) => setInitialCost(e.target.value)}
+                        className="pl-7"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block text-indigo-700">Costo Promedio</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                      <Input value={cost} disabled className="pl-7 bg-muted text-muted-foreground font-semibold" />
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium mb-1.5 block text-indigo-700">Costo Promedio</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                  <Input value={cost} disabled className="pl-7 bg-muted text-muted-foreground font-semibold" />
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Inventory */}
-          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-            <h3 className="font-semibold mb-2">Inventario</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-1.5 block">SKU</label>
-                <Input 
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1.5 block">Código de barras</label>
-                <Input 
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                />
-              </div>
-              <div className="col-span-2">
-                <div className="flex justify-between items-center max-w-[200px] mb-1.5">
-                  <label className="text-sm font-medium">Cantidad disponible</label>
+              {/* Inventory */}
+              <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold">Inventario</h3>
+                  <Button 
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const defaultV = {
+                        id: crypto.randomUUID(),
+                        title: "Chico",
+                        price: parseFloat(price) || 0,
+                        sku: sku,
+                        barcode: barcode,
+                        compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+                        inventoryQuantity: parseInt(inventoryQuantity) || 0,
+                        weight: 0,
+                        weightUnit: "kg"
+                      };
+                      const secondV = {
+                        id: crypto.randomUUID(),
+                        title: "Grande",
+                        price: parseFloat(price) || 0,
+                        sku: sku ? `${sku}-G` : "",
+                        barcode: "",
+                        compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+                        inventoryQuantity: 0,
+                        weight: 0,
+                        weightUnit: "kg"
+                      };
+                      setVariantsList([defaultV, secondV]);
+                    }}
+                    className="text-xs text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 hover:text-indigo-800"
+                  >
+                    + Convertir a Múltiples Variantes
+                  </Button>
                 </div>
-                <Input 
-                  type="number" 
-                  value={inventoryQuantity}
-                  disabled={true}
-                  className="max-w-[200px] bg-muted/50"
-                />
-                <p className="text-xs text-muted-foreground mt-2">
-                  La cantidad de inventario solo puede modificarse mediante el módulo de <Link href="/inventarios/movimientos" className="text-indigo-600 underline">Movimientos</Link> o Transferencias.
-                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">SKU</label>
+                    <Input 
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Código de barras</label>
+                    <Input 
+                      value={barcode}
+                      onChange={(e) => setBarcode(e.target.value)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <div className="flex justify-between items-center max-w-[200px] mb-1.5">
+                      <label className="text-sm font-medium">Cantidad disponible</label>
+                    </div>
+                    <Input 
+                      type="number" 
+                      value={inventoryQuantity}
+                      disabled={true}
+                      className="max-w-[200px] bg-muted/50"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      La cantidad de inventario solo puede modificarse mediante el módulo de <Link href="/inventarios/movimientos" className="text-indigo-600 underline">Movimientos</Link> o Transferencias.
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
 
           {/* Facturación SAT */}
           <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
@@ -666,6 +850,19 @@ export default function EditarProductoPage() {
               <option value="MATERIA_PRIMA">Materia Prima (Para ensambles)</option>
               <option value="AMBOS">Ambos (Para venta y ensambles)</option>
             </select>
+
+            <div className="flex items-center gap-2 pt-4 border-t">
+              <input
+                type="checkbox"
+                id="isService"
+                checked={isService}
+                onChange={(e) => setIsService(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="isService" className="text-sm font-semibold select-none cursor-pointer">
+                Es un servicio / concepto intangible
+              </label>
+            </div>
           </div>
 
           {/* Organization */}

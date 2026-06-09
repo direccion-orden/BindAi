@@ -476,7 +476,7 @@ export async function createAutofactura(companyId: string, remissionId: string, 
       return {
         ProductCode: satProductCode,
         IdentificationNumber: item.variantId || item.productId || "SKU",
-        Description: item.productName || item.title || "",
+        Description: item.isService && item.description ? item.description : (item.productName || item.title || ""),
         Unit: satUnitName,
         UnitCode: satUnitCode,
         UnitPrice: Number(item.unitPrice.toFixed(4)),

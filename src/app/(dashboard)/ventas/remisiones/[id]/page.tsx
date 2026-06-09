@@ -4,7 +4,7 @@ import React, { useState, useEffect, use } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, ArrowLeft, Truck, Package, Receipt, FileText, XCircle, DollarSign, Printer } from "lucide-react";
+import { Loader2, ArrowLeft, Truck, Package, Receipt, FileText, XCircle, DollarSign, Printer, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -209,30 +209,46 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
 
         <div className="space-y-3">
           {remission.items?.map((item: any, idx: number) => (
-            <div key={item.variantId || idx} className="flex flex-col sm:flex-row sm:items-center justify-between border p-3 rounded-lg text-sm gap-4 bg-white shadow-sm">
-              <div className="flex-1 flex items-center gap-3">
-                <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
-                  {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
-                  ) : (
-                    <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
-                  )}
+            <div key={item.variantId ? `${item.variantId}-${idx}` : idx} className="flex flex-col border p-3 rounded-lg text-sm bg-white shadow-sm gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex-1 flex items-start gap-3">
+                  <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                    ) : (
+                      <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    {item.isService ? (
+                      <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
+                    ) : (
+                      <>
+                        <p className="font-bold">{item.productName}</p>
+                        {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
+                      </>
+                    )}
+
+                    {/* Comment in view mode */}
+                    {item.comment && (
+                      <p className="text-xs text-indigo-600 font-medium flex items-start gap-1 mt-1 bg-indigo-50/50 p-1.5 rounded border border-indigo-100/50 whitespace-pre-wrap">
+                        <MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        <span>{item.comment}</span>
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold">{item.productName}</p>
-                  {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
-                </div>
-              </div>
-              
-              <div className="text-right flex items-center gap-6">
-                <div className="text-slate-500 text-xs">
-                  <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
-                  {item.discountPercentage > 0 && (
-                    <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
-                  )}
-                </div>
-                <div className="font-bold text-slate-950 min-w-[100px] text-base">
-                  ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                
+                <div className="text-right flex items-center gap-6 justify-end">
+                  <div className="text-slate-500 text-xs font-medium">
+                    <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                    {item.discountPercentage > 0 && (
+                      <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
+                    )}
+                  </div>
+                  <div className="font-bold text-slate-950 min-w-[100px] text-base">
+                    ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                  </div>
                 </div>
               </div>
             </div>

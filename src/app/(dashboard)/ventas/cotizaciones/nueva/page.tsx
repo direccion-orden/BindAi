@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, Calendar, FolderOpen, MapPin } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, Calendar, FolderOpen, MapPin, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
@@ -26,6 +26,10 @@ interface QuoteItem {
   discountPercentage: number;
   imageUrl?: string;
   categoryIds?: string[];
+  isService?: boolean;
+  description?: string;
+  comment?: string;
+  showComment?: boolean;
 }
 
 export default function NuevaCotizacionPage() {
@@ -147,13 +151,17 @@ export default function NuevaCotizacionPage() {
         categoryIds: [
           ...(product.productType ? [product.productType] : []),
           ...(product.tags || [])
-        ]
+        ],
+        isService: !!product.isService,
+        description: product.isService ? (product.bodyHtml || product.title || "") : "",
+        comment: "",
+        showComment: false
       }]);
     }
     setProductSearch("");
   };
 
-  const updateItem = (variantId: string, field: keyof QuoteItem, value: number) => {
+  const updateItem = (variantId: string, field: keyof QuoteItem, value: any) => {
     setItems(prev => prev.map(item => {
       if (item.variantId === variantId) {
         return { ...item, [field]: value };
@@ -515,70 +523,105 @@ export default function NuevaCotizacionPage() {
                   <p>Busca y agrega los productos a cotizar.</p>
                 </div>
               ) : (
-                items.map(item => (
-                  <div key={item.variantId} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-background gap-4 shadow-sm relative">
-                    <div className="flex-1 flex items-center gap-3">
-                      <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
-                        ) : (
-                          <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
-                        )}
+                items.map((item, idx) => (
+                  <div key={item.variantId ? `${item.variantId}-${idx}` : idx} className="flex flex-col p-4 border rounded-lg bg-background gap-3 shadow-sm relative">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex-1 flex items-start gap-3">
+                        <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                          ) : (
+                            <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          {item.isService ? (
+                            <textarea
+                              value={item.description || ""}
+                              onChange={(e) => updateItem(item.variantId, 'description', e.target.value)}
+                              placeholder="Descripción del servicio..."
+                              className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
+                              rows={2}
+                            />
+                          ) : (
+                            <>
+                              <p className="font-bold">{item.productName}</p>
+                              {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold">{item.productName}</p>
-                        {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
+                      <div className="flex flex-wrap items-center gap-3 justify-end">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                            Cant.
+                          </label>
+                          <Input 
+                            type="number" 
+                            min={1} 
+                            value={item.quantity}
+                            onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value) || 1)}
+                            className="w-20 text-center font-bold"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                            Precio U.
+                          </label>
+                          <Input 
+                            type="number" 
+                            min={0} 
+                            step={0.01}
+                            value={item.unitPrice}
+                            onChange={(e) => updateItem(item.variantId, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            className="w-24 text-right font-medium"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                            Desc %
+                          </label>
+                          <Input 
+                            type="number" 
+                            min={0}
+                            max={100}
+                            value={item.discountPercentage}
+                            onChange={(e) => updateItem(item.variantId, 'discountPercentage', parseFloat(e.target.value) || 0)}
+                            className="w-20 text-center text-emerald-600 font-bold"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-[80px] text-right">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
+                          <p className="font-bold text-slate-800">
+                            ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 mt-4 sm:mt-0">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className={`${item.comment || item.showComment ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700' : 'text-muted-foreground hover:text-indigo-600'}`}
+                            onClick={() => updateItem(item.variantId, 'showComment', !item.showComment)}
+                            title="Agregar nota/comentario"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => removeItem(item.variantId)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                          Cant.
-                        </label>
-                        <Input 
-                          type="number" 
-                          min={1} 
-                          value={item.quantity}
-                          onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value) || 1)}
-                          className="w-20 text-center font-bold"
+                    {(item.showComment || item.comment) && (
+                      <div className="pt-2 border-t border-slate-100">
+                        <Input
+                          placeholder="Escribe una nota o comentario sobre esta partida..."
+                          value={item.comment || ""}
+                          onChange={(e) => updateItem(item.variantId, 'comment', e.target.value)}
+                          className="text-xs bg-muted/30 border-slate-200"
                         />
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                          Precio U.
-                        </label>
-                        <Input 
-                          type="number" 
-                          min={0} 
-                          step={0.01}
-                          value={item.unitPrice}
-                          onChange={(e) => updateItem(item.variantId, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          className="w-24 text-right font-medium"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                          Desc %
-                        </label>
-                        <Input 
-                          type="number" 
-                          min={0}
-                          max={100}
-                          value={item.discountPercentage}
-                          onChange={(e) => updateItem(item.variantId, 'discountPercentage', parseFloat(e.target.value) || 0)}
-                          className="w-20 text-center text-emerald-600 font-bold"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1 min-w-[80px] text-right">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
-                        <p className="font-bold text-slate-800">
-                          ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive mt-4 sm:mt-0" onClick={() => removeItem(item.variantId)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    )}
                   </div>
                 ))
               )}

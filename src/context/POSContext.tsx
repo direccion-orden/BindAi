@@ -22,12 +22,17 @@ export type Product = {
   productType?: string;
   variants?: any[];
   images?: any[];
+  isService?: boolean;
+  bodyHtml?: string;
+  hasMultipleVariants?: boolean;
 };
 
 export type CartItem = {
   product: Product;
   quantity: number;
   discountPercentage: number;
+  customPrice?: number;
+  customDescription?: string;
 };
 
 import { Client } from "@/components/pos/ClientSelector";
@@ -58,9 +63,11 @@ interface POSContextType {
   
   // Cart Actions (apply to active account)
   addItemToCart: (product: Product) => void;
-  removeItemFromCart: (productId: string) => void;
-  updateItemQuantity: (productId: string, quantity: number) => void;
-  updateItemDiscount: (productId: string, discount: number) => void;
+  removeItemFromCart: (sku: string) => void;
+  updateItemQuantity: (sku: string, quantity: number) => void;
+  updateItemDiscount: (sku: string, discount: number) => void;
+  updateItemPrice: (sku: string, price: number) => void;
+  updateItemDescription: (sku: string, description: string) => void;
   
   // Global Actions (apply to active account)
   setGlobalDiscount: (value: number, type?: 'percentage' | 'fixed') => void;
@@ -168,31 +175,43 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
   const setActiveAccount = (id: number) => setActiveAccountId(id);
 
   const addItemToCart = (product: Product) => {
-    const existingItem = activeAccount.items.find(item => item.product.id === product.id);
+    const existingItem = activeAccount.items.find(item => item.product.sku === product.sku);
     if (existingItem) {
-      updateItemQuantity(product.id, existingItem.quantity + 1);
+      updateItemQuantity(product.sku, existingItem.quantity + 1);
     } else {
       updateActiveAccount({ items: [...activeAccount.items, { product, quantity: 1, discountPercentage: 0 }] });
     }
   };
 
-  const removeItemFromCart = (productId: string) => {
-    updateActiveAccount({ items: activeAccount.items.filter(item => item.product.id !== productId) });
+  const removeItemFromCart = (sku: string) => {
+    updateActiveAccount({ items: activeAccount.items.filter(item => item.product.sku !== sku) });
   };
 
-  const updateItemQuantity = (productId: string, quantity: number) => {
+  const updateItemQuantity = (sku: string, quantity: number) => {
     if (quantity <= 0) {
-      removeItemFromCart(productId);
+      removeItemFromCart(sku);
       return;
     }
     updateActiveAccount({
-      items: activeAccount.items.map(item => item.product.id === productId ? { ...item, quantity } : item)
+      items: activeAccount.items.map(item => item.product.sku === sku ? { ...item, quantity } : item)
     });
   };
 
-  const updateItemDiscount = (productId: string, discount: number) => {
+  const updateItemDiscount = (sku: string, discount: number) => {
     updateActiveAccount({
-      items: activeAccount.items.map(item => item.product.id === productId ? { ...item, discountPercentage: discount } : item)
+      items: activeAccount.items.map(item => item.product.sku === sku ? { ...item, discountPercentage: discount } : item)
+    });
+  };
+
+  const updateItemPrice = (sku: string, price: number) => {
+    updateActiveAccount({
+      items: activeAccount.items.map(item => item.product.sku === sku ? { ...item, customPrice: price } : item)
+    });
+  };
+
+  const updateItemDescription = (sku: string, description: string) => {
+    updateActiveAccount({
+      items: activeAccount.items.map(item => item.product.sku === sku ? { ...item, customDescription: description } : item)
     });
   };
 
@@ -210,13 +229,13 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
   // Calculations for active account
   // Note: We need a price field on Product. Assuming product.cost is what we have for now, we should check Firestore.
   // Using cost as price temporarily until we verify.
-  const getItemPrice = (product: Product) => product.price || 0;
+  const getItemPrice = (item: CartItem) => item.customPrice !== undefined ? item.customPrice : (item.product.price || 0);
 
   // Engine Math
   const engineItems: EngineItem[] = activeAccount.items.map(i => ({
     id: i.product.id,
     quantity: i.quantity,
-    unitPrice: getItemPrice(i.product),
+    unitPrice: getItemPrice(i),
     manualDiscountPercentage: i.discountPercentage,
     categoryIds: [
       ...(i.product.productType ? [i.product.productType] : []),
@@ -261,6 +280,8 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
     removeItemFromCart,
     updateItemQuantity,
     updateItemDiscount,
+    updateItemPrice,
+    updateItemDescription,
     setGlobalDiscount,
     setPromoCode,
     setClient,

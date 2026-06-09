@@ -557,20 +557,25 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           const matchingVariant = item.product.variants?.find((v: any) => v.sku === item.product.sku) || item.product.variants?.[0];
           const variantId = matchingVariant?.id || item.product.id || "";
           const variantTitle = matchingVariant?.title && matchingVariant.title !== "Default Title" ? matchingVariant.title : "";
+          const isService = !!item.product.isService || item.product.tags?.includes('Servicios') || item.product.productType === 'Servicios';
+          const customDescription = item.customDescription !== undefined ? item.customDescription : (item.product.bodyHtml || item.product.title || "");
+          const customTitle = item.customDescription !== undefined ? item.customDescription : item.product.title;
           
           return {
             productId: item.product.id || "",
             variantId: variantId,
-            productName: item.product.title || "",
+            productName: isService ? customDescription : customTitle,
             variantTitle: variantTitle,
             quantity: item.quantity || 1,
-            unitPrice: item.product.price || 0,
+            unitPrice: item.customPrice !== undefined ? item.customPrice : (item.product.price || 0),
             discountPercentage: item.discountPercentage || 0,
             imageUrl: item.product.images?.[0]?.src || item.product.imageUrl || "",
             categoryIds: [
               ...(item.product.productType ? [item.product.productType] : []),
               ...(item.product.tags || [])
-            ]
+            ],
+            isService,
+            description: isService ? customDescription : ""
           };
         }),
         totalAmount: total || 0,
@@ -618,7 +623,18 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           const updatedVariants = productData.variants?.map((v: any) => {
             const isMatch = v.sku === item.product.sku || v.id === item.product.id || productData.variants.length === 1;
             if (isMatch) {
-              return { ...v, stock: Math.max(0, (v.stock || 0) - item.quantity) };
+              const currentStock = v.stock !== undefined ? v.stock : (v.inventoryQuantity || 0);
+              const currentInv = v.inventoryQuantity !== undefined ? v.inventoryQuantity : (v.stock || 0);
+              const updatedWarehouseInv = { ...(v.inventoryByWarehouse || {}) };
+              if (branchId && updatedWarehouseInv[branchId] !== undefined) {
+                updatedWarehouseInv[branchId] = Math.max(0, updatedWarehouseInv[branchId] - item.quantity);
+              }
+              return { 
+                ...v, 
+                stock: Math.max(0, currentStock - item.quantity),
+                inventoryQuantity: Math.max(0, currentInv - item.quantity),
+                inventoryByWarehouse: updatedWarehouseInv
+              };
             }
             return v;
           });

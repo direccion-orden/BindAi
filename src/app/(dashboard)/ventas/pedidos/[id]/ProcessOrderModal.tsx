@@ -157,7 +157,7 @@ export function ProcessOrderModal({
         return {
           ProductCode: item.satProductCode || "01010101",
           IdentificationNumber: item.variantId || item.id || "SKU",
-          Description: item.productName,
+          Description: item.isService && item.description ? item.description : item.productName,
           Unit: item.satUnitName || "PIEZA",
           UnitCode: item.satUnitCode || "H87",
           UnitPrice: Number(item.unitPrice.toFixed(4)),

@@ -74,7 +74,7 @@ export default function NuevaOrdenCompraPage() {
 
     const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
       const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAccounts(allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level > 2));
+      setAccounts(allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2));
     });
 
     return () => { unsubV(); unsubP(); unsubLoc(); unsubAcc(); };

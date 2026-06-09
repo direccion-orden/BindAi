@@ -24,6 +24,15 @@ async function findExistingProductDoc(
     // 3. Match by SKUs if available
     const safeSkus = skus.filter(sku => sku && sku.trim() !== "").slice(0, 30);
     if (safeSkus.length > 0) {
+      // Check direct document IDs since Bind ERP imports use the SKU as the document ID
+      for (const sku of safeSkus) {
+        const docRef = productsCol.doc(sku);
+        const docSnap = await docRef.get();
+        if (docSnap.exists) {
+          return docSnap;
+        }
+      }
+
       const [qSku, qCode, qVarSkus] = await Promise.all([
         productsCol.where("SKU", "in", safeSkus).limit(1).get(),
         productsCol.where("Code", "in", safeSkus).limit(1).get(),

@@ -107,17 +107,51 @@ export default function ImportarProductosPage() {
                 // Preserve existing data if present
                 const existingImages = existingProduct?.images || [];
                 const existingVariants = existingProduct?.variants || [];
-                let variant = existingVariants.length > 0 ? { ...existingVariants[0] } : {
-                  id: `var-${productId}`,
-                  title: "Default Title",
-                  inventoryQuantity: 0,
-                };
                 
-                variant.sku = record.SKU || record.Codigo || variant.sku || "";
-                variant.barcode = record.Codigo || variant.barcode || "";
-                variant.weight = parseFloat(record.Peso) || variant.weight || 0;
-                // DO NOT overwrite price if it exists (price list handles it)
-                variant.price = variant.price !== undefined ? variant.price : cost;
+                let variants = [];
+                if (existingVariants.length === 0) {
+                  variants = [
+                    {
+                      id: `var-${productId}`,
+                      title: "Default Title",
+                      price: cost,
+                      sku: record.SKU || record.Codigo || "",
+                      barcode: record.Codigo || "",
+                      inventoryQuantity: 0,
+                      weight: parseFloat(record.Peso) || 0,
+                    }
+                  ];
+                } else if (existingVariants.length === 1) {
+                  const singleVar = { ...existingVariants[0] };
+                  singleVar.sku = record.SKU || record.Codigo || singleVar.sku || "";
+                  singleVar.barcode = record.Codigo || singleVar.barcode || "";
+                  singleVar.price = singleVar.price !== undefined ? singleVar.price : cost;
+                  singleVar.weight = parseFloat(record.Peso) || singleVar.weight || 0;
+                  variants = [singleVar];
+                } else {
+                  // Multiple variants exist: Match by SKU or barcode, or default to the first
+                  const csvSku = (record.SKU || record.Codigo || "").trim().toLowerCase();
+                  const csvBarcode = (record.Codigo || "").trim().toLowerCase();
+                  let matchedIndex = existingVariants.findIndex((v: any) => 
+                    (v.sku && v.sku.trim().toLowerCase() === csvSku) ||
+                    (v.barcode && v.barcode.trim().toLowerCase() === csvBarcode)
+                  );
+                  
+                  if (matchedIndex === -1) matchedIndex = 0;
+                  
+                  variants = existingVariants.map((v: any, idx: number) => {
+                    if (idx === matchedIndex) {
+                      return {
+                        ...v,
+                        sku: record.SKU || record.Codigo || v.sku || "",
+                        barcode: record.Codigo || v.barcode || "",
+                        price: v.price !== undefined ? v.price : cost,
+                        weight: parseFloat(record.Peso) || v.weight || 0,
+                      };
+                    }
+                    return v;
+                  });
+                }
 
                 currentBatch.set(ref, {
                   title: title,
@@ -126,14 +160,14 @@ export default function ImportarProductosPage() {
                   vendor: "Bind ERP",
                   productType: record["Categoria 1"] || existingProduct?.productType || "",
                   status: existingProduct?.status || 'ACTIVE',
-                  tags: [record["Categoria 2"], record["Categoria 3"]].filter(Boolean),
+                  tags: Array.from(new Set([...(existingProduct?.tags || []), record["Categoria 2"], record["Categoria 3"]].filter(Boolean))),
                   currency: record.Moneda || "MXN",
                   initialCost: cost,
                   cost: existingProduct?.cost || cost,
                   iva: record["Tipo de IVA."] ? parseFloat(record["Tipo de IVA."].replace("%", "")) : (existingProduct?.iva || 0),
                   satProductCode: record["Clave CFDI"] || existingProduct?.satProductCode || "",
                   satUnitCode: record["Unidad CFDI"] || existingProduct?.satUnitCode || "",
-                  variants: [variant],
+                  variants: variants,
                   options: existingProduct?.options || [{ id: "opt-1", name: "Title", values: ["Default Title"] }],
                   images: existingImages, // PRESERVE IMAGES!
                   updatedAt: new Date()

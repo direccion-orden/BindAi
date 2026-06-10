@@ -2,8 +2,8 @@ const fs = require('fs');
 const xlsx = require('xlsx');
 const Papa = require('papaparse');
 
-const csvPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas (5).csv';
-const xlsPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas (31).xls';
+const csvPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas (7).csv';
+const xlsPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas (33).xls';
 const outputPath = 'C:\\Users\\Elitebook 840 G11\\Downloads\\Ventas_Detalladas.csv';
 
 function parseCSV(path) {
@@ -113,6 +113,12 @@ function mergeData() {
     if (!matchedDoc) {
       unmatchedCount++;
       console.warn(`[ADVERTENCIA] Fila ${index + 2} no coincidió con ningún documento de resumen. No: ${noRaw}, Tipo: ${docTypeRaw}`);
+      return;
+    }
+    
+    // Skip eCOMMERCE sales since they are imported directly from Shopify
+    const branch = String(matchedDoc['Sucursal'] || '').trim().toLowerCase();
+    if (branch === 'ecommerce') {
       return;
     }
     

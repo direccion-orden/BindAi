@@ -64,6 +64,15 @@ export default function ImportarHistorialPage() {
     ]);
   };
 
+  const fixDoubleEncoding = (str: string): string => {
+    if (!str) return str;
+    try {
+      return decodeURIComponent(escape(str));
+    } catch (e) {
+      return str;
+    }
+  };
+
   // Helper: Normalize strings for flexible key matching (removes accents, BOM, non-alphanumeric, and lowercase)
   const normalizeKey = (key: string): string => {
     return String(key || "")
@@ -198,14 +207,22 @@ export default function ImportarHistorialPage() {
     snap.docs.forEach(doc => {
       const data = doc.data();
       const titleKey = String(data.title || "").trim().toLowerCase();
+      const titleKeyHealed = fixDoubleEncoding(titleKey);
+      
       productMap.set(titleKey, { id: doc.id, ...data });
-      if (data.variants && data.variants[0]) {
-        if (data.variants[0].sku) {
-          productMap.set(String(data.variants[0].sku).trim().toLowerCase(), { id: doc.id, ...data });
-        }
-        if (data.variants[0].barcode) {
-          productMap.set(String(data.variants[0].barcode).trim().toLowerCase(), { id: doc.id, ...data });
-        }
+      if (titleKeyHealed !== titleKey) {
+        productMap.set(titleKeyHealed, { id: doc.id, ...data });
+      }
+
+      if (data.variants && Array.isArray(data.variants)) {
+        data.variants.forEach(variant => {
+          if (variant.sku) {
+            productMap.set(String(variant.sku).trim().toLowerCase(), { id: doc.id, ...data });
+          }
+          if (variant.barcode) {
+            productMap.set(String(variant.barcode).trim().toLowerCase(), { id: doc.id, ...data });
+          }
+        });
       }
     });
     return productMap;
@@ -373,12 +390,28 @@ export default function ImportarHistorialPage() {
                 calculatedTotal += totalLine;
 
                 // Resolve Product on the fly
-                const product = await createProductOnTheFly(productName, totalLine, productMap, currentBatch);
+                let product = null;
+                const titleKey = productName.toLowerCase();
+                const titleKeyHealed = fixDoubleEncoding(titleKey);
+                if (titleKey && productMap.has(titleKey)) {
+                  product = productMap.get(titleKey);
+                } else if (titleKeyHealed && productMap.has(titleKeyHealed)) {
+                  product = productMap.get(titleKeyHealed);
+                } else {
+                  product = await createProductOnTheFly(productName, totalLine, productMap, currentBatch);
+                }
                 
+                let matchedVariant = null;
+                if (product && product.variants) {
+                  matchedVariant = product.variants[0];
+                }
+
                 items.push({
                   productId: product ? product.id : `hist-${crypto.randomUUID()}`,
                   productName: productName,
-                  variantTitle: "Default Title",
+                  sku: product ? (matchedVariant ? matchedVariant.sku : "") : "",
+                  variantId: matchedVariant ? (matchedVariant.id || `var-${product.id}`) : `var-${crypto.randomUUID()}`,
+                  variantTitle: matchedVariant ? (matchedVariant.title || "Default Title") : "Default Title",
                   quantity: 1,
                   unitPrice: subtotalLine,
                   discountPercentage: 0
@@ -634,28 +667,42 @@ export default function ImportarHistorialPage() {
               for (const line of activeLines) {
                 const productName = String(getFlexibleValue(line, ["producto", "product", "articulo", "concepto", "descripcion", "description", "item"]) || "Concepto de Venta").trim();
                 const sku = String(getFlexibleValue(line, ["codigo", "code", "sku", "barcode", "upc"]) || "").trim();
-                const quantity = parseFloat(String(getFlexibleValue(line, ["cantidad", "quantity", "cant"])).replace(/[^0-9.-]/g, "")) || 1;
+                const qty = parseFloat(String(getFlexibleValue(line, ["cantidad", "quantity", "cant"])).replace(/[^0-9.-]/g, "")) || 1;
                 const unitPrice = parseFloat(String(getFlexibleValue(line, ["precio", "unitprice", "preciounitario", "rate"])).replace(/[^0-9.-]/g, "")) || 0;
 
                 // Resolve Product on the fly
                 let product = null;
                 const titleKey = productName.toLowerCase();
+                const titleKeyHealed = fixDoubleEncoding(titleKey);
                 const skuKey = sku.toLowerCase();
 
                 if (skuKey && productMap.has(skuKey)) {
                   product = productMap.get(skuKey);
                 } else if (titleKey && productMap.has(titleKey)) {
                   product = productMap.get(titleKey);
+                } else if (titleKeyHealed && productMap.has(titleKeyHealed)) {
+                  product = productMap.get(titleKeyHealed);
                 } else {
                   product = await createProductOnTheFly(productName, unitPrice, productMap, currentBatch);
+                }
+
+                let matchedVariant = null;
+                if (product && product.variants) {
+                  if (skuKey) {
+                    matchedVariant = product.variants.find((v: any) => String(v.sku).toLowerCase() === skuKey || String(v.barcode).toLowerCase() === skuKey);
+                  }
+                  if (!matchedVariant) {
+                    matchedVariant = product.variants[0];
+                  }
                 }
 
                 items.push({
                   productId: product ? product.id : `hist-${crypto.randomUUID()}`,
                   productName: productName,
-                  sku: sku || (product ? product.variants?.[0]?.sku : ""),
-                  variantTitle: "Default Title",
-                  quantity: quantity,
+                  sku: sku || (matchedVariant ? matchedVariant.sku : ""),
+                  variantId: matchedVariant ? (matchedVariant.id || `var-${product.id}`) : `var-${crypto.randomUUID()}`,
+                  variantTitle: matchedVariant ? (matchedVariant.title || "Default Title") : "Default Title",
+                  quantity: qty,
                   unitPrice: unitPrice,
                   discountPercentage: orderDiscountPercentage
                 });
@@ -861,22 +908,35 @@ export default function ImportarHistorialPage() {
                 // Resolve Product on the fly
                 let product = null;
                 const titleKey = productName.toLowerCase();
+                const titleKeyHealed = fixDoubleEncoding(titleKey);
                 const skuKey = sku.toLowerCase();
 
                 if (skuKey && productMap.has(skuKey)) {
                   product = productMap.get(skuKey);
                 } else if (titleKey && productMap.has(titleKey)) {
                   product = productMap.get(titleKey);
+                } else if (titleKeyHealed && productMap.has(titleKeyHealed)) {
+                  product = productMap.get(titleKeyHealed);
                 } else {
                   product = await createProductOnTheFly(productName, unitPrice, productMap, currentBatch);
+                }
+
+                let matchedVariant = null;
+                if (product && product.variants) {
+                  if (skuKey) {
+                    matchedVariant = product.variants.find((v: any) => String(v.sku).toLowerCase() === skuKey || String(v.barcode).toLowerCase() === skuKey);
+                  }
+                  if (!matchedVariant) {
+                    matchedVariant = product.variants[0];
+                  }
                 }
 
                 items.push({
                   productId: product ? product.id : `hist-${crypto.randomUUID()}`,
                   productName: productName,
-                  sku: sku || (product ? product.variants?.[0]?.sku : ""),
-                  variantId: product ? (product.variants?.[0]?.id || `var-${product.id}`) : `var-${crypto.randomUUID()}`,
-                  variantTitle: "Default Title",
+                  sku: sku || (matchedVariant ? matchedVariant.sku : ""),
+                  variantId: matchedVariant ? (matchedVariant.id || `var-${product.id}`) : `var-${crypto.randomUUID()}`,
+                  variantTitle: matchedVariant ? (matchedVariant.title || "Default Title") : "Default Title",
                   quantity: qty,
                   unitPrice: unitPrice,
                   discountPercentage: discountPercentage
@@ -1038,6 +1098,13 @@ export default function ImportarHistorialPage() {
       const remisionesMap = await loadRemisionesMap();
       const accountsMap = await loadAccountsMap();
 
+      // Load existing payments to prevent duplicate increments
+      const paymentsSnap = await getDocs(collection(db, "companies", companyId, "payments"));
+      const existingPaymentIds = new Set<string>();
+      paymentsSnap.forEach(d => {
+        existingPaymentIds.add(d.id);
+      });
+
       const Papa = await import("papaparse");
       Papa.default.parse(ingresosFile, {
         header: true,
@@ -1119,10 +1186,21 @@ export default function ImportarHistorialPage() {
               const totalVal = getFlexibleValue(record, ["total", "monto", "amount", "montooriginal"]);
               const amountVal = parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0;
 
-              const paymentRef = doc(collection(db, "companies", companyId, "payments"));
+              // Generate deterministic payment ID to avoid duplicates and double increments
+              const cleanClient = normalizeKey(clientName);
+              const cleanDate = dateStr.replace(/[^0-9]/g, "");
+              const cleanAmount = String(amountVal).replace(/[^0-9.]/g, "");
+              const paymentId = `pay_${cleanClient}_${cleanDate}_${cleanAmount}_${cleanFolio}`;
+
+              if (existingPaymentIds.has(paymentId)) {
+                // Skip silently if payment has already been imported
+                continue;
+              }
+
+              const paymentRef = doc(db, "companies", companyId, "payments", paymentId);
               
               const paymentData = {
-                id: paymentRef.id,
+                id: paymentId,
                 amount: amountVal,
                 date: isoDate.substring(0, 10),
                 method: String(getFlexibleValue(record, ["tipo", "metodopago", "formapago", "paymentmethod"]) || "Transferencia").trim(),
@@ -1138,6 +1216,7 @@ export default function ImportarHistorialPage() {
               };
 
               currentBatch.set(paymentRef, paymentData);
+              existingPaymentIds.add(paymentId); // Add to local set to avoid duplicates within the same CSV upload
               successPayments++;
               writeCount++;
 

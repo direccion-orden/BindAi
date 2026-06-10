@@ -802,6 +802,44 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       }
   };
 
+  const handlePrintTicket = () => {
+    const printContent = document.getElementById('thermal-ticket-print-area');
+    if (!printContent) {
+      window.print(); // Fallback
+      return;
+    }
+    
+    // Crear iframe oculto para impresión limpia
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0px';
+    iframe.style.height = '0px';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+    
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write('<html><head><title>Imprimir Ticket</title>');
+      
+      // Copiar todos los estilos para asegurar renderizado idéntico
+      document.querySelectorAll('style, link[rel="stylesheet"]').forEach(style => {
+        doc.write(style.outerHTML);
+      });
+      
+      doc.write('</head><body style="margin: 0; padding: 0; background: white;">');
+      doc.write(printContent.outerHTML);
+      doc.write('</body></html>');
+      doc.close();
+      
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        document.body.removeChild(iframe);
+      }, 350);
+    }
+  };
+
   // Renderizado del caso de éxito
   if (success) {
       const changePaid = payments.find(p => p.denominationsOut)?.denominationsOut;
@@ -829,7 +867,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   )}
 
                   <div className="w-full flex gap-2 mt-6">
-                      <Button variant="outline" className="flex-1 flex gap-2" onClick={() => window.print()}>
+                      <Button variant="outline" className="flex-1 flex gap-2" onClick={handlePrintTicket}>
                           <Printer className="w-4 h-4" /> Imprimir
                       </Button>
                       <Button variant="outline" className="flex-1 flex gap-2 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 border-[#25D366]/20" onClick={handleWhatsApp}>

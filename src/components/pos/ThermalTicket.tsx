@@ -177,6 +177,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
 
   return (
     <div 
+      id="thermal-ticket-print-area"
       className="print-only thermal-ticket bg-white text-black p-6 border border-slate-200 rounded shadow-sm"
       style={{ 
         width: widthValue === "80mm" ? "320px" : "240px",

@@ -268,9 +268,42 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
     
     // Give React time to render the hidden ticket, then print
     setTimeout(() => {
-      window.print();
-      setIsPrinting(false);
-      // We don't close the modal automatically so they can print again if needed
+      const printContent = document.getElementById('thermal-ticket-print-area');
+      if (!printContent) {
+        window.print(); // Fallback
+        setIsPrinting(false);
+        return;
+      }
+      
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+      
+      const doc = iframe.contentWindow?.document;
+      if (doc) {
+        doc.open();
+        doc.write('<html><head><title>Imprimir Ticket</title>');
+        document.querySelectorAll('style, link[rel="stylesheet"]').forEach(style => {
+          doc.write(style.outerHTML);
+        });
+        doc.write('</head><body style="margin: 0; padding: 0; background: white;">');
+        doc.write(printContent.outerHTML);
+        doc.write('</body></html>');
+        doc.close();
+        
+        setTimeout(() => {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+          document.body.removeChild(iframe);
+          setIsPrinting(false);
+        }, 350);
+      } else {
+        window.print();
+        setIsPrinting(false);
+      }
     }, 300);
   };
 

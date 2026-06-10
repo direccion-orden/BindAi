@@ -335,7 +335,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
             return (
               <div className="flex flex-col items-center pt-1.5">
                 <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`} 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}`} 
                   alt="QR Facturación" 
                   className="w-24 h-24 object-contain grayscale mx-auto"
                 />
@@ -358,7 +358,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
         <div className="text-center mt-5 flex flex-col items-center">
           <p className="text-[9px] mb-2 text-slate-500">Para cambios y devoluciones:</p>
           <img 
-            src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeValue}&scale=2&height=10&includetext=true`} 
+            src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeValue}&scale=4&height=15&includetext=true`} 
             alt="Código de Barras" 
             className="w-full max-w-[180px] object-contain"
           />
@@ -393,7 +393,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
             padding: 4mm !important;
             background-color: white;
             border: none !important;
-            filter: grayscale(100%) contrast(1000) !important;
+            filter: grayscale(100%) !important;
           }
           .print-only img {
             image-rendering: pixelated !important;

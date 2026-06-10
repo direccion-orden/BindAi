@@ -330,7 +330,7 @@ export default function TicketPrintView({
                   {config.showBillingQr && (
                     <div className="flex flex-col items-center pt-1">
                       <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`https://bind-ai-6f1fc.web.app/autofactura?companyId=${companyId}&folio=${encodeURIComponent(folioText)}&total=${encodeURIComponent(formattedTotal)}`)}`} 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`https://bind-ai-6f1fc.web.app/autofactura?companyId=${companyId}&folio=${encodeURIComponent(folioText)}&total=${encodeURIComponent(formattedTotal)}`)}`} 
                         alt="QR Facturación" 
                         className="w-20 h-20 object-contain grayscale mx-auto"
                       />

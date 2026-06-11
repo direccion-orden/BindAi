@@ -14,6 +14,8 @@ import { Client } from "@/app/(dashboard)/clientes/page";
 import { generateQuoteImage } from "@/actions/generate-image";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/discountEngine";
+import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
+import { FileText } from "lucide-react";
 import { Percent } from "lucide-react";
 
 interface QuoteItem {
@@ -72,6 +74,7 @@ export default function NuevaCotizacionPage() {
   const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
 
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("detalle");
 
   useEffect(() => {
     if (!companyId) return;
@@ -337,8 +340,38 @@ export default function NuevaCotizacionPage() {
           <p className="text-muted-foreground">Crea una propuesta comercial para un cliente.</p>
         </div>
       </div>
-      
-      {/* Top Header Card: Datos Generales */}
+
+      {/* Navigation Tabs */}
+      <div className="flex border-b mb-1 px-4 gap-2 bg-card rounded-t-xl border-t border-x pt-2 shrink-0">
+        <button 
+          onClick={() => setActiveTab("detalle")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'detalle' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Detalle
+        </button>
+        <button 
+          onClick={() => setActiveTab("pagos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'pagos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Pagos
+        </button>
+        <button 
+          onClick={() => setActiveTab("archivos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'archivos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Archivos
+        </button>
+        <button 
+          onClick={() => setActiveTab("relacionados")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'relacionados' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Documentos relacionados
+        </button>
+      </div>
+
+      {activeTab === "detalle" && (
+        <>
+          {/* Top Header Card: Datos Generales */}
       <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
         <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
           <User className="w-4 h-4 text-indigo-600" />
@@ -755,8 +788,36 @@ export default function NuevaCotizacionPage() {
               </Button>
             </div>
           </div>
-        
-      </div>
+        </div>
+      </>
+      )}
+
+      {activeTab === "pagos" && (
+        <div className="bg-white border rounded-xl shadow-sm p-6">
+          <DocumentPaymentsTab 
+            document={null} 
+            documentType="pedido" // Use "pedido" as a fallback since cotizaciones don't have direct payments, showing the correct "Documento no guardado" warning
+            companyId={companyId || ""} 
+          />
+        </div>
+      )}
+
+      {activeTab === "archivos" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
+          <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Archivos</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
+
+      {activeTab === "relacionados" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Documentos relacionados</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
+
     </div>
   );
 }

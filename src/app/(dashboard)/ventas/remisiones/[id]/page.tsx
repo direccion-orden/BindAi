@@ -11,6 +11,8 @@ import { useRouter } from "next/navigation";
 import { InvoiceModal } from "./InvoiceModal";
 import { PaymentModal } from "@/components/payments/PaymentModal";
 import { ThermalTicket } from "@/components/pos/ThermalTicket";
+import { FolderOpen } from "lucide-react";
+import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
 
 export default function RemisionDetallePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise);
@@ -22,6 +24,7 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
   const [canceling, setCanceling] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("detalle");
 
   useEffect(() => {
     if (!companyId || !params.id) return;
@@ -183,7 +186,36 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
         </div>
       </div>
 
-      <div className="bg-white border rounded-xl shadow-sm p-6 space-y-6">
+      {/* Navigation Tabs */}
+      <div className="flex border-b mb-1 px-4 gap-2 bg-card rounded-t-xl border-t border-x pt-2 shrink-0">
+        <button 
+          onClick={() => setActiveTab("detalle")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'detalle' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Detalle
+        </button>
+        <button 
+          onClick={() => setActiveTab("pagos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'pagos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Pagos
+        </button>
+        <button 
+          onClick={() => setActiveTab("archivos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'archivos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Archivos
+        </button>
+        <button 
+          onClick={() => setActiveTab("relacionados")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'relacionados' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Documentos relacionados
+        </button>
+      </div>
+
+      {activeTab === "detalle" && (
+        <div className="bg-white border rounded-xl shadow-sm p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 bg-slate-50 p-4 rounded-lg border">
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Estatus</p>
@@ -290,6 +322,34 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
           </div>
         </div>
       </div>
+      )}
+
+      {activeTab === "pagos" && (
+        <div className="bg-white border rounded-xl shadow-sm p-6">
+          <DocumentPaymentsTab 
+            document={remission} 
+            documentType="remision" 
+            companyId={companyId || ""} 
+            onUpdate={() => window.location.reload()}
+          />
+        </div>
+      )}
+
+      {activeTab === "archivos" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
+          <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Archivos</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
+
+      {activeTab === "relacionados" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Documentos relacionados</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
       
       <InvoiceModal 
         isOpen={isInvoiceModalOpen} 

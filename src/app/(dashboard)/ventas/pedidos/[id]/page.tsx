@@ -13,6 +13,8 @@ import { ProcessOrderModal } from "./ProcessOrderModal";
 import { PaymentModal } from "@/components/payments/PaymentModal";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { calculateOrderTotals, EngineDiscount, EngineItem } from "@/lib/utils/discountEngine";
+import { FolderOpen } from "lucide-react";
+import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
 
 export default function PedidoDetallePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = React.use(paramsPromise);
@@ -28,6 +30,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("detalle");
   
   const [products, setProducts] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -359,8 +362,38 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         </div>
       </div>
 
-      {/* Top Header Card: Datos Generales */}
-      <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
+      {/* Navigation Tabs */}
+      <div className="flex border-b mb-1 px-4 gap-2 bg-card rounded-t-xl border-t border-x pt-2 shrink-0">
+        <button 
+          onClick={() => setActiveTab("detalle")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'detalle' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Detalle
+        </button>
+        <button 
+          onClick={() => setActiveTab("pagos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'pagos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Pagos
+        </button>
+        <button 
+          onClick={() => setActiveTab("archivos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'archivos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Archivos
+        </button>
+        <button 
+          onClick={() => setActiveTab("relacionados")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'relacionados' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Documentos relacionados
+        </button>
+      </div>
+
+      {activeTab === "detalle" && (
+        <>
+          {/* Top Header Card: Datos Generales */}
+          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
         <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
           <FileText className="w-4 h-4 text-indigo-600" />
           Información General del Pedido
@@ -692,8 +725,36 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
               )}
             </div>
           </div>
-        
-      </div>
+        </div>
+      </>
+      )}
+
+      {activeTab === "pagos" && (
+        <div className="bg-white border rounded-xl shadow-sm p-6">
+          <DocumentPaymentsTab 
+            document={order} 
+            documentType="pedido" 
+            companyId={companyId || ""} 
+            onUpdate={() => window.location.reload()}
+          />
+        </div>
+      )}
+
+      {activeTab === "archivos" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
+          <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Archivos</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
+
+      {activeTab === "relacionados" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Documentos relacionados</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
 
       <ProcessOrderModal 
         isOpen={isProcessModalOpen}

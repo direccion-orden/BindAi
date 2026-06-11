@@ -7,12 +7,13 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt, Percent, MessageSquare } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt, Percent, MessageSquare, FileText } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/discountEngine";
+import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
 
 interface OrderItem {
   lineKey?: string;
@@ -59,6 +60,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
   const [items, setItems] = useState<OrderItem[]>([]);
   
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("detalle");
 
   // Engine state
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
@@ -363,8 +365,38 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         </div>
       </div>
 
-      {/* Top Header Card: Datos Generales */}
-      <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
+      {/* Navigation Tabs */}
+      <div className="flex border-b mb-1 px-4 gap-2 bg-card rounded-t-xl border-t border-x pt-2 shrink-0">
+        <button 
+          onClick={() => setActiveTab("detalle")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'detalle' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Detalle
+        </button>
+        <button 
+          onClick={() => setActiveTab("pagos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'pagos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Pagos
+        </button>
+        <button 
+          onClick={() => setActiveTab("archivos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'archivos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Archivos
+        </button>
+        <button 
+          onClick={() => setActiveTab("relacionados")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'relacionados' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Documentos relacionados
+        </button>
+      </div>
+
+      {activeTab === "detalle" && (
+        <>
+          {/* Top Header Card: Datos Generales */}
+          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
         <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
           <User className="w-4 h-4 text-indigo-600" />
           Datos Generales de la Factura
@@ -692,9 +724,36 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
               </Button>
             </div>
           </div>
-        
+        </div>
+      </>
+      )}
 
-      </div>
+      {activeTab === "pagos" && (
+        <div className="bg-white border rounded-xl shadow-sm p-6 animate-in fade-in-50 duration-100">
+          <DocumentPaymentsTab 
+            document={originalFactura} 
+            documentType="factura" 
+            companyId={companyId || ""} 
+            onUpdate={() => window.location.reload()}
+          />
+        </div>
+      )}
+
+      {activeTab === "archivos" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400 animate-in fade-in-50 duration-100">
+          <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Archivos</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
+
+      {activeTab === "relacionados" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400 animate-in fade-in-50 duration-100">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Documentos relacionados</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
     </div>
   );
 }

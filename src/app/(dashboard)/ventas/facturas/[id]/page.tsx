@@ -10,6 +10,8 @@ import Link from "next/link";
 import { createCfdi, cancelCfdi, downloadCfdi } from "@/actions/facturama";
 import { useRouter } from "next/navigation";
 import { PaymentModal } from "@/components/payments/PaymentModal";
+import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
+import { FolderOpen } from "lucide-react";
 
 export default function FacturaDetallePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise);
@@ -25,6 +27,7 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
   const [canceling, setCanceling] = useState(false);
   const [downloading, setDownloading] = useState<'pdf' | 'xml' | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("detalle");
   
   const router = useRouter();
 
@@ -312,113 +315,170 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
         </div>
       </div>
 
-      <div className="bg-white border rounded-xl shadow-sm p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-6 mb-8 bg-slate-50 p-4 rounded-lg border overflow-hidden">
-          <div className="min-w-0 lg:col-span-2">
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Estatus</p>
-            <p className="font-bold capitalize truncate">{factura.status.replace('_', ' ')}</p>
-          </div>
-          <div className="min-w-0 lg:col-span-4">
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">UUID / Folio Fiscal</p>
-            <p className="font-bold text-indigo-700 whitespace-nowrap tracking-tighter text-[clamp(11px,1.5vw,16px)]">{factura.facturamaUuid || '--'}</p>
-          </div>
-          <div className="min-w-0 lg:col-span-2 lg:pl-8">
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Fecha</p>
-            <p className="font-bold whitespace-nowrap text-[clamp(11px,1.5vw,14px)]">{new Date(factura.createdAt).toLocaleDateString('es-MX')}</p>
-          </div>
-          <div className="min-w-0 lg:col-span-4">
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Creado por</p>
-            <p className="font-bold whitespace-nowrap tracking-tight text-[clamp(11px,1.5vw,16px)]">{factura.createdBy}</p>
-          </div>
-        </div>
-
-        <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2">
-          <Package className="w-5 h-5 text-slate-400" /> Conceptos a Facturar
-        </h3>
-
-        <div className="space-y-3">
-          {factura.items?.map((item: any, idx: number) => (
-            <div key={item.variantId ? `${item.variantId}-${idx}` : idx} className="flex flex-col border p-3 rounded-lg text-sm bg-white shadow-sm gap-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex-1 flex items-start gap-3">
-                  <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
-                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    {item.isService ? (
-                      <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
-                    ) : (
-                      <>
-                        <p className="font-bold">{item.productName}</p>
-                        {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
-                      </>
-                    )}
-
-                    {/* Comment in view mode */}
-                    {item.comment && (
-                      <p className="text-xs text-indigo-600 font-medium flex items-start gap-1 mt-1 bg-indigo-50/50 p-1.5 rounded border border-indigo-100/50 whitespace-pre-wrap">
-                        <MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                        <span>{item.comment}</span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="text-right flex items-center gap-6 justify-end">
-                  <div className="text-slate-500 text-xs font-medium">
-                    <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
-                    {item.discountPercentage > 0 && (
-                      <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
-                    )}
-                  </div>
-                  <div className="font-bold text-slate-950 min-w-[100px] text-base">
-                    ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex justify-end pt-6 border-t mt-6">
-          <div className="w-72 space-y-2 text-sm bg-slate-50 p-4 rounded-lg border">
-            <div className="flex justify-between text-slate-500">
-              <span>Subtotal</span>
-              <span>${displaySubtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-            </div>
-            {displayDiscount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium">
-                <span>Descuento</span>
-                <span>-${displayDiscount.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-slate-500">
-              <span>IVA (16%)</span>
-              <span>${displayTax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-            </div>
-            <div className="flex justify-between font-black text-xl pt-2 border-t mt-2 text-slate-900">
-              <span>Total CFDI</span>
-              <span className="text-indigo-700">${displayTotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-            </div>
-            {(factura.paidAmount || 0) > 0 && (
-              <>
-                <div className="flex justify-between text-emerald-600 font-medium pt-2">
-                  <span>Pagado</span>
-                  <span>${(factura.paidAmount || 0).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-                </div>
-                <div className="flex justify-between text-rose-600 font-bold border-t mt-2 pt-2">
-                  <span>Saldo Pendiente</span>
-                  <span>${Math.max(0, factura.totalAmount - (factura.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+      {/* Navigation Tabs */}
+      <div className="flex border-b mb-1 px-4 gap-2 bg-card rounded-t-xl border-t border-x pt-2 shrink-0">
+        <button 
+          onClick={() => setActiveTab("detalle")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'detalle' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Detalle
+        </button>
+        <button 
+          onClick={() => setActiveTab("pagos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'pagos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Pagos
+        </button>
+        <button 
+          onClick={() => setActiveTab("archivos")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'archivos' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Archivos
+        </button>
+        <button 
+          onClick={() => setActiveTab("relacionados")} 
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'relacionados' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Documentos relacionados
+        </button>
       </div>
+
+      {activeTab === "detalle" && (
+        <div className="bg-white border rounded-xl shadow-sm p-6 space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-6 mb-8 bg-slate-50 p-4 rounded-lg border overflow-hidden">
+            <div className="min-w-0 lg:col-span-2">
+              <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Estatus</p>
+              <p className="font-bold capitalize truncate">{factura.status.replace('_', ' ')}</p>
+            </div>
+            <div className="min-w-0 lg:col-span-4">
+              <p className="text-xs text-slate-500 font-semibold uppercase mb-1">UUID / Folio Fiscal</p>
+              <p className="font-bold text-indigo-700 whitespace-nowrap tracking-tighter text-[clamp(11px,1.5vw,16px)]">{factura.facturamaUuid || '--'}</p>
+            </div>
+            <div className="min-w-0 lg:col-span-2 lg:pl-8">
+              <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Fecha</p>
+              <p className="font-bold whitespace-nowrap text-[clamp(11px,1.5vw,14px)]">{new Date(factura.createdAt).toLocaleDateString('es-MX')}</p>
+            </div>
+            <div className="min-w-0 lg:col-span-4">
+              <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Creado por</p>
+              <p className="font-bold whitespace-nowrap tracking-tight text-[clamp(11px,1.5vw,16px)]">{factura.createdBy}</p>
+            </div>
+          </div>
+
+          <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2">
+            <Package className="w-5 h-5 text-slate-400" /> Conceptos a Facturar
+          </h3>
+
+          <div className="space-y-3">
+            {factura.items?.map((item: any, idx: number) => (
+              <div key={item.variantId ? `${item.variantId}-${idx}` : idx} className="flex flex-col border p-3 rounded-lg text-sm bg-white shadow-sm gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex-1 flex items-start gap-3">
+                    <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                      ) : (
+                        <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      {item.isService ? (
+                        <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
+                      ) : (
+                        <>
+                          <p className="font-bold">{item.productName}</p>
+                          {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
+                        </>
+                      )}
+
+                      {/* Comment in view mode */}
+                      {item.comment && (
+                        <p className="text-xs text-indigo-600 font-medium flex items-start gap-1 mt-1 bg-indigo-50/50 p-1.5 rounded border border-indigo-100/50 whitespace-pre-wrap">
+                          <MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                          <span>{item.comment}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="text-right flex items-center gap-6 justify-end">
+                    <div className="text-slate-500 text-xs font-medium">
+                      <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                      {item.discountPercentage > 0 && (
+                        <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
+                      )}
+                    </div>
+                    <div className="font-bold text-slate-950 min-w-[100px] text-base">
+                      ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end pt-6 border-t mt-6">
+            <div className="w-72 space-y-2 text-sm bg-slate-50 p-4 rounded-lg border">
+              <div className="flex justify-between text-slate-500">
+                <span>Subtotal</span>
+                <span>${displaySubtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+              </div>
+              {displayDiscount > 0 && (
+                <div className="flex justify-between text-emerald-600 font-medium">
+                  <span>Descuento</span>
+                  <span>-${displayDiscount.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-slate-500">
+                <span>IVA (16%)</span>
+                <span>${displayTax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+              </div>
+              <div className="flex justify-between font-black text-xl pt-2 border-t mt-2 text-slate-900">
+                <span>Total CFDI</span>
+                <span className="text-indigo-700">${displayTotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+              </div>
+              {(factura.paidAmount || 0) > 0 && (
+                <>
+                  <div className="flex justify-between text-emerald-600 font-medium pt-2">
+                    <span>Pagado</span>
+                    <span>${(factura.paidAmount || 0).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                  </div>
+                  <div className="flex justify-between text-rose-600 font-bold border-t mt-2 pt-2">
+                    <span>Saldo Pendiente</span>
+                    <span>${Math.max(0, factura.totalAmount - (factura.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "pagos" && (
+        <div className="bg-white border rounded-xl shadow-sm p-6">
+          <DocumentPaymentsTab 
+            document={factura} 
+            documentType="factura" 
+            companyId={companyId || ""} 
+            onUpdate={() => window.location.reload()}
+          />
+        </div>
+      )}
+
+      {activeTab === "archivos" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
+          <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Archivos</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
+
+      {activeTab === "relacionados" && (
+        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="font-semibold text-slate-800 mb-1">Documentos relacionados</p>
+          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        </div>
+      )}
 
       {isCancelModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

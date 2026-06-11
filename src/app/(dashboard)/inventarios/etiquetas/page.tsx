@@ -129,7 +129,8 @@ export default function PrintLabelsPage() {
       let logoBase64 = null;
       if (els.logo?.visible && format.logoUrl) {
         try {
-          logoBase64 = await getBase64ImageFromURL(format.logoUrl);
+          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(format.logoUrl)}`;
+          logoBase64 = await getBase64ImageFromURL(proxyUrl);
         } catch (e) {
           console.warn("Could not load logo for PDF due to CORS", e);
         }

@@ -23,6 +23,7 @@ export function ProcessOrderModal({
   order: any,
   companyId: string 
 }) {
+  const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
   const [loading, setLoading] = useState(false);
   const [actionType, setActionType] = useState("remision"); // remision, pre-factura, factura
   
@@ -89,7 +90,10 @@ export function ProcessOrderModal({
       clientId: order.clientId || null,
       clientName: order.clientName,
       items: order.items,
-      totalAmount: order.totalAmount,
+      subtotal: round2(order.subtotal || 0),
+      tax: round2(order.tax || 0),
+      totalDiscount: round2(order.totalDiscount || 0),
+      totalAmount: round2(order.totalAmount || 0),
       projectId: order.projectId || null,
       projectName: order.projectName || null,
       createdAt: new Date().toISOString(),
@@ -203,7 +207,10 @@ export function ProcessOrderModal({
       clientId: order.clientId || null,
       clientName: order.clientName,
       items: order.items,
-      totalAmount: order.totalAmount,
+      subtotal: round2(order.subtotal || 0),
+      tax: round2(order.tax || 0),
+      totalDiscount: round2(order.totalDiscount || 0),
+      totalAmount: round2(order.totalAmount || 0),
       projectId: order.projectId || null,
       projectName: order.projectName || null,
       cfdiPayload: payload,
@@ -237,7 +244,10 @@ export function ProcessOrderModal({
         clientId: order.clientId || null,
         clientName: order.clientName,
         items: order.items,
-        totalAmount: order.totalAmount,
+        subtotal: round2(order.subtotal || 0),
+        tax: round2(order.tax || 0),
+        totalDiscount: round2(order.totalDiscount || 0),
+        totalAmount: round2(order.totalAmount || 0),
         projectId: order.projectId || null,
         projectName: order.projectName || null,
         cfdiPayload: payload,

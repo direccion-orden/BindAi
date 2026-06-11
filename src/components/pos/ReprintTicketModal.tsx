@@ -103,7 +103,8 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
 
   const handleSearchDb = async (e: React.FormEvent) => {
     e.preventDefault();
-    const term = searchTerm.trim().toLowerCase();
+    const originalTerm = searchTerm.trim().toLowerCase();
+    const term = originalTerm.replace(/'/g, "-");
     if (!term) {
       setFilteredSales(sales);
       return;
@@ -119,7 +120,7 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
         getDocs(query(collection(db, "companies", companyId, "clients"), where("phone", "==", searchTerm.trim()))),
         getDocs(query(collection(db, "companies", companyId, "clients"), where("email", "==", searchTerm.trim().toLowerCase())))
       ];
-      if (cleanPhone && cleanPhone !== searchTerm.trim() && cleanPhone.length >= 8) {
+      if (cleanPhone && cleanPhone !== originalTerm && cleanPhone.length >= 8) {
         clientQueries.push(
           getDocs(query(collection(db, "companies", companyId, "clients"), where("phone", "==", cleanPhone)))
         );
@@ -232,11 +233,18 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
           const phone = (s.client?.phone || "").toLowerCase();
           
           return folio === term.toUpperCase() || 
+                 folio === originalTerm.toUpperCase() ||
                  remNum === formattedTerm || 
+                 remNum === originalTerm.toUpperCase() ||
                  orderNum === formattedPosTerm ||
+                 orderNum === `POS-${originalTerm.toUpperCase()}` ||
                  s.id.toLowerCase() === term || 
+                 s.id.toLowerCase() === originalTerm ||
+                 name.includes(originalTerm) ||
                  name.includes(term) ||
+                 email.includes(originalTerm) ||
                  email.includes(term) ||
+                 phone.includes(originalTerm) ||
                  phone.includes(term) ||
                  clientIds.includes(s.clientId);
         });

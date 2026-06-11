@@ -28,7 +28,7 @@ function CartItemRow({ item }: { item: CartItem }) {
     const parsed = parseFloat(val);
     if (!isNaN(parsed) && parsed >= 0) {
       // Divide by 1.16 to store the pre-tax price in context
-      updateItemPrice(item.product.sku, parsed / 1.16);
+      updateItemPrice(item.key || item.product.sku, parsed / 1.16);
     }
   };
 
@@ -43,7 +43,7 @@ function CartItemRow({ item }: { item: CartItem }) {
               {isService ? (
                 <textarea
                   value={item.customDescription !== undefined ? item.customDescription : (item.product.bodyHtml || item.product.title || "")}
-                  onChange={(e) => updateItemDescription(item.product.sku, e.target.value)}
+                  onChange={(e) => updateItemDescription(item.key || item.product.sku, e.target.value)}
                   placeholder="Descripción del servicio..."
                   className="w-full text-xs font-semibold border rounded p-1 bg-white resize-y leading-tight focus:outline-none focus:ring-1 focus:ring-primary"
                   rows={2}
@@ -61,14 +61,14 @@ function CartItemRow({ item }: { item: CartItem }) {
           <div className="flex items-center gap-2">
               <div className="flex items-center border rounded-md">
                   <button 
-                    onClick={() => updateItemQuantity(item.product.sku, item.quantity - 1)}
+                    onClick={() => updateItemQuantity(item.key || item.product.sku, item.quantity - 1)}
                     className="px-2 py-1 hover:bg-muted text-muted-foreground"
                   >
                     <Minus className="w-3 h-3"/>
                   </button>
                   <span className="px-3 text-sm font-medium border-x">{item.quantity}</span>
                   <button 
-                    onClick={() => updateItemQuantity(item.product.sku, item.quantity + 1)}
+                    onClick={() => updateItemQuantity(item.key || item.product.sku, item.quantity + 1)}
                     className="px-2 py-1 hover:bg-muted text-muted-foreground"
                   >
                     <Plus className="w-3 h-3"/>
@@ -99,7 +99,7 @@ function CartItemRow({ item }: { item: CartItem }) {
                 placeholder="0" 
                 className={`w-12 h-8 text-right text-xs ${item.discountPercentage > 0 ? 'border-green-500 bg-green-50' : ''}`}
                 value={item.discountPercentage || ''}
-                onChange={(e) => updateItemDiscount(item.product.sku, parseFloat(e.target.value) || 0)}
+                onChange={(e) => updateItemDiscount(item.key || item.product.sku, parseFloat(e.target.value) || 0)}
                 min={0}
                 max={100}
               />
@@ -107,7 +107,7 @@ function CartItemRow({ item }: { item: CartItem }) {
           </div>
       </div>
       <button 
-        onClick={() => removeItemFromCart(item.product.sku)}
+        onClick={() => removeItemFromCart(item.key || item.product.sku)}
         className="absolute top-2 right-2 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
       >
           <Trash2 className="w-4 h-4" />
@@ -143,7 +143,7 @@ export function POSCartPanel() {
            </div>
         ) : (
           activeAccount.items.map((item) => (
-            <CartItemRow key={item.product.sku} item={item} />
+            <CartItemRow key={item.key || item.product.sku} item={item} />
           ))
         )}
       </div>

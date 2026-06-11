@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer } from "lucide-react";
+import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolean; onCloseMobile?: () => void }) {
@@ -68,7 +68,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/bancos", label: "Cuentas Bancarias", icon: Building2 },
         { href: "/caja", label: "Control de Caja", icon: Banknote },
         { href: "/tesoreria", label: "Tesorería", icon: Vault },
-        { href: "/dashboard", label: "Anticipos", icon: DollarSign },
+        { href: "/anticipos", label: "Anticipos", icon: DollarSign },
         { href: "/estado-cuenta", label: "Estados de Cuenta", icon: FileText },
         { href: "/ingresos", label: "Ingresos", icon: DollarSign },
         { href: "/egresos", label: "Egresos", icon: Banknote },
@@ -103,6 +103,8 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/catalogos/etapas-produccion", label: "Etapas Producción", icon: ClipboardList },
         { href: "/configuracion/dispositivos", label: "Dispositivos y Hardware", icon: Cpu },
         { href: "/configuracion/disenador-ticket", label: "Diseñador de Tickets", icon: Printer },
+        { href: "/inventarios/etiquetas/formatos", label: "Diseñador de Etiquetas", icon: Tag },
+        { href: "/configuracion/noticias", label: "Configurar Noticias", icon: Newspaper },
         { href: "/configuracion/shopify", label: "Integración Shopify", icon: ArrowRightLeft },
       ]
     }
@@ -157,7 +159,21 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         </div>
 
         <div className="flex-1 py-6 px-3 space-y-8">
-        {categories.map((cat, idx) => {
+          {/* Top-Level Noticias Link */}
+          <div className="space-y-1">
+            <Link href="/dashboard" onClick={onCloseMobile}>
+              <div className={`flex items-center px-3 py-2 rounded-md text-sm transition-colors ${
+                pathname === "/dashboard"
+                  ? "bg-accent/15 text-accent font-semibold shadow-sm"
+                  : "text-foreground hover:bg-muted"
+              } ${isCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={isCollapsed ? "Noticias" : undefined}>
+                <Newspaper className={`h-5 w-5 ${pathname === "/dashboard" ? 'text-accent' : 'text-muted-foreground'}`} />
+                {!isCollapsed && <span className="font-semibold">Noticias</span>}
+              </div>
+            </Link>
+          </div>
+
+          {categories.map((cat, idx) => {
           const isOpen = openCategories.includes(cat.title);
           return (
             <div key={idx} className="space-y-3">

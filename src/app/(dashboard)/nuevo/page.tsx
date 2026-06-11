@@ -143,7 +143,7 @@ export default function NuevoAnticipoPage() {
         status: "pending" // pending -> partially_applied -> applied
       });
 
-      router.push("/dashboard");
+      router.push("/anticipos");
 
     } catch (error) {
       console.error("Error creating anticipo", error);

@@ -52,6 +52,7 @@ function sanitizeFirestoreData<T>(data: T): T {
 }
 
 export function CheckoutModal({ onClose }: CheckoutModalProps) {
+  const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
   const { user, companyId } = useAuth();
   const { activeAccount, subtotal, tax, totalDiscount, total, clearAccount, branchId, cashMode } = usePOS();
   
@@ -191,14 +192,14 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const clientPoints = client?.points || 0;
   const clientWallet = client?.walletBalance || 0;
 
-  const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = round2(payments.reduce((sum, p) => sum + p.amount, 0));
   // Restante real de la cuenta
-  const remaining = Math.max(0, total - totalPaid);
+  const remaining = round2(Math.max(0, total - totalPaid));
   
   // Amount entered in the current payment input
   const inputAmount = parseFloat(currentAmount) || 0;
   // If they are paying with cash, and inputAmount > remaining, the change is inputAmount - remaining
-  const changeToGive = (currentMethod === 'efectivo' && inputAmount > remaining) ? inputAmount - remaining : 0;
+  const changeToGive = (currentMethod === 'efectivo' && inputAmount > remaining) ? round2(inputAmount - remaining) : 0;
 
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
@@ -340,8 +341,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       
                       // Automatically add the payment after a brief delay
                       setTimeout(() => {
-                          const changeToGive = (inserted > remaining) ? inserted - remaining : 0;
-                          const appliedAmount = inserted - changeToGive;
+                          const changeToGive = (inserted > remaining) ? round2(inserted - remaining) : 0;
+                          const appliedAmount = round2(inserted - changeToGive);
                           
                           setPayments(prev => [...prev, {
                             method: 'efectivo',

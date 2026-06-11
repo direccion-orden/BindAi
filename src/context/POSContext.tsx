@@ -28,6 +28,7 @@ export type Product = {
 };
 
 export type CartItem = {
+  key?: string;
   product: Product;
   quantity: number;
   discountPercentage: number;
@@ -63,11 +64,11 @@ interface POSContextType {
   
   // Cart Actions (apply to active account)
   addItemToCart: (product: Product) => void;
-  removeItemFromCart: (sku: string) => void;
-  updateItemQuantity: (sku: string, quantity: number) => void;
-  updateItemDiscount: (sku: string, discount: number) => void;
-  updateItemPrice: (sku: string, price: number) => void;
-  updateItemDescription: (sku: string, description: string) => void;
+  removeItemFromCart: (keyOrSku: string) => void;
+  updateItemQuantity: (keyOrSku: string, quantity: number) => void;
+  updateItemDiscount: (keyOrSku: string, discount: number) => void;
+  updateItemPrice: (keyOrSku: string, price: number) => void;
+  updateItemDescription: (keyOrSku: string, description: string) => void;
   
   // Global Actions (apply to active account)
   setGlobalDiscount: (value: number, type?: 'percentage' | 'fixed') => void;
@@ -175,43 +176,73 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
   const setActiveAccount = (id: number) => setActiveAccountId(id);
 
   const addItemToCart = (product: Product) => {
-    const existingItem = activeAccount.items.find(item => item.product.sku === product.sku);
-    if (existingItem) {
-      updateItemQuantity(product.sku, existingItem.quantity + 1);
+    const isService = !!product.isService || product.sku?.startsWith("SER-");
+
+    if (isService) {
+      const newKey = crypto.randomUUID();
+      updateActiveAccount({
+        items: [...activeAccount.items, { key: newKey, product, quantity: 1, discountPercentage: 0 }]
+      });
     } else {
-      updateActiveAccount({ items: [...activeAccount.items, { product, quantity: 1, discountPercentage: 0 }] });
+      const existingItem = activeAccount.items.find(item => item.product.sku === product.sku);
+      if (existingItem) {
+        updateItemQuantity(existingItem.key || existingItem.product.sku, existingItem.quantity + 1);
+      } else {
+        const newKey = crypto.randomUUID();
+        updateActiveAccount({
+          items: [...activeAccount.items, { key: newKey, product, quantity: 1, discountPercentage: 0 }]
+        });
+      }
     }
   };
 
-  const removeItemFromCart = (sku: string) => {
-    updateActiveAccount({ items: activeAccount.items.filter(item => item.product.sku !== sku) });
+  const removeItemFromCart = (keyOrSku: string) => {
+    updateActiveAccount({
+      items: activeAccount.items.filter(item => !((item.key && item.key === keyOrSku) || (!item.key && item.product.sku === keyOrSku)))
+    });
   };
 
-  const updateItemQuantity = (sku: string, quantity: number) => {
+  const updateItemQuantity = (keyOrSku: string, quantity: number) => {
     if (quantity <= 0) {
-      removeItemFromCart(sku);
+      removeItemFromCart(keyOrSku);
       return;
     }
     updateActiveAccount({
-      items: activeAccount.items.map(item => item.product.sku === sku ? { ...item, quantity } : item)
+      items: activeAccount.items.map(item =>
+        ((item.key && item.key === keyOrSku) || (!item.key && item.product.sku === keyOrSku))
+          ? { ...item, quantity }
+          : item
+      )
     });
   };
 
-  const updateItemDiscount = (sku: string, discount: number) => {
+  const updateItemDiscount = (keyOrSku: string, discount: number) => {
     updateActiveAccount({
-      items: activeAccount.items.map(item => item.product.sku === sku ? { ...item, discountPercentage: discount } : item)
+      items: activeAccount.items.map(item =>
+        ((item.key && item.key === keyOrSku) || (!item.key && item.product.sku === keyOrSku))
+          ? { ...item, discountPercentage: discount }
+          : item
+      )
     });
   };
 
-  const updateItemPrice = (sku: string, price: number) => {
+  const updateItemPrice = (keyOrSku: string, price: number) => {
     updateActiveAccount({
-      items: activeAccount.items.map(item => item.product.sku === sku ? { ...item, customPrice: price } : item)
+      items: activeAccount.items.map(item =>
+        ((item.key && item.key === keyOrSku) || (!item.key && item.product.sku === keyOrSku))
+          ? { ...item, customPrice: price }
+          : item
+      )
     });
   };
 
-  const updateItemDescription = (sku: string, description: string) => {
+  const updateItemDescription = (keyOrSku: string, description: string) => {
     updateActiveAccount({
-      items: activeAccount.items.map(item => item.product.sku === sku ? { ...item, customDescription: description } : item)
+      items: activeAccount.items.map(item =>
+        ((item.key && item.key === keyOrSku) || (!item.key && item.product.sku === keyOrSku))
+          ? { ...item, customDescription: description }
+          : item
+      )
     });
   };
 
@@ -243,6 +274,8 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
     ]
   }));
 
+  const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+
   const totals = calculateOrderTotals(engineItems, availableDiscounts, activeAccount.enteredPromoCode);
   
   // Re-apply global manual discount (percentage or fixed amount) over engine's taxableSubtotal
@@ -254,17 +287,17 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
   
   if (discountVal > 0) {
     if (discountType === 'percentage') {
-      legacyGlobalDiscountValue = finalTaxableSubtotal * (discountVal / 100);
+      legacyGlobalDiscountValue = round2(finalTaxableSubtotal * (discountVal / 100));
     } else {
       // Fixed amount discount. Cap at taxable subtotal to prevent negative billing.
-      legacyGlobalDiscountValue = Math.min(discountVal, finalTaxableSubtotal);
+      legacyGlobalDiscountValue = round2(Math.min(discountVal, finalTaxableSubtotal));
     }
-    finalTaxableSubtotal -= legacyGlobalDiscountValue;
+    finalTaxableSubtotal = round2(finalTaxableSubtotal - legacyGlobalDiscountValue);
   }
   
-  const tax = finalTaxableSubtotal * 0.16;
-  const total = finalTaxableSubtotal + tax;
-  const totalDiscount = totals.totalDiscount + legacyGlobalDiscountValue;
+  const tax = round2(finalTaxableSubtotal * 0.16);
+  const total = round2(finalTaxableSubtotal + tax);
+  const totalDiscount = round2(totals.totalDiscount + legacyGlobalDiscountValue);
 
   const value = {
     branchId,

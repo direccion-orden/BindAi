@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 
@@ -17,12 +17,15 @@ interface Vendor {
 }
 
 interface OrderItem {
+  lineKey?: string;
   productId: string;
   variantId: string;
   productName: string;
   variantTitle: string;
   quantity: number;
   unitCost: number;
+  isService?: boolean;
+  description?: string;
 }
 
 export default function NuevaOrdenCompraPage() {
@@ -86,31 +89,55 @@ export default function NuevaOrdenCompraPage() {
   );
 
   const handleAddItem = (product: ShopifyProduct, variant: any) => {
-    const exists = selectedItems.find(i => i.variantId === variant.id);
-    if (!exists) {
+    const isService = !!product.isService || variant.sku?.startsWith("SER-");
+
+    if (isService) {
+      const lineKey = crypto.randomUUID();
       setSelectedItems(prev => [...prev, {
+        lineKey,
         productId: product.id,
         variantId: variant.id,
         productName: product.title,
         variantTitle: variant.title !== "Default Title" ? variant.title : "",
         quantity: 1,
-        unitCost: 0 // default to 0
+        unitCost: variant.price || 0,
+        isService: true,
+        description: product.bodyHtml || product.title || ""
       }]);
+    } else {
+      const exists = selectedItems.find(i => i.variantId === variant.id);
+      if (!exists) {
+        setSelectedItems(prev => [...prev, {
+          productId: product.id,
+          variantId: variant.id,
+          productName: product.title,
+          variantTitle: variant.title !== "Default Title" ? variant.title : "",
+          quantity: 1,
+          unitCost: 0,
+          isService: false,
+          description: ""
+        }]);
+      } else {
+        setSelectedItems(prev => prev.map(item => 
+          item.variantId === variant.id ? { ...item, quantity: item.quantity + 1 } : item
+        ));
+      }
     }
     setSearchTerm("");
   };
 
-  const updateItem = (variantId: string, field: 'quantity' | 'unitCost', value: number) => {
+  const updateItem = (lineKeyOrVariantId: string, field: keyof OrderItem, value: any) => {
     setSelectedItems(prev => prev.map(i => {
-      if (i.variantId === variantId) {
-        return { ...i, [field]: Math.max(0, value) };
+      const matchKey = i.lineKey || i.variantId;
+      if (matchKey === lineKeyOrVariantId) {
+        return { ...i, [field]: value };
       }
       return i;
     }));
   };
 
-  const removeItem = (variantId: string) => {
-    setSelectedItems(prev => prev.filter(i => i.variantId !== variantId));
+  const removeItem = (lineKeyOrVariantId: string) => {
+    setSelectedItems(prev => prev.filter(i => (i.lineKey || i.variantId) !== lineKeyOrVariantId));
   };
 
   const totalCost = selectedItems.reduce((acc, item) => acc + (item.quantity * item.unitCost), 0);
@@ -148,9 +175,12 @@ export default function NuevaOrdenCompraPage() {
         items: selectedItems.map(i => ({
           productId: i.productId,
           variantId: i.variantId,
-          productName: i.productName + (i.variantTitle ? ` - ${i.variantTitle}` : ''),
+          productName: i.isService && i.description ? i.description : (i.productName + (i.variantTitle ? ` - ${i.variantTitle}` : '')),
           quantity: i.quantity,
-          unitCost: i.unitCost
+          unitCost: i.unitCost,
+          isService: !!i.isService,
+          description: i.description || "",
+          lineKey: i.lineKey || ""
         })),
         totalAmount: totalCost,
         locationId,
@@ -190,137 +220,141 @@ export default function NuevaOrdenCompraPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Left Column: Form */}
-        <div className="md:col-span-1 space-y-6">
-          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-            <h3 className="font-semibold border-b pb-2">Datos del Proveedor</h3>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Proveedor *</label>
-              <select 
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background border-indigo-200"
-                value={vendorId}
-                onChange={e => setVendorId(e.target.value)}
-              >
-                <option value="" disabled>Selecciona un proveedor...</option>
-                {vendors.map(v => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
-                ))}
-              </select>
-            </div>
+      {/* Top Header Card: Datos Generales */}
+      <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
+        <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
+          <User className="w-4 h-4 text-indigo-600" />
+          Datos Generales de la Orden de Compra
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+          {/* Column 1: Proveedor */}
+          <div className="space-y-2 col-span-1">
+            <label className="text-xs font-medium text-slate-500 uppercase">Proveedor *</label>
+            <select 
+              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+              value={vendorId}
+              onChange={e => setVendorId(e.target.value)}
+            >
+              <option value="" disabled>Selecciona un proveedor...</option>
+              {vendors.map(v => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+          </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Fecha Esperada (Opcional)</label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  type="date"
-                  className="pl-9"
-                  value={expectedDate}
-                  onChange={e => setExpectedDate(e.target.value)}
-                />
-              </div>
+          {/* Column 2: Sucursal Destino */}
+          <div className="space-y-2 col-span-1">
+            <label className="text-xs font-medium text-slate-500 uppercase">Sucursal (Destino) *</label>
+            <select 
+              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+              value={locationId}
+              onChange={e => setLocationId(e.target.value)}
+              required
+            >
+              <option value="" disabled>Selecciona sucursal...</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Column 3: Cuenta Contable Gasto */}
+          <div className="space-y-2 col-span-1">
+            <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
+              <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+              Cuenta de Gasto *
+            </label>
+            <select 
+              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+              value={accountId}
+              onChange={e => setAccountId(e.target.value)}
+              required
+            >
+              <option value="" disabled>Selecciona cuenta...</option>
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Column 4: Date and Notes */}
+          <div className="space-y-2 col-span-1">
+            <div>
+              <label className="text-xs font-medium text-slate-500 uppercase">Fecha Esperada</label>
+              <Input 
+                type="date"
+                value={expectedDate}
+                onChange={e => setExpectedDate(e.target.value)}
+                className="h-8 text-xs"
+              />
             </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Instrucciones / Notas</label>
+            <div className="mt-1">
+              <label className="text-xs font-medium text-slate-500 uppercase">Instrucciones</label>
               <Input 
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 placeholder="Condiciones de pago, entrega..."
+                className="h-8 text-xs"
               />
             </div>
-          </div>
-
-          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-            <h3 className="font-semibold border-b pb-2 flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-indigo-600" />
-              Clasificación de la Orden
-            </h3>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Sucursal (Destino) *</label>
-              <select 
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background border-indigo-200"
-                value={locationId}
-                onChange={e => setLocationId(e.target.value)}
-                required
-              >
-                <option value="" disabled>Selecciona una sucursal...</option>
-                {locations.map(l => (
-                  <option key={l.id} value={l.id}>{l.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2 pt-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-indigo-600" />
-                Cuenta Contable de Gasto *
-              </label>
-              <select 
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background border-indigo-200"
-                value={accountId}
-                onChange={e => setAccountId(e.target.value)}
-                required
-              >
-                <option value="" disabled>Selecciona cuenta de gasto...</option>
-                {accounts.map(a => (
-                  <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-            <h3 className="font-semibold border-b pb-2">Añadir Producto</h3>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Buscar por nombre o código..." 
-                className="pl-9"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-
-            {searchTerm && (
-              <div className="border rounded-md max-h-64 overflow-y-auto bg-background divide-y">
-                {filteredProducts.map(product => (
-                  product.variants.map(variant => (
-                    <div key={variant.id} className="p-3 hover:bg-muted/50 flex justify-between items-center text-sm">
-                      <div>
-                        <div className="font-medium">{product.title} {variant.title !== "Default Title" ? `(${variant.title})` : ''}</div>
-                        <div className="text-xs text-muted-foreground">SKU: {variant.sku}</div>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        variant="secondary" 
-                        onClick={() => handleAddItem(product, variant)}
-                        disabled={selectedItems.some(i => i.variantId === variant.id)}
-                      >
-                        Añadir
-                      </Button>
-                    </div>
-                  ))
-                ))}
-                {filteredProducts.length === 0 && (
-                  <div className="p-4 text-center text-sm text-muted-foreground">No se encontraron productos.</div>
-                )}
-              </div>
-            )}
           </div>
         </div>
+      </div>
 
-        {/* Right Column: Items */}
-        <div className="md:col-span-2">
-          <div className="bg-card border rounded-xl shadow-sm flex flex-col h-full min-h-[500px]">
-            <div className="p-5 border-b flex justify-between items-center bg-muted/30">
-              <h3 className="font-semibold text-lg">Requisición de Artículos</h3>
-              <span className="text-sm text-muted-foreground font-medium">{selectedItems.length} artículos</span>
+      <div className="space-y-6">
+        {/* Left Column: Items list & Product search */}
+        
+          <div className="bg-card border rounded-xl shadow-sm flex flex-col min-h-[500px]">
+            <div className="p-5 border-b flex justify-between items-center bg-blue-50/30">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-blue-900">
+                <FileText className="w-5 h-5 text-blue-600" />
+                Requisición de Artículos
+              </h3>
+              <span className="text-sm text-blue-700 font-medium">{selectedItems.length} artículos</span>
             </div>
             
+            <div className="p-5 border-b bg-muted/30 relative">
+               <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Buscar producto (SKU, nombre, código)..." 
+                    className="pl-9 bg-background"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                {searchTerm && (
+                  <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y absolute z-50 left-5 right-5 shadow-xl">
+                    {filteredProducts.map(product => (
+                      product.variants.map(variant => (
+                        <div 
+                          key={variant.id} 
+                          className="p-3 hover:bg-muted/50 flex justify-between items-center text-sm cursor-pointer"
+                          onClick={() => {
+                            const isService = !!product.isService || variant.sku?.startsWith("SER-");
+                            if (isService || !selectedItems.some(i => i.variantId === variant.id)) {
+                              handleAddItem(product, variant);
+                            }
+                          }}
+                        >
+                          <div>
+                            <div className="font-medium text-slate-900">{product.title} {variant.title !== "Default Title" ? `(${variant.title})` : ''}</div>
+                            <div className="text-xs text-slate-500">SKU: {variant.sku}</div>
+                          </div>
+                          {selectedItems.some(i => i.variantId === variant.id) && !variant.sku?.startsWith("SER-") && !product.isService && (
+                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">Agregado</span>
+                          )}
+                        </div>
+                      ))
+                    ))}
+                    {filteredProducts.length === 0 && (
+                      <div className="p-3 text-sm text-muted-foreground text-center">No se encontraron productos</div>
+                    )}
+                  </div>
+                )}
+            </div>
+
             <div className="flex-1 p-5 overflow-y-auto space-y-3">
               {selectedItems.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
@@ -329,10 +363,22 @@ export default function NuevaOrdenCompraPage() {
                 </div>
               ) : (
                 selectedItems.map(item => (
-                  <div key={item.variantId} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-background gap-4 shadow-sm">
+                  <div key={item.lineKey || item.variantId} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-background gap-4 shadow-sm">
                     <div className="flex-1">
-                      <p className="font-bold">{item.productName}</p>
-                      {item.variantTitle && <p className="text-sm text-muted-foreground">{item.variantTitle}</p>}
+                      {item.isService ? (
+                        <textarea
+                          value={item.description || ""}
+                          onChange={(e) => updateItem(item.lineKey || item.variantId, 'description', e.target.value)}
+                          placeholder="Descripción del servicio..."
+                          className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
+                          rows={2}
+                        />
+                      ) : (
+                        <>
+                          <p className="font-bold">{item.productName}</p>
+                          {item.variantTitle && <p className="text-sm text-muted-foreground">{item.variantTitle}</p>}
+                        </>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex flex-col gap-1">
@@ -344,7 +390,7 @@ export default function NuevaOrdenCompraPage() {
                             min={0}
                             step="0.01"
                             value={item.unitCost}
-                            onChange={(e) => updateItem(item.variantId, 'unitCost', parseFloat(e.target.value) || 0)}
+                            onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitCost', parseFloat(e.target.value) || 0)}
                             className="w-24 pl-6 text-right font-medium"
                           />
                         </div>
@@ -355,7 +401,7 @@ export default function NuevaOrdenCompraPage() {
                           type="number" 
                           min={1} 
                           value={item.quantity}
-                          onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value) || 1)}
+                          onChange={(e) => updateItem(item.lineKey || item.variantId, 'quantity', parseInt(e.target.value) || 1)}
                           className="w-20 text-center font-bold"
                         />
                       </div>
@@ -363,7 +409,7 @@ export default function NuevaOrdenCompraPage() {
                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Subtotal</label>
                         <p className="font-bold text-indigo-700">${(item.quantity * item.unitCost).toLocaleString('es-MX', {minimumFractionDigits:2})}</p>
                       </div>
-                      <Button variant="ghost" size="icon" className="text-destructive mt-4 sm:mt-0" onClick={() => removeItem(item.variantId)}>
+                      <Button variant="ghost" size="icon" className="text-destructive mt-4 sm:mt-0" onClick={() => removeItem(item.lineKey || item.variantId)}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -371,24 +417,36 @@ export default function NuevaOrdenCompraPage() {
                 ))
               )}
             </div>
+          </div>
+        
 
-            <div className="p-5 border-t bg-muted/30 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div className="flex flex-col">
-                <span className="text-sm text-muted-foreground font-medium">Total de la Orden</span>
-                <span className="text-2xl font-black text-indigo-700">${totalCost.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+        {/* Right Column: Totals & Actions */}
+        
+          <div className="bg-card border rounded-xl shadow-sm p-5 space-y-4">
+            <h3 className="font-semibold text-base border-b pb-2 flex items-center gap-2 text-slate-800">
+              Resumen de Compra
+            </h3>
+
+            <div className="space-y-3">
+              <div className="pt-4 space-y-2 text-sm">
+                <div className="flex justify-between text-lg font-bold text-slate-800">
+                  <span>Total Estimado</span>
+                  <span className="font-black text-indigo-700">${totalCost.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
               </div>
+              
               <Button 
                 size="lg" 
                 onClick={handleSave} 
                 disabled={saving || selectedItems.length === 0 || !vendorId || !locationId || !accountId}
-                className="gap-2 px-8"
+                className="w-full gap-2 bg-blue-600 hover:bg-blue-700 mt-6 text-white"
               >
-                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
-                Generar Orden
+                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                Generar Orden de Compra
               </Button>
             </div>
           </div>
-        </div>
+        
 
       </div>
     </div>

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { doc, getDoc, updateDoc, collection, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Package, ArrowLeft, Save, Edit2, Trash2, Search, Truck, FileText, CheckCircle2, XCircle, DollarSign, Percent, MessageSquare } from "lucide-react";
+import { Loader2, Package, ArrowLeft, Save, Edit2, Trash2, Search, Truck, FileText, CheckCircle2, XCircle, DollarSign, Percent, MessageSquare, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -27,6 +27,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [canceling, setCanceling] = useState(false);
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
   
   const [products, setProducts] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -125,31 +126,35 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     }
   };
 
-  const updateItem = (variantId: string, field: string, value: any) => {
+  const updateItem = (lineKeyOrVariantId: string, field: string, value: any) => {
     setIsItemsModified(true);
     setOrder((prev: any) => ({
       ...prev,
-      items: prev.items.map((item: any) => 
-        item.variantId === variantId ? { ...item, [field]: value } : item
-      )
+      items: prev.items.map((item: any) => {
+        const matchKey = item.lineKey || item.variantId;
+        return matchKey === lineKeyOrVariantId ? { ...item, [field]: value } : item;
+      })
     }));
   };
 
-  const removeItem = (variantId: string) => {
+  const removeItem = (lineKeyOrVariantId: string) => {
     setIsItemsModified(true);
     setOrder((prev: any) => ({
       ...prev,
-      items: prev.items.filter((item: any) => item.variantId !== variantId)
+      items: prev.items.filter((item: any) => (item.lineKey || item.variantId) !== lineKeyOrVariantId)
     }));
   };
 
   const handleAddProduct = (product: any, variant: any) => {
     setIsItemsModified(true);
-    const exists = order.items.find((i: any) => i.variantId === variant.id);
-    if (!exists) {
+    const isService = !!product.isService || variant.sku?.startsWith("SER-");
+    
+    if (isService) {
+      const lineKey = crypto.randomUUID();
       setOrder((prev: any) => ({
         ...prev,
-        items: [...prev.items, {
+        items: [...(prev.items || []), {
+          lineKey,
           productId: product.id,
           variantId: variant.id,
           productName: product.title,
@@ -158,12 +163,38 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
           unitPrice: variant.price || 0,
           discountPercentage: 0,
           imageUrl: product.images?.[0]?.src || "",
-          isService: !!product.isService,
-          description: product.isService ? (product.bodyHtml || product.title || "") : "",
+          isService: true,
+          description: product.bodyHtml || product.title || "",
           comment: "",
           showComment: false
         }]
       }));
+    } else {
+      const exists = order.items?.find((i: any) => i.variantId === variant.id);
+      if (!exists) {
+        setOrder((prev: any) => ({
+          ...prev,
+          items: [...(prev.items || []), {
+            productId: product.id,
+            variantId: variant.id,
+            productName: product.title,
+            variantTitle: variant.title !== "Default Title" ? variant.title : "",
+            quantity: 1,
+            unitPrice: variant.price || 0,
+            discountPercentage: 0,
+            imageUrl: product.images?.[0]?.src || "",
+            isService: false,
+            description: "",
+            comment: "",
+            showComment: false
+          }]
+        }));
+      } else {
+        setOrder((prev: any) => ({
+          ...prev,
+          items: prev.items.map((item: any) => item.variantId === variant.id ? { ...item, quantity: item.quantity + 1 } : item)
+        }));
+      }
     }
     setProductSearch("");
   };
@@ -264,30 +295,54 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         <div className="flex items-center gap-3">
           {order.status === 'por_surtir' && (
             <>
-              {isEditing ? (
-                <>
-                  <Button variant="ghost" onClick={() => { setIsEditing(false); window.location.reload(); }} disabled={saving}>Cancelar</Button>
-                  <Button onClick={handleSave} disabled={saving} className="gap-2">
-                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar Cambios
+              {isEditing ? null : (
+                <div className="relative">
+                  <Button 
+                    onClick={() => setIsActionsOpen(!isActionsOpen)} 
+                    className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm"
+                  >
+                    Acciones <ChevronDown className="w-4 h-4" />
                   </Button>
-                </>
-              ) : (
-                <>
-                  <Button variant="destructive" onClick={handleCancel} disabled={canceling} className="gap-2">
-                    {canceling ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />} Cancelar Pedido
-                  </Button>
-                  <Button variant="outline" onClick={() => setIsEditing(true)} className="gap-2">
-                    <Edit2 className="w-4 h-4" /> Editar Pedido
-                  </Button>
-                  <Button onClick={() => setIsProcessModalOpen(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
-                    <Truck className="w-4 h-4" /> Facturar / Procesar
-                  </Button>
-                  {(order.paidAmount || 0) < displayTotal - 0.01 && (
-                    <Button onClick={() => setIsPaymentModalOpen(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-                      <DollarSign className="w-4 h-4" /> Registrar Pago
-                    </Button>
+                  {isActionsOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsActionsOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-56 bg-white border rounded-xl shadow-xl py-2 z-50 animate-in fade-in-50 slide-in-from-top-2 duration-100">
+                        <button 
+                          onClick={() => { setIsActionsOpen(false); setIsEditing(true); }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm font-medium text-slate-700 flex items-center gap-2"
+                        >
+                          <Edit2 className="w-4 h-4 text-indigo-500" />
+                          Editar Pedido
+                        </button>
+                        <button 
+                          onClick={() => { setIsActionsOpen(false); setIsProcessModalOpen(true); }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm font-medium text-slate-700 flex items-center gap-2"
+                        >
+                          <Truck className="w-4 h-4 text-emerald-500" />
+                          Facturar / Procesar
+                        </button>
+                        {(order.paidAmount || 0) < displayTotal - 0.01 && (
+                          <button 
+                            onClick={() => { setIsActionsOpen(false); setIsPaymentModalOpen(true); }}
+                            className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm font-medium text-slate-700 flex items-center gap-2"
+                          >
+                            <DollarSign className="w-4 h-4 text-amber-500" />
+                            Registrar Pago
+                          </button>
+                        )}
+                        <div className="border-t my-1" />
+                        <button 
+                          onClick={() => { setIsActionsOpen(false); handleCancel(); }}
+                          disabled={canceling}
+                          className="w-full text-left px-4 py-2 hover:bg-red-50 text-sm font-medium text-red-600 flex items-center gap-2 disabled:opacity-50"
+                        >
+                          {canceling ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4 text-red-500" />}
+                          Cancelar Pedido
+                        </button>
+                      </div>
+                    </>
                   )}
-                </>
+                </div>
               )}
             </>
           )}
@@ -304,19 +359,53 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         </div>
       </div>
 
-      <div className="bg-white border rounded-xl shadow-sm p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-lg border mb-4">
+      {/* Top Header Card: Datos Generales */}
+      <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
+        <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
+          <FileText className="w-4 h-4 text-indigo-600" />
+          Información General del Pedido
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">Estatus</p>
-            <p className="font-bold capitalize text-slate-900">
-              {order.status === 'por_surtir' ? 'Activo' : order.status.replace('_', ' ')}
+            <label className="text-xs font-semibold text-slate-500 uppercase">Cliente</label>
+            <p className="font-bold text-slate-900 mt-1">{order.clientName || 'Sin Cliente'}</p>
+            {order.rfc && <p className="text-[10px] text-slate-500 mt-0.5">RFC: {order.rfc}</p>}
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase">Referencia</label>
+            <p className="font-bold text-indigo-700 mt-1">
+              {order.quoteNumber ? `Cotización ${order.quoteNumber}` : 'Directo / Sin cotización'}
             </p>
           </div>
+
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">Proyecto Vinculado</p>
+            <label className="text-xs font-semibold text-slate-500 uppercase">Estatus del Pedido</label>
+            <div className="mt-1">
+              {order.status === 'por_surtir' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                  Por Surtir
+                </span>
+              )}
+              {order.status === 'cancelado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+                  Cancelado
+                </span>
+              )}
+              {order.status === 'remisionado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Remisionado
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase">Proyecto Vinculado</label>
             {isEditing ? (
               <select 
-                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-sm shadow-sm"
+                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
                 value={order.projectId || ""}
                 onChange={e => setOrder({...order, projectId: e.target.value})}
               >
@@ -326,232 +415,284 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                 ))}
               </select>
             ) : (
-              <p className="font-bold text-indigo-700">{order.projectName || 'Ninguno'}</p>
+              <p className="font-bold text-indigo-700 mt-1">{order.projectName || 'Ninguno'}</p>
             )}
           </div>
         </div>
-        <h3 className="font-bold text-lg border-b pb-2 flex items-center gap-2">
-          <Package className="w-5 h-5 text-slate-400" /> Partidas del Pedido
-        </h3>
+      </div>
 
-        <div className="space-y-3">
-          {order.items?.map((item: any, idx: number) => (
-            <div key={item.variantId ? `${item.variantId}-${idx}` : idx} className={`flex flex-col border p-3 rounded-lg text-sm gap-3 ${isEditing ? 'bg-slate-50 border-blue-200' : 'bg-white shadow-sm'}`}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex-1 flex items-start gap-3">
-                  <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
-                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
+      <div className="space-y-6">
+        {/* Left Column: Items */}
+        
+          <div className="bg-card border rounded-xl shadow-sm flex flex-col min-h-[500px]">
+            <div className="p-5 border-b flex justify-between items-center bg-blue-50/30">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-blue-900">
+                <Package className="w-5 h-5 text-blue-600" /> Partidas del Pedido
+              </h3>
+              <span className="text-sm text-blue-700 font-medium">{(order.items || []).length} partidas</span>
+            </div>
+
+            {isEditing && (
+              <div className="p-5 border-b bg-muted/30 relative">
+                <h4 className="text-xs font-bold text-indigo-900 uppercase mb-2">Agregar más productos al pedido</h4>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Buscar por nombre, SKU o código de barras..." 
+                    className="pl-9 bg-background"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                  />
+                </div>
+                {productSearch && (
+                  <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y absolute z-50 left-5 right-5 shadow-xl">
+                    {getFilteredProducts().map(product => (
+                      product.variants?.map((variant: any) => (
+                        <div 
+                          key={variant.id} 
+                          className="p-3 hover:bg-muted/50 flex justify-between items-center text-sm cursor-pointer"
+                          onClick={() => {
+                            const isService = !!product.isService || variant.sku?.startsWith("SER-");
+                            if (isService || !order.items?.some((i: any) => i.variantId === variant.id)) {
+                              handleAddProduct(product, variant);
+                            }
+                          }}
+                        >
+                          <div>
+                            <div className="font-medium text-slate-900">{product.title} {variant.title !== "Default Title" ? `(${variant.title})` : ''}</div>
+                            <div className="text-xs text-slate-500">Stock actual: {variant.stock || 0} | Precio: ${variant.price}</div>
+                          </div>
+                          {order.items?.some((i: any) => i.variantId === variant.id) && !variant.sku?.startsWith("SER-") && !product.isService && (
+                            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Agregado</span>
+                          )}
+                        </div>
+                      ))
+                    ))}
+                    {getFilteredProducts().length === 0 && (
+                      <div className="p-3 text-sm text-muted-foreground text-center">No se encontraron productos</div>
                     )}
                   </div>
-                  <div className="flex-1">
-                    {isEditing ? (
-                      item.isService ? (
-                        <textarea
-                          value={item.description || ""}
-                          onChange={(e) => updateItem(item.variantId, 'description', e.target.value)}
-                          placeholder="Descripción del servicio..."
-                          className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
-                          rows={2}
-                        />
-                      ) : (
-                        <>
-                          <p className="font-bold">{item.productName}</p>
-                          {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
-                        </>
-                      )
-                    ) : (
-                      item.isService ? (
-                        <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
-                      ) : (
-                        <>
-                          <p className="font-bold">{item.productName}</p>
-                          {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
-                        </>
-                      )
-                    )}
+                )}
+              </div>
+            )}
 
-                    {/* Comment in view mode */}
-                    {!isEditing && item.comment && (
-                      <p className="text-xs text-indigo-600 font-medium flex items-start gap-1 mt-1 bg-indigo-50/50 p-1.5 rounded border border-indigo-100/50 whitespace-pre-wrap">
-                        <MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                        <span>{item.comment}</span>
-                      </p>
+            <div className="flex-1 p-5 overflow-y-auto space-y-3">
+              {(!order.items || order.items.length === 0) ? (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+                  <Package className="w-12 h-12 mb-3 opacity-20" />
+                  <p>No hay productos en este pedido.</p>
+                </div>
+              ) : (
+                order.items.map((item: any, idx: number) => (
+                  <div key={item.lineKey || (item.variantId ? `${item.variantId}-${idx}` : idx)} className="flex flex-col p-4 border rounded-lg bg-background gap-3 shadow-sm relative">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex-1 flex items-start gap-3">
+                        <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                          ) : (
+                            <Package className="w-6 h-6 m-auto mt-3 text-slate-300" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          {isEditing ? (
+                            item.isService ? (
+                              <textarea
+                                value={item.description || ""}
+                                onChange={(e) => updateItem(item.lineKey || item.variantId, 'description', e.target.value)}
+                                placeholder="Descripción del servicio..."
+                                className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
+                                rows={2}
+                              />
+                            ) : (
+                              <>
+                                <p className="font-bold">{item.productName}</p>
+                                {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
+                              </>
+                            )
+                          ) : (
+                            item.isService ? (
+                              <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
+                            ) : (
+                              <>
+                                <p className="font-bold">{item.productName}</p>
+                                {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
+                              </>
+                            )
+                          )}
+
+                          {!isEditing && item.comment && (
+                            <p className="text-xs text-indigo-600 font-medium flex items-start gap-1 mt-1 bg-indigo-50/50 p-1.5 rounded border border-indigo-100/50 whitespace-pre-wrap">
+                              <MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span>{item.comment}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {isEditing ? (
+                        <div className="flex flex-wrap items-center gap-3 justify-end">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cant.</label>
+                            <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.lineKey || item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-20 text-center font-bold" />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Precio U.</label>
+                            <Input type="number" step={0.01} value={item.unitPrice} onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', parseFloat(e.target.value)||0)} className="w-24 text-right font-medium" />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Desc %</label>
+                            <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.lineKey || item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-20 text-center text-emerald-600 font-bold" />
+                          </div>
+                          <div className="flex flex-col gap-1 text-right min-w-[80px]">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
+                            <p className="font-bold text-slate-800">
+                              ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 mt-4 sm:mt-0">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className={`${item.comment || item.showComment ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700' : 'text-muted-foreground hover:text-indigo-600'}`}
+                              onClick={() => updateItem(item.lineKey || item.variantId, 'showComment', !item.showComment)}
+                              title="Agregar nota/comentario"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => removeItem(item.lineKey || item.variantId)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-right flex items-center gap-6">
+                          <div className="text-slate-500 text-xs">
+                            <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                            {item.discountPercentage > 0 && (
+                              <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
+                            )}
+                          </div>
+                          <div className="font-bold text-slate-950 min-w-[100px] text-base">
+                            ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {isEditing && (item.showComment || item.comment) && (
+                      <div className="pt-2 border-t border-slate-100">
+                        <Input
+                          placeholder="Escribe una nota o comentario sobre esta partida..."
+                          value={item.comment || ""}
+                          onChange={(e) => updateItem(item.lineKey || item.variantId, 'comment', e.target.value)}
+                          className="text-xs bg-muted/30 border-slate-200"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        
+
+        {/* Right Column: Totals & Actions */}
+        
+          <div className="bg-card border rounded-xl shadow-sm p-5 space-y-4">
+            <h3 className="font-semibold text-base border-b pb-2 flex items-center gap-2 text-slate-800">
+              Resumen y Totales
+            </h3>
+
+            <div className="space-y-3">
+              {isEditing && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                    <Percent className="w-3.5 h-3.5"/> Descuento Global
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                      value={order.globalDiscountType || "none"}
+                      onChange={(e) => handleGlobalDiscountTypeChange(e.target.value)}
+                    >
+                      <option value="none">Ninguno</option>
+                      <option value="percentage">Porcentaje (%)</option>
+                      <option value="fixed_amount">Monto ($)</option>
+                    </select>
+                    {(order.globalDiscountType && order.globalDiscountType !== "none") && (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={order.globalDiscountType === "percentage" ? 100 : undefined}
+                        step={order.globalDiscountType === "percentage" ? 1 : 0.01}
+                        placeholder={order.globalDiscountType === "percentage" ? "10" : "100.00"}
+                        value={order.globalDiscountValue !== undefined ? order.globalDiscountValue : ""}
+                        onChange={(e) => handleGlobalDiscountValueChange(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="h-9 text-sm w-28"
+                      />
                     )}
                   </div>
                 </div>
-                
-                {isEditing ? (
-                  <div className="flex flex-wrap items-center gap-3 justify-end">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] text-slate-500 font-bold uppercase">Cant.</label>
-                      <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-20 h-9 text-center bg-white" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] text-slate-500 font-bold uppercase">Precio U.</label>
-                      <Input type="number" step={0.01} value={item.unitPrice} onChange={(e) => updateItem(item.variantId, 'unitPrice', parseFloat(e.target.value)||0)} className="w-28 h-9 text-right bg-white" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] text-emerald-600 font-bold uppercase">Desc %</label>
-                      <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-20 h-9 text-center text-emerald-600 bg-white" />
-                    </div>
-                    <div className="flex flex-col gap-1 text-right min-w-[90px]">
-                      <label className="text-[10px] text-slate-500 font-bold uppercase">Subtotal</label>
-                      <span className="h-9 flex items-center justify-end font-bold text-slate-900 pr-1">
-                        ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 mt-4">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className={`h-9 w-9 ${item.comment || item.showComment ? 'text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700' : 'text-muted-foreground hover:text-indigo-600 bg-white'}`}
-                        onClick={() => updateItem(item.variantId, 'showComment', !item.showComment)}
-                        title="Agregar nota/comentario"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => removeItem(item.variantId)} className="h-9 w-9 text-red-500 bg-white hover:bg-red-50"><Trash2 className="w-4 h-4" /></Button>
-                    </div>
+              )}
+
+              <div className="pt-4 space-y-2 border-t mt-4 text-sm">
+                <div className="flex justify-between text-slate-500">
+                  <span>Subtotal</span>
+                  <span className="font-semibold">${displaySubtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+                {displayDiscount > 0 && (
+                  <div className="flex justify-between text-slate-500">
+                    <span>Descuento</span>
+                    <span className="font-semibold text-emerald-600">-${displayDiscount.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
                   </div>
-                ) : (
-                  <div className="text-right flex items-center gap-6">
-                    <div className="text-slate-500 text-xs">
-                      <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
-                      {item.discountPercentage > 0 && (
-                        <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
-                      )}
+                )}
+                <div className="flex justify-between text-slate-500">
+                  <span>IVA (16%)</span>
+                  <span className="font-semibold">${displayTax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+                <div className="flex justify-between text-lg pt-2 border-t mt-2 font-bold text-slate-800">
+                  <span>TOTAL</span>
+                  <span className="font-black text-blue-700">${displayTotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+
+                {(order.paidAmount || 0) > 0 && (
+                  <div className="pt-2 mt-2 border-t border-dashed space-y-2">
+                    <div className="flex justify-between text-emerald-600 font-semibold">
+                      <span>Pagado</span>
+                      <span>${(order.paidAmount || 0).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
                     </div>
-                    <div className="font-bold text-slate-950 min-w-[100px] text-base">
-                      ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                    <div className="flex justify-between text-rose-600 font-bold">
+                      <span>Saldo Pendiente</span>
+                      <span>${Math.max(0, displayTotal - (order.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
                     </div>
                   </div>
                 )}
               </div>
-              {isEditing && (item.showComment || item.comment) && (
-                <div className="pt-2 border-t border-slate-200">
-                  <Input
-                    placeholder="Escribe una nota o comentario sobre esta partida..."
-                    value={item.comment || ""}
-                    onChange={(e) => updateItem(item.variantId, 'comment', e.target.value)}
-                    className="text-xs bg-white border-slate-200 h-9"
-                  />
+
+              {isEditing && (
+                <div className="pt-4 flex flex-col gap-2">
+                  <Button 
+                    size="lg" 
+                    onClick={handleSave} 
+                    disabled={saving}
+                    className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
+                  >
+                    {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                    Guardar Cambios
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => { setIsEditing(false); window.location.reload(); }}
+                    disabled={saving}
+                    className="w-full"
+                  >
+                    Cancelar
+                  </Button>
                 </div>
               )}
             </div>
-          ))}
-        </div>
-
-        {isEditing && (
-          <div className="mt-4 p-4 border rounded-lg bg-indigo-50/50 relative">
-            <h4 className="text-xs font-bold text-indigo-900 uppercase mb-2">Agregar más productos al pedido</h4>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Buscar por nombre, SKU o código de barras..." 
-                className="pl-9 bg-white"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-              />
-            </div>
-            {productSearch && (
-              <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-64 overflow-y-auto bg-white divide-y z-50 shadow-2xl">
-                {getFilteredProducts().map(product => (
-                  product.variants?.map((variant:any) => (
-                    <div 
-                      key={variant.id} 
-                      className="p-3 hover:bg-slate-50 flex justify-between items-center text-sm cursor-pointer"
-                      onClick={() => {
-                        if (!order.items?.some((i:any) => i.variantId === variant.id)) {
-                          handleAddProduct(product, variant);
-                        }
-                      }}
-                    >
-                      <div>
-                        <div className="font-medium text-slate-900">{product.title} {variant.title !== "Default Title" ? `(${variant.title})` : ''}</div>
-                        <div className="text-xs text-slate-500">Stock actual: {variant.stock || 0} | Precio: ${variant.price}</div>
-                      </div>
-                      {order.items?.some((i:any) => i.variantId === variant.id) && (
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Agregado</span>
-                      )}
-                    </div>
-                  ))
-                ))}
-                {getFilteredProducts().length === 0 && (
-                  <div className="p-4 text-center text-sm text-slate-500">No se encontraron productos.</div>
-                )}
-              </div>
-            )}
           </div>
-        )}
-
-        <div className="flex justify-end pt-6 border-t mt-6">
-          <div className="w-72 space-y-2 text-sm bg-slate-50 p-4 rounded-lg border">
-            {isEditing && (
-              <div className="space-y-1 pb-3 border-b border-dashed mb-3">
-                <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
-                   <Percent className="w-3 h-3"/> Descuento Global
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    className="flex h-8 w-24 rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-                    value={order.globalDiscountType || "none"}
-                    onChange={(e) => handleGlobalDiscountTypeChange(e.target.value)}
-                  >
-                    <option value="none">Ninguno</option>
-                    <option value="percentage">Porcentaje (%)</option>
-                    <option value="fixed_amount">Monto ($)</option>
-                  </select>
-                  {(order.globalDiscountType && order.globalDiscountType !== "none") && (
-                    <Input
-                      type="number"
-                      min={0}
-                      max={order.globalDiscountType === "percentage" ? 100 : undefined}
-                      step={order.globalDiscountType === "percentage" ? 1 : 0.01}
-                      placeholder={order.globalDiscountType === "percentage" ? "10" : "100.00"}
-                      value={order.globalDiscountValue !== undefined ? order.globalDiscountValue : ""}
-                      onChange={(e) => handleGlobalDiscountValueChange(Math.max(0, parseFloat(e.target.value) || 0))}
-                      className="h-8 text-sm"
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-between text-slate-500">
-              <span>Subtotal</span>
-              <span>${displaySubtotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-            </div>
-            {displayDiscount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium">
-                <span>Descuento</span>
-                <span>-${displayDiscount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-slate-500">
-              <span>IVA (16%)</span>
-              <span>${displayTax?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-            </div>
-            <div className="flex justify-between font-black text-xl pt-2 border-t mt-2 text-slate-900">
-              <span>Total</span>
-              <span className="text-indigo-700">${displayTotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-            </div>
-            {(order.paidAmount || 0) > 0 && (
-              <>
-                <div className="flex justify-between text-emerald-600 font-medium pt-2">
-                  <span>Pagado</span>
-                  <span>${(order.paidAmount || 0).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-                </div>
-                <div className="flex justify-between text-rose-600 font-bold border-t mt-2 pt-2">
-                  <span>Saldo Pendiente</span>
-                  <span>${Math.max(0, displayTotal - (order.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        
       </div>
 
       <ProcessOrderModal 

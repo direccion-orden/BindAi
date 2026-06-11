@@ -201,6 +201,12 @@ service cloud.firestore {
       match /journal_entries/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /news/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /metrics/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
     }
     
     // Por seguridad, cualquier otra colecciÃƒÆ’Ã‚Â³n global queda bloqueada

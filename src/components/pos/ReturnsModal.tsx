@@ -120,13 +120,14 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
     setRefundMethod(null);
 
     try {
-      const term = searchTerm.trim().toLowerCase();
+      const originalTerm = searchTerm.trim().toLowerCase();
+      const term = originalTerm.replace(/'/g, "-");
       
       if (!companyId) throw new Error("No company ID");
       
       // Intentar búsqueda directa por ID de Remisión
       if (term.length > 15 && !term.includes(" ")) {
-        const remissionRef = doc(db, "companies", companyId, "remisiones", searchTerm.trim());
+        const remissionRef = doc(db, "companies", companyId, "remisiones", term);
         const remissionSnap = await getDoc(remissionRef);
         
         if (remissionSnap.exists()) {
@@ -142,7 +143,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
         getDocs(query(collection(db, "companies", companyId, "clients"), where("phone", "==", searchTerm.trim()))),
         getDocs(query(collection(db, "companies", companyId, "clients"), where("email", "==", searchTerm.trim().toLowerCase())))
       ];
-      if (cleanPhone && cleanPhone !== searchTerm.trim() && cleanPhone.length >= 8) {
+      if (cleanPhone && cleanPhone !== originalTerm && cleanPhone.length >= 8) {
         clientQueries.push(
           getDocs(query(collection(db, "companies", companyId, "clients"), where("phone", "==", cleanPhone)))
         );
@@ -226,9 +227,14 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
           const name = (s.client?.name || "").toLowerCase();
           
           return folio === term.toUpperCase() || 
+                 folio === originalTerm.toUpperCase() ||
                  remNum === formattedTerm || 
+                 remNum === originalTerm.toUpperCase() ||
                  orderNum === formattedPosTerm ||
+                 orderNum === `POS-${originalTerm.toUpperCase()}` ||
                  s.id.toLowerCase() === term || 
+                 s.id.toLowerCase() === originalTerm ||
+                 name.includes(originalTerm) ||
                  name.includes(term) ||
                  clientIds.includes(s.clientId);
         });

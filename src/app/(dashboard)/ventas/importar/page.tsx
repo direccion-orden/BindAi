@@ -33,6 +33,7 @@ interface ImportLog {
 export default function ImportarHistorialPage() {
   const router = useRouter();
   const { companyId } = useAuth();
+  const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
   
   // State for files
   const [cotizacionesFile, setCotizacionesFile] = useState<File | null>(null);
@@ -384,8 +385,8 @@ export default function ImportarHistorialPage() {
                 const totalVal = getFlexibleValue(line, ["total", "monto", "amount", "importetotal", "importe", "totalamount"]);
                 const subtotalVal = getFlexibleValue(line, ["subtotal", "subtotalamount", "submonto"]);
                 
-                const totalLine = parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0;
-                const subtotalLine = parseFloat(String(subtotalVal).replace(/[^0-9.-]/g, "")) || 0;
+                const totalLine = round2(parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0);
+                const subtotalLine = round2(parseFloat(String(subtotalVal).replace(/[^0-9.-]/g, "")) || 0);
                 calculatedSubtotal += subtotalLine;
                 calculatedTotal += totalLine;
 
@@ -447,9 +448,9 @@ export default function ImportarHistorialPage() {
                 quoteNumber: folio,
                 clientName: clientName,
                 clientId: clientId || null,
-                totalAmount: calculatedTotal,
-                subtotal: calculatedSubtotal,
-                tax: calculatedTotal - calculatedSubtotal,
+                totalAmount: round2(calculatedTotal),
+                subtotal: round2(calculatedSubtotal),
+                tax: round2(calculatedTotal - calculatedSubtotal),
                 status: status,
                 createdAt: isoDate,
                 createdBy: String(getFlexibleValue(firstLine, ["vendedor", "empleado", "vendedorasignado", "agent", "salesagent", "user", "usuario", "creadoby", "creadopor"]) || "Migración Automática").trim(),
@@ -644,7 +645,7 @@ export default function ImportarHistorialPage() {
               }
 
               const totalAmountVal = getFlexibleValue(latestRecord, ["total", "monto", "amount", "importetotal", "importe", "totalamount"]);
-              const totalAmount = parseFloat(String(totalAmountVal).replace(/[^0-9.-]/g, "")) || 0;
+              const totalAmount = round2(parseFloat(String(totalAmountVal).replace(/[^0-9.-]/g, "")) || 0);
               
               // Build Items array from detailed CSV lines
               const items: any[] = [];
@@ -652,7 +653,7 @@ export default function ImportarHistorialPage() {
 
               for (const line of activeLines) {
                 const quantity = parseFloat(String(getFlexibleValue(line, ["cantidad", "quantity", "cant"])).replace(/[^0-9.-]/g, "")) || 1;
-                const unitPrice = parseFloat(String(getFlexibleValue(line, ["precio", "unitprice", "preciounitario", "rate"])).replace(/[^0-9.-]/g, "")) || 0;
+                const unitPrice = round2(parseFloat(String(getFlexibleValue(line, ["precio", "unitprice", "preciounitario", "rate"])).replace(/[^0-9.-]/g, "")) || 0);
                 calculatedSubtotal += quantity * unitPrice;
               }
 
@@ -668,7 +669,7 @@ export default function ImportarHistorialPage() {
                 const productName = String(getFlexibleValue(line, ["producto", "product", "articulo", "concepto", "descripcion", "description", "item"]) || "Concepto de Venta").trim();
                 const sku = String(getFlexibleValue(line, ["codigo", "code", "sku", "barcode", "upc"]) || "").trim();
                 const qty = parseFloat(String(getFlexibleValue(line, ["cantidad", "quantity", "cant"])).replace(/[^0-9.-]/g, "")) || 1;
-                const unitPrice = parseFloat(String(getFlexibleValue(line, ["precio", "unitprice", "preciounitario", "rate"])).replace(/[^0-9.-]/g, "")) || 0;
+                const unitPrice = round2(parseFloat(String(getFlexibleValue(line, ["precio", "unitprice", "preciounitario", "rate"])).replace(/[^0-9.-]/g, "")) || 0);
 
                 // Resolve Product on the fly
                 let product = null;
@@ -708,10 +709,10 @@ export default function ImportarHistorialPage() {
                 });
               }
 
-              const subtotal = calculatedSubtotal;
-              const totalDiscount = subtotal * (orderDiscountPercentage / 100);
-              const taxableSubtotal = subtotal - totalDiscount;
-              const tax = Math.max(0, totalAmount - taxableSubtotal);
+              const subtotal = round2(calculatedSubtotal);
+              const totalDiscount = round2(subtotal * (orderDiscountPercentage / 100));
+              const taxableSubtotal = round2(subtotal - totalDiscount);
+              const tax = round2(Math.max(0, totalAmount - taxableSubtotal));
 
               const orderId = `order-${numero}`;
               const ref = doc(db, "companies", companyId, "pedidos", orderId);
@@ -889,9 +890,9 @@ export default function ImportarHistorialPage() {
               const subtotalVal = getFlexibleValue(firstLine, ["subtotal", "subtotalamount", "submonto"]);
               const taxVal = getFlexibleValue(firstLine, ["impuestos", "impuesto", "iva", "tax", "taxes"]);
 
-              const totalAmount = parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0;
-              const subtotal = parseFloat(String(subtotalVal).replace(/[^0-9.-]/g, "")) || (totalAmount / 1.16);
-              const tax = parseFloat(String(taxVal).replace(/[^0-9.-]/g, "")) || (totalAmount - subtotal);
+              const totalAmount = round2(parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0);
+              const subtotal = round2(parseFloat(String(subtotalVal).replace(/[^0-9.-]/g, "")) || (totalAmount / 1.16));
+              const tax = round2(parseFloat(String(taxVal).replace(/[^0-9.-]/g, "")) || (totalAmount - subtotal));
 
               // Build Items array from detailed CSV lines
               const items: any[] = [];
@@ -902,7 +903,7 @@ export default function ImportarHistorialPage() {
 
                 const sku = String(line["Producto_SKU"] || "").trim();
                 const qty = parseFloat(String(line["Producto_Cantidad"] || "").replace(/[^0-9.-]/g, "")) || 0;
-                const unitPrice = parseFloat(String(line["Producto_PrecioUnitario"] || "").replace(/[^0-9.-]/g, "")) || 0;
+                const unitPrice = round2(parseFloat(String(line["Producto_PrecioUnitario"] || "").replace(/[^0-9.-]/g, "")) || 0);
                 const discountPercentage = parseFloat(String(line["Producto_DescuentoPorcentaje"] || "").replace(/[^0-9.-]/g, "")) || 0;
 
                 // Resolve Product on the fly
@@ -1184,7 +1185,7 @@ export default function ImportarHistorialPage() {
               }
 
               const totalVal = getFlexibleValue(record, ["total", "monto", "amount", "montooriginal"]);
-              const amountVal = parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0;
+              const amountVal = round2(parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0);
 
               // Generate deterministic payment ID to avoid duplicates and double increments
               const cleanClient = normalizeKey(clientName);

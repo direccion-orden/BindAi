@@ -136,28 +136,32 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
     }
   };
 
-  const updateItem = (variantId: string, field: string, value: any) => {
+  const updateItem = (lineKeyOrVariantId: string, field: string, value: any) => {
     setEditData((prev: any) => ({
       ...prev,
-      items: prev.items.map((item: any) => 
-        item.variantId === variantId ? { ...item, [field]: value } : item
-      )
+      items: prev.items.map((item: any) => {
+        const matchKey = item.lineKey || item.variantId;
+        return matchKey === lineKeyOrVariantId ? { ...item, [field]: value } : item;
+      })
     }));
   };
 
-  const removeItem = (variantId: string) => {
+  const removeItem = (lineKeyOrVariantId: string) => {
     setEditData((prev: any) => ({
       ...prev,
-      items: prev.items.filter((item: any) => item.variantId !== variantId)
+      items: prev.items.filter((item: any) => (item.lineKey || item.variantId) !== lineKeyOrVariantId)
     }));
   };
 
   const handleAddProduct = (product: any, variant: any) => {
-    const exists = editData.items.find((i: any) => i.variantId === variant.id);
-    if (!exists) {
+    const isService = !!product.isService || variant.sku?.startsWith("SER-");
+    
+    if (isService) {
+      const lineKey = crypto.randomUUID();
       setEditData((prev: any) => ({
         ...prev,
-        items: [...prev.items, {
+        items: [...(prev.items || []), {
+          lineKey,
           productId: product.id,
           variantId: variant.id,
           productName: product.title,
@@ -166,12 +170,38 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
           unitPrice: variant.price || 0,
           discountPercentage: 0,
           imageUrl: product.images?.[0]?.src || "",
-          isService: !!product.isService,
-          description: product.isService ? (product.bodyHtml || product.title || "") : "",
+          isService: true,
+          description: product.bodyHtml || product.title || "",
           comment: "",
           showComment: false
         }]
       }));
+    } else {
+      const exists = editData.items?.find((i: any) => i.variantId === variant.id);
+      if (!exists) {
+        setEditData((prev: any) => ({
+          ...prev,
+          items: [...(prev.items || []), {
+            productId: product.id,
+            variantId: variant.id,
+            productName: product.title,
+            variantTitle: variant.title !== "Default Title" ? variant.title : "",
+            quantity: 1,
+            unitPrice: variant.price || 0,
+            discountPercentage: 0,
+            imageUrl: product.images?.[0]?.src || "",
+            isService: false,
+            description: "",
+            comment: "",
+            showComment: false
+          }]
+        }));
+      } else {
+        setEditData((prev: any) => ({
+          ...prev,
+          items: prev.items.map((item: any) => item.variantId === variant.id ? { ...item, quantity: item.quantity + 1 } : item)
+        }));
+      }
     }
     setProductSearch("");
   };
@@ -320,7 +350,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
             
             <div className="space-y-3">
               {editData.items?.map((item: any, idx: number) => (
-                <div key={item.variantId ? `${item.variantId}-${idx}` : idx} className="flex flex-col bg-white border p-3 rounded-lg text-sm shadow-sm gap-3">
+                <div key={item.lineKey || (item.variantId ? `${item.variantId}-${idx}` : idx)} className="flex flex-col bg-white border p-3 rounded-lg text-sm shadow-sm gap-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex-1 flex items-start gap-3">
                       <div className="w-12 h-12 rounded bg-slate-100 flex-shrink-0 overflow-hidden border">
@@ -335,7 +365,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                           item.isService ? (
                             <textarea
                               value={item.description || ""}
-                              onChange={(e) => updateItem(item.variantId, 'description', e.target.value)}
+                              onChange={(e) => updateItem(item.lineKey || item.variantId, 'description', e.target.value)}
                               placeholder="Descripción del servicio..."
                               className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
                               rows={2}
@@ -371,15 +401,15 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                       <div className="flex flex-wrap items-center gap-3 justify-end">
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] text-slate-500 font-bold uppercase">Cant.</label>
-                          <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-16 h-8 text-center" />
+                          <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.lineKey || item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-16 h-8 text-center" />
                         </div>
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] text-slate-500 font-bold uppercase">Precio U.</label>
-                          <Input type="number" step={0.01} value={item.unitPrice} onChange={(e) => updateItem(item.variantId, 'unitPrice', parseFloat(e.target.value)||0)} className="w-24 h-8 text-right" />
+                          <Input type="number" step={0.01} value={item.unitPrice} onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', parseFloat(e.target.value)||0)} className="w-24 h-8 text-right" />
                         </div>
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] text-emerald-600 font-bold uppercase">Desc %</label>
-                          <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-16 h-8 text-center text-emerald-600" />
+                          <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.lineKey || item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-16 h-8 text-center text-emerald-600" />
                         </div>
                         <div className="flex flex-col gap-1 text-right min-w-[90px]">
                           <label className="text-[10px] text-slate-500 font-bold uppercase">Subtotal</label>
@@ -392,12 +422,12 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                             variant="ghost" 
                             size="icon" 
                             className={`h-8 w-8 ${item.comment || item.showComment ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700' : 'text-muted-foreground hover:text-indigo-600'}`}
-                            onClick={() => updateItem(item.variantId, 'showComment', !item.showComment)}
+                            onClick={() => updateItem(item.lineKey || item.variantId, 'showComment', !item.showComment)}
                             title="Agregar nota/comentario"
                           >
                             <MessageSquare className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => removeItem(item.variantId)} className="h-8 w-8 text-red-500"><Trash2 className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => removeItem(item.lineKey || item.variantId)} className="h-8 w-8 text-red-500"><Trash2 className="w-4 h-4" /></Button>
                         </div>
                       </div>
                     ) : (
@@ -419,7 +449,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                       <Input
                         placeholder="Escribe una nota o comentario sobre esta partida..."
                         value={item.comment || ""}
-                        onChange={(e) => updateItem(item.variantId, 'comment', e.target.value)}
+                        onChange={(e) => updateItem(item.lineKey || item.variantId, 'comment', e.target.value)}
                         className="text-xs bg-slate-50/50 border-slate-200 h-8"
                       />
                     </div>
@@ -447,7 +477,8 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                           key={variant.id} 
                           className="p-3 hover:bg-slate-50 flex justify-between items-center text-sm cursor-pointer"
                           onClick={() => {
-                            if (!editData.items?.some((i:any) => i.variantId === variant.id)) {
+                            const isService = !!product.isService || variant.sku?.startsWith("SER-");
+                            if (isService || !editData.items?.some((i:any) => i.variantId === variant.id)) {
                               handleAddProduct(product, variant);
                             }
                           }}
@@ -456,7 +487,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                             <div className="font-medium text-slate-900">{product.title} {variant.title !== "Default Title" ? `(${variant.title})` : ''}</div>
                             <div className="text-xs text-slate-500">${variant.price}</div>
                           </div>
-                          {editData.items?.some((i:any) => i.variantId === variant.id) && (
+                          {editData.items?.some((i:any) => i.variantId === variant.id) && !variant.sku?.startsWith("SER-") && !product.isService && (
                             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Agregado</span>
                           )}
                         </div>

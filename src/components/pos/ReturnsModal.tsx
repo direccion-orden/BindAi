@@ -105,7 +105,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
   const [success, setSuccess] = useState(false);
 
   const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
   };
 
   const handleSearch = async (e: React.FormEvent) => {

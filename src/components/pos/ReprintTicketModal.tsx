@@ -316,7 +316,7 @@ export function ReprintTicketModal({ onClose }: ReprintTicketModalProps) {
   };
 
   const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
   };
 
   const formatDate = (sale: any) => {

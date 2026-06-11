@@ -295,9 +295,12 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
     finalTaxableSubtotal = round2(finalTaxableSubtotal - legacyGlobalDiscountValue);
   }
   
-  const tax = round2(finalTaxableSubtotal * 0.16);
-  const total = round2(finalTaxableSubtotal + tax);
   const totalDiscount = round2(totals.totalDiscount + legacyGlobalDiscountValue);
+  const total = Math.round(finalTaxableSubtotal * 1.16);
+  const totalDiscountRounded = Math.round(totalDiscount);
+  const finalTaxableSubtotalRounded = Math.round(finalTaxableSubtotal);
+  const tax = total - finalTaxableSubtotalRounded;
+  const subtotalRounded = finalTaxableSubtotalRounded + totalDiscountRounded;
 
   const value = {
     branchId,
@@ -320,9 +323,9 @@ export function POSProvider({ children, companyId }: { children: ReactNode, comp
     setClient,
     cashMode,
     setCashMode,
-    subtotal: totals.subtotal,
-    totalDiscount: totalDiscount,
-    promoDiscountTotal: totals.promoDiscountTotal,
+    subtotal: subtotalRounded,
+    totalDiscount: totalDiscountRounded,
+    promoDiscountTotal: Math.round(totals.promoDiscountTotal),
     tax,
     total,
     appliedPromo: totals.appliedPromo || null,

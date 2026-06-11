@@ -202,7 +202,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const changeToGive = (currentMethod === 'efectivo' && inputAmount > remaining) ? round2(inputAmount - remaining) : 0;
 
   const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
   };
 
   const startRecyclerPayment = async () => {
@@ -260,10 +260,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               console.log("Error during proactive reset:", e);
           }
 
+          const roundedRemaining = Math.round(remaining);
           const response = await fetch('http://localhost:3001/api/session', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ request: 'PayAmount', value: Math.round(remaining * 100) }),
+              body: JSON.stringify({ request: 'PayAmount', value: roundedRemaining * 100 }),
               signal: AbortSignal.timeout(5000)
           });
           
@@ -341,8 +342,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       
                       // Automatically add the payment after a brief delay
                       setTimeout(() => {
-                          const changeToGive = (inserted > remaining) ? round2(inserted - remaining) : 0;
-                          const appliedAmount = round2(inserted - changeToGive);
+                          const roundedTarget = Math.round(remaining);
+                          const appliedAmount = (inserted === roundedTarget) ? remaining : round2(inserted);
                           
                           setPayments(prev => [...prev, {
                             method: 'efectivo',
@@ -1075,7 +1076,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                           </div>
 
                           <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-                              Conecta con el hardware local para cobrar {formatMoney(remaining)} automáticamente.
+                              Conecta con el hardware local para cobrar {formatMoney(Math.round(remaining))} automáticamente.
                           </p>
 
                           <div className="w-full max-w-xs flex flex-col gap-2">
@@ -1085,7 +1086,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                                   className="w-full"
                                   disabled={agentStarting}
                               >
-                                  Iniciar Cobro ({formatMoney(remaining)})
+                                  Iniciar Cobro ({formatMoney(Math.round(remaining))})
                               </Button>
                           </div>
                         </>
@@ -1101,7 +1102,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                           <div className="bg-background border rounded-lg p-4">
                             <p className="text-xs uppercase font-semibold text-muted-foreground mb-1">Efectivo Insertado</p>
                             <p className="text-3xl font-black">{formatMoney(recyclerInserted)}</p>
-                            <p className="text-xs text-muted-foreground mt-2">Restante: {formatMoney(Math.max(0, remaining - recyclerInserted))}</p>
+                            <p className="text-xs text-muted-foreground mt-2">Restante: {formatMoney(Math.max(0, Math.round(remaining) - recyclerInserted))}</p>
                           </div>
                           
                           <Button variant="destructive" onClick={cancelRecyclerPayment} className="w-full">

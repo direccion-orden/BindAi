@@ -358,7 +358,7 @@ export function POSCatalogPanel({ width }: { width?: number }) {
                      <h3 className="font-medium text-xs leading-tight flex-1 line-clamp-2" title={product.title}>{product.title}</h3>
                      <div className="flex items-end justify-between mt-1">
                          <span className="font-bold text-primary text-xs">
-                             {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((product.price || 0) * 1.16)}
+                             {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format((product.price || 0) * 1.16)}
                          </span>
                      </div>
                   </div>
@@ -407,7 +407,7 @@ export function POSCatalogPanel({ width }: { width?: number }) {
                      </div>
                      <div className="flex items-center gap-3">
                        <span className="font-bold text-primary">
-                         {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((v.price || 0) * 1.16)}
+                         {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format((v.price || 0) * 1.16)}
                        </span>
                        <button
                          onClick={() => {

@@ -10,15 +10,15 @@ function CartItemRow({ item }: { item: CartItem }) {
   
   const isService = !!item.product.isService || item.product.tags?.includes('Servicios') || item.product.productType === 'Servicios';
   const price = item.customPrice !== undefined ? item.customPrice : (item.product.price || 0);
-  const totalItemPrice = price * 1.16 * item.quantity;
+  const totalItemPrice = Math.round(price * 1.16 * item.quantity);
   
-  const priceWithTax = price * 1.16;
+  const priceWithTax = Math.round(price * 1.16);
   const [localPriceInput, setLocalPriceInput] = useState<string>("");
 
   useEffect(() => {
     const parsedLocal = parseFloat(localPriceInput);
     if (isNaN(parsedLocal) || Math.abs(parsedLocal - priceWithTax) > 0.001) {
-      setLocalPriceInput(priceWithTax.toFixed(2));
+      setLocalPriceInput(priceWithTax.toFixed(0));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceWithTax]);
@@ -33,7 +33,7 @@ function CartItemRow({ item }: { item: CartItem }) {
   };
 
   const handlePriceBlur = () => {
-    setLocalPriceInput(priceWithTax.toFixed(2));
+    setLocalPriceInput(priceWithTax.toFixed(0));
   };
 
   return (
@@ -53,7 +53,7 @@ function CartItemRow({ item }: { item: CartItem }) {
               )}
           </div>
           <span className="font-bold text-nowrap">
-            {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(totalItemPrice)}
+            {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalItemPrice)}
           </span>
       </div>
       

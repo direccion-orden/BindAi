@@ -160,7 +160,7 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
               <Printer className="w-4 h-4" /> Imprimir Ticket
             </Button>
           )}
-          {remission.status === 'activa' && (
+          {(remission.status === 'activa' || remission.status === 'pagada') && (
             <>
               <Button variant="destructive" onClick={handleCancel} disabled={canceling} className="gap-2">
                 {canceling ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />} Cancelar Remisión
@@ -219,7 +219,12 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 bg-slate-50 p-4 rounded-lg border">
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Estatus</p>
-            <p className="font-bold capitalize">{remission.status}</p>
+            <div className="mt-1">
+              {remission.status === 'activa' && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200"><Truck className="w-3 h-3" /> Activa</span>}
+              {remission.status === 'pagada' && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200"><DollarSign className="w-3 h-3" /> Pagada</span>}
+              {remission.status === 'facturada' && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200"><Receipt className="w-3 h-3" /> Facturada</span>}
+              {remission.status === 'cancelada' && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-bold border border-red-200"><XCircle className="w-3 h-3" /> Cancelada</span>}
+            </div>
           </div>
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Proyecto Vinculado</p>

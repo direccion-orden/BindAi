@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Truck, User, FileText, CheckCircle2, XCircle, Receipt, Plus, Search } from "lucide-react";
+import { Loader2, Truck, User, FileText, CheckCircle2, XCircle, Receipt, Plus, Search, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -182,6 +182,7 @@ export default function RemisionesPage() {
             >
               <option value="all">Todos</option>
               <option value="activa">Activa</option>
+              <option value="pagada">Pagada</option>
               <option value="facturada">Facturada</option>
               <option value="cancelada">Cancelada</option>
             </select>
@@ -297,6 +298,7 @@ export default function RemisionesPage() {
                     </td>
                     <td className="px-6 py-4">
                       {remission.status === 'activa' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200"><CheckCircle2 className="w-3 h-3" /> Activa</span>}
+                      {remission.status === 'pagada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200"><DollarSign className="w-3 h-3" /> Pagada</span>}
                       {remission.status === 'facturada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200"><Receipt className="w-3 h-3" /> Facturada</span>}
                       {remission.status === 'cancelada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 text-xs font-bold border border-red-200"><XCircle className="w-3 h-3" /> Cancelada</span>}
                     </td>

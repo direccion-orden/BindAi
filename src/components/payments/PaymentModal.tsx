@@ -173,8 +173,13 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
       // Optional: Update status if fully paid (For facturas mainly, but we can do it for remisiones too)
       if (newPaidAmount >= totalAmount - 0.01) {
         if (documentType === "factura" || documentType === "remision") {
-          // Si el estatus actual no es cancelado
-          if (document.status !== "cancelada" && document.status !== "cancelado") {
+          // Si el estatus actual no es cancelado ni facturado/facturada
+          if (
+            document.status !== "cancelada" && 
+            document.status !== "cancelado" && 
+            document.status !== "facturada" && 
+            document.status !== "facturado"
+          ) {
             updates.status = "pagada";
           }
         }

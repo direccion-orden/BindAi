@@ -63,7 +63,7 @@ export async function cancelPaymentOperation(companyId: string, paymentId: strin
         if (documentType === "factura") {
           updates.status = docData.facturamaUuid || docData.facturamaId ? "timbrada" : "por_timbrar";
         } else if (documentType === "remision") {
-          updates.status = docData.invoiceNumber || docData.invoiceId ? "facturada" : "activa";
+          updates.status = docData.invoiceNumber || docData.invoiceId || docData.invoiceUuid ? "facturada" : "activa";
         }
       }
       await updateDoc(docRef, updates);
@@ -194,7 +194,12 @@ export async function editPaymentOperation(
 
       if (newPaidAmount >= totalAmount - 0.01) {
         if (originalPayment.documentType === "factura" || originalPayment.documentType === "remision") {
-          if (docData.status !== "cancelada" && docData.status !== "cancelado") {
+          if (
+            docData.status !== "cancelada" && 
+            docData.status !== "cancelado" && 
+            docData.status !== "facturada" && 
+            docData.status !== "facturado"
+          ) {
             updates.status = "pagada";
           }
         }

@@ -244,6 +244,8 @@ export async function POST(req: NextRequest) {
         subtotal: parseFloat(payload.subtotal_price) || 0,
         tax: parseFloat(payload.total_tax) || 0,
         paidAmount: payload.financial_status === "paid" ? parseFloat(payload.total_price) : 0,
+        locationId: "shopify",
+        locationName: "eCOMMERCE",
         status: "activa",
         createdAt: payload.created_at || new Date().toISOString(),
         createdBy: "Shopify Webhook",

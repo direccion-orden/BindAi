@@ -542,6 +542,16 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         }
       }
 
+      // Fetch branch/location name
+      let branchName = "";
+      if (branchId) {
+        const branchDoc = await getDoc(doc(db, "companies", companyId, "locations", branchId));
+        if (branchDoc.exists()) {
+          const bd = branchDoc.data();
+          branchName = bd.name || bd.Name || "";
+        }
+      }
+
       // 1. Generar Remisión a partir de la Venta del POS e impactar Inventario
       const remId = crypto.randomUUID();
       const remNumber = await getNextSequence(companyId, 'remisiones');
@@ -586,6 +596,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         projectId: null,
         projectName: null,
         locationId: branchId || null,
+        locationName: branchName || "",
         status: 'activa',
         createdAt: new Date().toISOString(),
         createdBy: user?.email || "POS",

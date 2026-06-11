@@ -96,6 +96,8 @@ export function ProcessOrderModal({
       totalAmount: round2(order.totalAmount || 0),
       projectId: order.projectId || null,
       projectName: order.projectName || null,
+      locationId: order.locationId || null,
+      locationName: order.locationName || "",
       createdAt: new Date().toISOString(),
       createdBy: order.createdBy,
       status: 'activa'

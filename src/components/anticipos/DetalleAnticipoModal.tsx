@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
+import { useAuth } from "@/context/AuthContext";
 
 interface DetalleAnticipoModalProps {
   anticipo: any;
@@ -16,6 +17,7 @@ interface DetalleAnticipoModalProps {
 }
 
 export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: DetalleAnticipoModalProps) {
+  const { companyId } = useAuth();
   const [reference, setReference] = useState("");
   const [receivedAt, setReceivedAt] = useState("");
   
@@ -34,10 +36,10 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
   }, [anticipo]);
 
   const handleSave = async () => {
-    if (!anticipo) return;
+    if (!anticipo || !companyId) return;
     setIsSaving(true);
     try {
-      const ref = doc(db, "anticipos", anticipo.id);
+      const ref = doc(db, "companies", companyId, "anticipos", anticipo.id);
       await updateDoc(ref, {
         reference,
         receivedAt,
@@ -54,6 +56,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
 
   const handleDeleteAnticipo = async () => {
     if (!confirm("¿Estás seguro de que deseas eliminar permanentemente este anticipo? Esta acción no se puede deshacer.")) return;
+    if (!companyId) return;
     
     setIsUpdatingStatus(true);
     try {
@@ -65,7 +68,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
           console.error("Error al borrar de Storage (puede que no exista el archivo)", storageErr);
         }
       }
-      await deleteDoc(doc(db, "anticipos", anticipo.id));
+      await deleteDoc(doc(db, "companies", companyId, "anticipos", anticipo.id));
       onOpenChange(false);
     } catch (err) {
       console.error("Error eliminando anticipo", err);
@@ -84,6 +87,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
     } else {
       if (!confirm("¿Deseas cancelar esta aplicación a Pedido ciego?")) return;
     }
+    if (!companyId) return;
 
     setIsUpdatingStatus(true);
     try {
@@ -93,7 +97,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
       const revertedBalance = anticipo.balance + appToCancel.amount;
       const newStatus = revertedBalance === anticipo.amount ? "pending" : "partially_applied";
 
-      await updateDoc(doc(db, "anticipos", anticipo.id), {
+      await updateDoc(doc(db, "companies", companyId, "anticipos", anticipo.id), {
         applications: newApps,
         balance: revertedBalance,
         status: newStatus,
@@ -126,6 +130,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
         return;
       }
     }
+    if (!companyId) return;
 
     setIsUpdatingStatus(true);
     try {
@@ -137,7 +142,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
 
       const newStatus = newBalance <= 0 ? "applied" : "partially_applied";
 
-      await updateDoc(doc(db, "anticipos", anticipo.id), {
+      await updateDoc(doc(db, "companies", companyId, "anticipos", anticipo.id), {
         applications: newApps,
         balance: newBalance,
         status: newStatus,

@@ -92,8 +92,8 @@ export default function FacturasPage() {
     // 1. Search text
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      const matchesFolio = inv.invoiceNumber?.toLowerCase().includes(term);
-      const matchesClient = inv.clientName?.toLowerCase().includes(term);
+      const matchesFolio = inv.invoiceNumber ? String(inv.invoiceNumber).toLowerCase().includes(term) : false;
+      const matchesClient = inv.clientName ? String(inv.clientName).toLowerCase().includes(term) : false;
       if (!matchesFolio && !matchesClient) return false;
     }
     // 2. Status filter

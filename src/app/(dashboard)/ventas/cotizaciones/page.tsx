@@ -135,8 +135,8 @@ export default function CotizacionesCRMPage() {
     // 1. Search text
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      const matchesFolio = quote.quoteNumber?.toLowerCase().includes(term);
-      const matchesClient = quote.clientName?.toLowerCase().includes(term);
+      const matchesFolio = quote.quoteNumber ? String(quote.quoteNumber).toLowerCase().includes(term) : false;
+      const matchesClient = quote.clientName ? String(quote.clientName).toLowerCase().includes(term) : false;
       if (!matchesFolio && !matchesClient) return false;
     }
     // 2. Status filter

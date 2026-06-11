@@ -102,8 +102,8 @@ export default function PedidosPage() {
     // 1. Search text
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      const matchesFolio = order.orderNumber?.toLowerCase().includes(term);
-      const matchesClient = order.clientName?.toLowerCase().includes(term);
+      const matchesFolio = order.orderNumber ? String(order.orderNumber).toLowerCase().includes(term) : false;
+      const matchesClient = order.clientName ? String(order.clientName).toLowerCase().includes(term) : false;
       if (!matchesFolio && !matchesClient) return false;
     }
     // 2. Status filter

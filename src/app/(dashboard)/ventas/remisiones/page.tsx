@@ -103,8 +103,8 @@ export default function RemisionesPage() {
     // 1. Search text
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      const matchesFolio = remission.remissionNumber?.toLowerCase().includes(term);
-      const matchesClient = remission.clientName?.toLowerCase().includes(term);
+      const matchesFolio = remission.remissionNumber ? String(remission.remissionNumber).toLowerCase().includes(term) : false;
+      const matchesClient = remission.clientName ? String(remission.clientName).toLowerCase().includes(term) : false;
       if (!matchesFolio && !matchesClient) return false;
     }
     // 2. Status filter

@@ -161,20 +161,25 @@ export default function EstadoCuentaPage() {
     }
   };
 
-  // Helper to extract YYYY-MM-DD from various date formats
+  // Helper to extract YYYY-MM-DD from various date formats, in browser's local timezone
   const extractDate = (val: any): string => {
     if (!val) return "";
+    let d: Date;
     if (typeof val === "string") {
-      return val.substring(0, 10);
-    }
-    if (val.seconds || val._seconds) {
+      d = new Date(val);
+    } else if (val.seconds || val._seconds) {
       const secs = val.seconds || val._seconds;
-      return new Date(secs * 1000).toISOString().split("T")[0];
+      d = new Date(secs * 1000);
+    } else if (val instanceof Date) {
+      d = val;
+    } else {
+      return "";
     }
-    if (val instanceof Date) {
-      return val.toISOString().split("T")[0];
-    }
-    return "";
+    if (isNaN(d.getTime())) return "";
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   useEffect(() => {

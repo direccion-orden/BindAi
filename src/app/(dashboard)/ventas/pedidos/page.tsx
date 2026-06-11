@@ -115,13 +115,17 @@ export default function PedidosPage() {
       return false;
     }
     // 3. Date range
-    if (dateFrom) {
-      const orderDate = order.createdAt.substring(0, 10);
-      if (orderDate < dateFrom) return false;
-    }
-    if (dateTo) {
-      const orderDate = order.createdAt.substring(0, 10);
-      if (orderDate > dateTo) return false;
+    if (dateFrom || dateTo) {
+      const localDate = (() => {
+        const d = new Date(order.createdAt);
+        if (isNaN(d.getTime())) return "";
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      })();
+      if (dateFrom && localDate < dateFrom) return false;
+      if (dateTo && localDate > dateTo) return false;
     }
     return true;
   });

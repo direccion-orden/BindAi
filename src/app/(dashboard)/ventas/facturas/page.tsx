@@ -105,13 +105,17 @@ export default function FacturasPage() {
       return false;
     }
     // 3. Date range
-    if (dateFrom) {
-      const invoiceDate = inv.createdAt.substring(0, 10);
-      if (invoiceDate < dateFrom) return false;
-    }
-    if (dateTo) {
-      const invoiceDate = inv.createdAt.substring(0, 10);
-      if (invoiceDate > dateTo) return false;
+    if (dateFrom || dateTo) {
+      const localDate = (() => {
+        const d = new Date(inv.createdAt);
+        if (isNaN(d.getTime())) return "";
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      })();
+      if (dateFrom && localDate < dateFrom) return false;
+      if (dateTo && localDate > dateTo) return false;
     }
     return true;
   });

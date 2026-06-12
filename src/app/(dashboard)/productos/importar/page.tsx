@@ -102,7 +102,16 @@ export default function ImportarProductosPage() {
                 
                 const title = record.Titulo || record.Codigo || "Sin título";
                 const handle = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-                const cost = parseFloat(record.Costo) || 0;
+                
+                const rawCost = record.Costo;
+                const cost = rawCost !== undefined && rawCost !== ""
+                  ? (parseFloat(String(rawCost).replace(/[^0-9.-]+/g, "")) || 0)
+                  : 0;
+
+                const rawPrice = record.Precio;
+                const priceValue = rawPrice !== undefined && rawPrice !== ""
+                  ? (parseFloat(String(rawPrice).replace(/[^0-9.-]+/g, "")) || 0)
+                  : null;
                 
                 // Preserve existing data if present
                 const existingImages = existingProduct?.images || [];
@@ -114,7 +123,8 @@ export default function ImportarProductosPage() {
                     {
                       id: `var-${productId}`,
                       title: "Default Title",
-                      price: cost,
+                      price: priceValue !== null ? priceValue : cost,
+                      cost: cost,
                       sku: record.SKU || record.Codigo || "",
                       barcode: record.Codigo || "",
                       inventoryQuantity: 0,
@@ -125,7 +135,10 @@ export default function ImportarProductosPage() {
                   const singleVar = { ...existingVariants[0] };
                   singleVar.sku = record.SKU || record.Codigo || singleVar.sku || "";
                   singleVar.barcode = record.Codigo || singleVar.barcode || "";
-                  singleVar.price = singleVar.price !== undefined ? singleVar.price : cost;
+                  singleVar.price = priceValue !== null ? priceValue : (singleVar.price !== undefined ? singleVar.price : cost);
+                  if (rawCost !== undefined && rawCost !== "") {
+                    singleVar.cost = cost;
+                  }
                   singleVar.weight = parseFloat(record.Peso) || singleVar.weight || 0;
                   variants = [singleVar];
                 } else {
@@ -145,7 +158,8 @@ export default function ImportarProductosPage() {
                         ...v,
                         sku: record.SKU || record.Codigo || v.sku || "",
                         barcode: record.Codigo || v.barcode || "",
-                        price: v.price !== undefined ? v.price : cost,
+                        price: priceValue !== null ? priceValue : (v.price !== undefined ? v.price : cost),
+                        cost: rawCost !== undefined && rawCost !== "" ? cost : (v.cost !== undefined ? v.cost : cost),
                         weight: parseFloat(record.Peso) || v.weight || 0,
                       };
                     }
@@ -157,13 +171,13 @@ export default function ImportarProductosPage() {
                   title: title,
                   handle: handle,
                   bodyHtml: record.Descripcion || existingProduct?.bodyHtml || "",
-                  vendor: "Bind ERP",
+                  vendor: existingProduct?.vendor || "Bind ERP",
                   productType: record["Categoria 1"] || existingProduct?.productType || "",
                   status: existingProduct?.status || 'ACTIVE',
                   tags: Array.from(new Set([...(existingProduct?.tags || []), record["Categoria 2"], record["Categoria 3"]].filter(Boolean))),
                   currency: record.Moneda || "MXN",
-                  initialCost: cost,
-                  cost: existingProduct?.cost || cost,
+                  initialCost: existingProduct?.initialCost || cost,
+                  cost: rawCost !== undefined && rawCost !== "" ? cost : (existingProduct?.cost || cost),
                   iva: record["Tipo de IVA."] ? parseFloat(record["Tipo de IVA."].replace("%", "")) : (existingProduct?.iva || 0),
                   satProductCode: record["Clave CFDI"] || existingProduct?.satProductCode || "",
                   satUnitCode: record["Unidad CFDI"] || existingProduct?.satUnitCode || "",

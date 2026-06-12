@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { collection, query, getDocs, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { Plus, Search, MoreHorizontal, Package, Store, Loader2, X, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Package, Store, Loader2, X, CheckCircle2, AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShopifyProduct } from "@/types/product";
@@ -54,6 +54,70 @@ export default function ProductosPage() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleExportCSV = () => {
+    import("papaparse").then((Papa) => {
+      const exportData: any[] = [];
+      products.forEach(p => {
+        const pAny = p as any;
+        const isShopify = !!pAny.shopifyId || pAny.vendor?.toLowerCase() === "shopify";
+        const origin = isShopify ? "Shopify" : "Bind ERP";
+
+        if (!pAny.variants || pAny.variants.length === 0) {
+          exportData.push({
+            ID: pAny.id || "",
+            Titulo: pAny.title || "",
+            Codigo: pAny.Code || "",
+            SKU: pAny.SKU || "",
+            Costo: pAny.cost !== undefined ? pAny.cost : (pAny.initialCost || 0),
+            Precio: 0,
+            "Tipo de IVA.": pAny.iva !== undefined ? `${pAny.iva}%` : "0%",
+            Descripcion: pAny.bodyHtml || "",
+            "Categoria 1": pAny.productType || "",
+            "Categoria 2": pAny.tags && pAny.tags[0] ? pAny.tags[0] : "",
+            "Categoria 3": pAny.tags && pAny.tags[1] ? pAny.tags[1] : "",
+            "Clave CFDI": pAny.satProductCode || "",
+            "Unidad CFDI": pAny.satUnitCode || "",
+            Peso: 0,
+            Moneda: pAny.currency || "MXN",
+            Origen: origin
+          });
+        } else {
+          pAny.variants.forEach((v: any) => {
+            exportData.push({
+              ID: pAny.id || "",
+              Titulo: pAny.variants.length > 1 ? `${pAny.title} - ${v.title}` : pAny.title,
+              Codigo: v.barcode || "",
+              SKU: v.sku || "",
+              Costo: v.cost !== undefined ? v.cost : (pAny.cost !== undefined ? pAny.cost : (pAny.initialCost || 0)),
+              Precio: v.price !== undefined ? v.price : 0,
+              "Tipo de IVA.": pAny.iva !== undefined ? `${pAny.iva}%` : "0%",
+              Descripcion: pAny.bodyHtml || "",
+              "Categoria 1": pAny.productType || "",
+              "Categoria 2": pAny.tags && pAny.tags[0] ? pAny.tags[0] : "",
+              "Categoria 3": pAny.tags && pAny.tags[1] ? pAny.tags[1] : "",
+              "Clave CFDI": pAny.satProductCode || "",
+              "Unidad CFDI": pAny.satUnitCode || "",
+              Peso: v.weight || 0,
+              Moneda: pAny.currency || "MXN",
+              Origen: origin
+            });
+          });
+        }
+      });
+
+      const csv = Papa.unparse(exportData);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `productos_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
   };
 
   const { companyId } = useAuth();
@@ -143,13 +207,16 @@ export default function ProductosPage() {
           <p className="text-muted-foreground mt-1">Administra tu inventario y catálogo de productos.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={handleExportCSV}>
+            <Download className="w-4 h-4" /> Exportar CSV
+          </Button>
           <Link href="/productos/importar">
             <Button variant="outline" className="gap-2">
               <Package className="w-4 h-4" /> Importar CSV
             </Button>
           </Link>
           <Link href="/productos/nuevo">
-            <Button className="gap-2">
+            <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
               <Plus className="w-4 h-4" /> Agregar Producto
             </Button>
           </Link>

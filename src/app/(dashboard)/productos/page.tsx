@@ -64,6 +64,31 @@ export default function ProductosPage() {
         const isShopify = !!pAny.shopifyId || pAny.vendor?.toLowerCase() === "shopify";
         const origin = isShopify ? "Shopify" : "Bind ERP";
 
+        // Resolver nombre de categoría 1
+        const catId = pAny.categoryId || pAny.Category1ID || "";
+        const matchedCat = categories.find(c => c.id === catId);
+        let categoryName = "";
+        if (matchedCat) {
+          categoryName = matchedCat.name;
+        } else if (pAny.productType) {
+          const isRoleValue = [
+            "producto", "materia_prima", "materia prima", "ambos",
+            "active", "draft", "archived"
+          ].includes(pAny.productType.toLowerCase());
+          if (!isRoleValue) {
+            categoryName = pAny.productType;
+          }
+        }
+
+        // Resolver nombre de categoría 2 y 3 (o tags en su defecto)
+        const cat2Id = pAny.Category2ID || "";
+        const matchedCat2 = categories.find(c => c.id === cat2Id);
+        const category2Name = matchedCat2 ? matchedCat2.name : (pAny.tags && pAny.tags[0] ? pAny.tags[0] : "");
+
+        const cat3Id = pAny.Category3ID || "";
+        const matchedCat3 = categories.find(c => c.id === cat3Id);
+        const category3Name = matchedCat3 ? matchedCat3.name : (pAny.tags && pAny.tags[1] ? pAny.tags[1] : "");
+
         if (!pAny.variants || pAny.variants.length === 0) {
           exportData.push({
             ID: pAny.id || "",
@@ -74,9 +99,9 @@ export default function ProductosPage() {
             Precio: 0,
             "Tipo de IVA.": pAny.iva !== undefined ? `${pAny.iva}%` : "0%",
             Descripcion: pAny.bodyHtml || "",
-            "Categoria 1": pAny.productType || "",
-            "Categoria 2": pAny.tags && pAny.tags[0] ? pAny.tags[0] : "",
-            "Categoria 3": pAny.tags && pAny.tags[1] ? pAny.tags[1] : "",
+            "Categoria 1": categoryName,
+            "Categoria 2": category2Name,
+            "Categoria 3": category3Name,
             "Clave CFDI": pAny.satProductCode || "",
             "Unidad CFDI": pAny.satUnitCode || "",
             Peso: 0,
@@ -94,9 +119,9 @@ export default function ProductosPage() {
               Precio: v.price !== undefined ? v.price : 0,
               "Tipo de IVA.": pAny.iva !== undefined ? `${pAny.iva}%` : "0%",
               Descripcion: pAny.bodyHtml || "",
-              "Categoria 1": pAny.productType || "",
-              "Categoria 2": pAny.tags && pAny.tags[0] ? pAny.tags[0] : "",
-              "Categoria 3": pAny.tags && pAny.tags[1] ? pAny.tags[1] : "",
+              "Categoria 1": categoryName,
+              "Categoria 2": category2Name,
+              "Categoria 3": category3Name,
               "Clave CFDI": pAny.satProductCode || "",
               "Unidad CFDI": pAny.satUnitCode || "",
               Peso: v.weight || 0,

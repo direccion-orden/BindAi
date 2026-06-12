@@ -52,6 +52,12 @@ export default function FacturaPDFPage({ params }: { params: Promise<{ id: strin
     fetchData();
   }, [companyId, id]);
 
+  useEffect(() => {
+    if (factura) {
+      document.title = `${factura.clientName || 'Cliente'} FAC-${factura.invoiceNumber}`;
+    }
+  }, [factura]);
+
   if (loading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="w-12 h-12 animate-spin text-muted-foreground" /></div>;
   }

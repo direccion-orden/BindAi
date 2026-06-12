@@ -52,6 +52,12 @@ export default function RemisionPDFPage({ params }: { params: Promise<{ id: stri
     fetchData();
   }, [companyId, id]);
 
+  useEffect(() => {
+    if (remission) {
+      document.title = `${remission.clientName || 'Cliente'} ${remission.remissionNumber}`;
+    }
+  }, [remission]);
+
   if (loading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="w-12 h-12 animate-spin text-muted-foreground" /></div>;
   }

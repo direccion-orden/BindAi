@@ -52,6 +52,12 @@ export default function CotizacionPDFPage({ params }: { params: Promise<{ id: st
     fetchData();
   }, [companyId, id]);
 
+  useEffect(() => {
+    if (quote) {
+      document.title = `${quote.clientName || 'Cliente'} ${quote.quoteNumber}`;
+    }
+  }, [quote]);
+
   if (loading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="w-12 h-12 animate-spin text-muted-foreground" /></div>;
   }

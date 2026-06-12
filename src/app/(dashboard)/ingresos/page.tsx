@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, DollarSign, ArrowUpRight, Search, FileText, PlusCircle } from "lucide-react";
+import { Loader2, DollarSign, ArrowUpRight, Search, FileText, PlusCircle, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -15,7 +15,57 @@ export default function IngresosPage() {
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilterOption, setDateFilterOption] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [isNewIncomeModalOpen, setIsNewIncomeModalOpen] = useState(false);
+
+  const handleDateFilterChange = (option: string) => {
+    setDateFilterOption(option);
+    
+    const getLocalDateString = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    
+    if (option === "all") {
+      setDateFrom("");
+      setDateTo("");
+    } else if (option === "today") {
+      const todayStr = getLocalDateString(now);
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (option === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+      setDateFrom(yesterdayStr);
+      setDateTo(yesterdayStr);
+    } else if (option === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(getLocalDateString(startOfMonth));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_month") {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateFrom(getLocalDateString(startOfLastMonth));
+      setDateTo(getLocalDateString(endOfLastMonth));
+    } else if (option === "this_year") {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      setDateFrom(getLocalDateString(startOfYear));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      setDateFrom(getLocalDateString(thirtyDaysAgo));
+      setDateTo(getLocalDateString(now));
+    }
+  };
 
   useEffect(() => {
     if (!companyId) return;
@@ -38,16 +88,41 @@ export default function IngresosPage() {
   }, [companyId]);
 
   const filteredPayments = payments.filter((p) => {
-    const term = searchTerm.toLowerCase();
-    return (
-      p.clientName?.toLowerCase().includes(term) ||
-      p.documentNumber?.toLowerCase().includes(term) ||
-      p.reference?.toLowerCase().includes(term) ||
-      p.method?.toLowerCase().includes(term)
-    );
+    // 1. Search term
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      const matchClient = p.clientName?.toLowerCase().includes(term);
+      const matchDoc = p.documentNumber?.toLowerCase().includes(term);
+      const matchRef = p.reference?.toLowerCase().includes(term);
+      const matchMethod = p.method?.toLowerCase().includes(term);
+      if (!matchClient && !matchDoc && !matchRef && !matchMethod) return false;
+    }
+    // 2. Status filter
+    if (statusFilter !== "all") {
+      const isCancelled = p.status === "cancelado";
+      if (statusFilter === "activo" && isCancelled) return false;
+      if (statusFilter === "cancelado" && !isCancelled) return false;
+    }
+    // 3. Date filter
+    if (dateFrom || dateTo) {
+      const localDate = (() => {
+        if (p.date) return p.date;
+        const d = p.createdAt ? new Date(p.createdAt) : null;
+        if (!d || isNaN(d.getTime())) return "";
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      })();
+      if (dateFrom && localDate < dateFrom) return false;
+      if (dateTo && localDate > dateTo) return false;
+    }
+    return true;
   });
 
-  const totalIngresos = filteredPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const totalIngresos = filteredPayments
+    .filter(p => p.status !== "cancelado")
+    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
   const getDocumentLink = (type: string, id: string) => {
     switch (type) {
@@ -91,24 +166,87 @@ export default function IngresosPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 flex flex-col justify-center">
-          <p className="text-emerald-800 font-semibold text-sm uppercase mb-1">Total Ingresos Mostrados</p>
-          <p className="text-4xl font-black text-emerald-700">
-            ${totalIngresos.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-          </p>
-        </div>
-        <div className="md:col-span-2 bg-white rounded-xl shadow-sm border p-6 flex flex-col justify-center">
-          <p className="text-sm font-semibold text-slate-500 mb-2">Buscar Pagos</p>
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-            <Input 
-              placeholder="Buscar por cliente, folio, referencia o método..." 
-              className="pl-10 h-12 text-lg bg-slate-50 border-slate-200"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-            />
+      {/* Modern Filter Panel */}
+      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
+        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1 w-full">
+          <div className="space-y-1 w-full sm:w-64">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Buscar
+            </span>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-9 h-9"
+                placeholder="Cliente, folio, referencia..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
+          
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Estatus
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">Todos</option>
+              <option value="activo">Activos</option>
+              <option value="cancelado">Cancelados</option>
+            </select>
+          </div>
+
+          <div className="space-y-1 w-full sm:w-44">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Fecha
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={dateFilterOption}
+              onChange={(e) => handleDateFilterChange(e.target.value)}
+            >
+              <option value="all">Cualquier fecha</option>
+              <option value="today">Hoy</option>
+              <option value="yesterday">Ayer</option>
+              <option value="this_month">Este Mes</option>
+              <option value="last_month">Mes Anterior</option>
+              <option value="last_30_days">Últimos 30 Días</option>
+              <option value="this_year">Este Año</option>
+              <option value="custom">Rango Personalizado</option>
+            </select>
+          </div>
+
+          {dateFilterOption === "custom" && (
+            <>
+              <div className="space-y-1 w-full sm:w-36">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
+                <Input
+                  type="date"
+                  className="h-9 bg-background"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1 w-full sm:w-36">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
+                <Input
+                  type="date"
+                  className="h-9 bg-background"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="text-right whitespace-nowrap bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
+          <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Total Ingresos Filtrados</span>
+          <span className="text-lg font-black text-emerald-800">${totalIngresos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
         </div>
       </div>
 
@@ -122,13 +260,14 @@ export default function IngresosPage() {
                 <th className="px-4 py-3 font-semibold text-slate-600">Documento</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">Método</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">Referencia</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Estatus</th>
                 <th className="px-4 py-3 font-semibold text-slate-600 text-right">Monto</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     No se encontraron pagos.
                   </td>
                 </tr>
@@ -167,7 +306,18 @@ export default function IngresosPage() {
                       <td className="px-4 py-3 text-slate-500 text-xs">
                         {payment.reference || '-'}
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-emerald-600">
+                      <td className="px-4 py-3">
+                        {payment.status === "cancelado" ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-bold border border-red-200">
+                            Cancelado
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+                            Activo
+                          </span>
+                        )}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-bold ${payment.status === "cancelado" ? "line-through text-slate-400" : "text-emerald-600"}`}>
                         ${(parseFloat(payment.amount) || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
                       </td>
                     </tr>

@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Loader2, Search, Calendar, Wallet } from "lucide-react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { AplicarAnticipoModal } from "@/components/anticipos/AplicarAnticipoModal";
@@ -25,6 +26,55 @@ export default function DashboardPage() {
   // Filtros
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilterOption, setDateFilterOption] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const handleDateFilterChange = (option: string) => {
+    setDateFilterOption(option);
+    
+    const getLocalDateString = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    
+    if (option === "all") {
+      setDateFrom("");
+      setDateTo("");
+    } else if (option === "today") {
+      const todayStr = getLocalDateString(now);
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (option === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+      setDateFrom(yesterdayStr);
+      setDateTo(yesterdayStr);
+    } else if (option === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(getLocalDateString(startOfMonth));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_month") {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateFrom(getLocalDateString(startOfLastMonth));
+      setDateTo(getLocalDateString(endOfLastMonth));
+    } else if (option === "this_year") {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      setDateFrom(getLocalDateString(startOfYear));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      setDateFrom(getLocalDateString(thirtyDaysAgo));
+      setDateTo(getLocalDateString(now));
+    }
+  };
 
   const filteredAnticipos = anticipos.filter(a => {
     const matchesSearch = 
@@ -33,8 +83,31 @@ export default function DashboardPage() {
     
     const matchesStatus = statusFilter === "all" || a.status === statusFilter;
     
-    return matchesSearch && matchesStatus;
+    // Date filter
+    let matchesDate = true;
+    if (dateFrom || dateTo) {
+      const localDate = (() => {
+        let dateObj: Date | null = null;
+        if (a.receivedAt) {
+          dateObj = new Date(a.receivedAt);
+        } else if (a.createdAt) {
+          dateObj = a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+        }
+        if (!dateObj || isNaN(dateObj.getTime())) return "";
+        const year = dateObj.getFullYear();
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const day = String(dateObj.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      })();
+      if (dateFrom && localDate < dateFrom) matchesDate = false;
+      if (dateTo && localDate > dateTo) matchesDate = false;
+    }
+    
+    return matchesSearch && matchesStatus && matchesDate;
   });
+
+  const totalOriginal = filteredAnticipos.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+  const totalRestante = filteredAnticipos.reduce((sum, a) => sum + (parseFloat(a.balance) || 0), 0);
 
   useEffect(() => {
     if (!companyId) return;
@@ -72,43 +145,110 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6 animate-in fade-in max-w-7xl mx-auto">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Anticipos</h1>
-          <p className="text-muted-foreground">
-            Gestiona los anticipos de clientes y aplícalos a documentos del ERP.
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Wallet className="w-8 h-8 text-indigo-600" />
+            Anticipos de Clientes
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Gestiona los anticipos recibidos y aplícalos a documentos comerciales o de cobro.
           </p>
         </div>
+        
         <Link href="/nuevo">
-          <Button className="gap-2 shrink-0">
-            <Plus className="h-4 w-4" />
+          <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shrink-0">
+            <Plus className="w-4 h-4" />
             Registrar Anticipo
           </Button>
         </Link>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-center bg-card p-4 rounded-md border shadow-sm">
-        <div className="relative w-full sm:w-72">
-          <input 
-            type="text" 
-            placeholder="Buscar por cliente o referencia..." 
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
+      {/* Modern Filter Panel */}
+      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
+        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1 w-full">
+          <div className="space-y-1 w-full sm:w-64">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Buscar
+            </span>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-9 h-9"
+                placeholder="Cliente o referencia..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Estatus
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">Todos los estados</option>
+              <option value="pending">Pendientes</option>
+              <option value="partially_applied">Parciales</option>
+              <option value="applied">Aplicados</option>
+            </select>
+          </div>
+
+          <div className="space-y-1 w-full sm:w-44">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Fecha
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={dateFilterOption}
+              onChange={(e) => handleDateFilterChange(e.target.value)}
+            >
+              <option value="all">Cualquier fecha</option>
+              <option value="today">Hoy</option>
+              <option value="yesterday">Ayer</option>
+              <option value="this_month">Este Mes</option>
+              <option value="last_month">Mes Anterior</option>
+              <option value="last_30_days">Últimos 30 Días</option>
+              <option value="this_year">Este Año</option>
+              <option value="custom">Rango Personalizado</option>
+            </select>
+          </div>
+
+          {dateFilterOption === "custom" && (
+            <>
+              <div className="space-y-1 w-full sm:w-36">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
+                <Input
+                  type="date"
+                  className="h-9 bg-background"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1 w-full sm:w-36">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
+                <Input
+                  type="date"
+                  className="h-9 bg-background"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </div>
-        <div className="w-full sm:w-48">
-          <select 
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-          >
-            <option value="all">Todos los estados</option>
-            <option value="pending">Pendientes</option>
-            <option value="partially_applied">Parciales</option>
-            <option value="applied">Aplicados</option>
-          </select>
+
+        <div className="text-right whitespace-nowrap bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
+          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Total Original / Restante</span>
+          <span className="text-lg font-black text-indigo-800">
+            ${totalOriginal.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / ${totalRestante.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+          </span>
         </div>
       </div>
 

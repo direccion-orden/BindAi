@@ -3,6 +3,9 @@
     {
       "target": "main-site",
       "source": ".",
+      "predeploy": [
+        "node scripts/clean-next-cache.js"
+      ],
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -15,6 +18,9 @@
     {
       "target": "staging",
       "source": ".",
+      "predeploy": [
+        "node scripts/clean-next-cache.js"
+      ],
       "ignore": [
         "firebase.json",
         "**/.*",

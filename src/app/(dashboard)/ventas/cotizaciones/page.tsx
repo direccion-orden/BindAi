@@ -163,6 +163,8 @@ export default function CotizacionesCRMPage() {
     return true;
   });
 
+  const totalCotizaciones = filteredQuotes.reduce((sum, q) => sum + (q.totalAmount || 0), 0);
+
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedQuoteId(id);
     e.dataTransfer.effectAllowed = "move";
@@ -405,6 +407,11 @@ export default function CotizacionesCRMPage() {
               </div>
             </>
           )}
+        </div>
+
+        <div className="text-right whitespace-nowrap bg-blue-50 border border-blue-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
+          <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Total Cotizaciones</span>
+          <span className="text-lg font-black text-blue-800">${totalCotizaciones.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
         </div>
       </div>
 

@@ -285,8 +285,6 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
       const finalPrice = item.unitPrice * (1 - (item.discountPercentage || 0) / 100);
       totalRefund += returning * finalPrice;
     });
-    // Add tax
-    totalRefund = totalRefund * 1.16;
   }
 
   const handleProcessReturn = async () => {

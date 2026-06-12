@@ -56,11 +56,35 @@ export function calculateOrderTotals(
 ): DiscountEngineResult {
   const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
 
+  // Convert items input to ex-VAT
+  const itemsExVAT = items.map(item => ({
+    ...item,
+    unitPrice: item.unitPrice / 1.16
+  }));
+
+  // Convert fixed manual global discount to ex-VAT
+  const globalDiscountValueExVAT = globalDiscountType === "fixed_amount"
+    ? globalDiscountValue / 1.16
+    : globalDiscountValue;
+
+  // Convert fixed promo discounts and requirements to ex-VAT
+  const availableDiscountsExVAT = availableDiscounts.map(d => {
+    const minReq = d.minRequirement?.type === "min_amount" && d.minRequirement.value != null
+      ? { ...d.minRequirement, value: d.minRequirement.value / 1.16 }
+      : d.minRequirement;
+
+    return {
+      ...d,
+      value: d.type === "fixed_amount" ? d.value / 1.16 : d.value,
+      minRequirement: minReq
+    };
+  });
+
   // 1. Calculate Base Subtotals & Manual Discounts
   let subtotal = 0;
   let itemDiscountsTotal = 0;
 
-  items.forEach(item => {
+  itemsExVAT.forEach(item => {
     const itemGross = item.unitPrice * item.quantity;
     const itemDiscount = itemGross * ((item.manualDiscountPercentage || 0) / 100);
     subtotal += itemGross;
@@ -74,21 +98,21 @@ export function calculateOrderTotals(
   // Apply Manual Global Discount
   let globalDiscountTotal = 0;
   if (globalDiscountType === "percentage") {
-    globalDiscountTotal = subtotalAfterItemDiscounts * (globalDiscountValue / 100);
+    globalDiscountTotal = subtotalAfterItemDiscounts * (globalDiscountValueExVAT / 100);
   } else if (globalDiscountType === "fixed_amount") {
-    globalDiscountTotal = Math.min(globalDiscountValue, subtotalAfterItemDiscounts);
+    globalDiscountTotal = Math.min(globalDiscountValueExVAT, subtotalAfterItemDiscounts);
   }
   globalDiscountTotal = round2(globalDiscountTotal);
 
   const subtotalAfterGlobal = round2(subtotalAfterItemDiscounts - globalDiscountTotal);
 
   // 2. Filter Candidate Promos (Automatics + Valid Code)
-  let candidatePromos: EngineDiscount[] = availableDiscounts.filter(d => d.method === "automatic");
+  let candidatePromos: EngineDiscount[] = availableDiscountsExVAT.filter(d => d.method === "automatic");
   
   let codeError: string | undefined;
   
   if (enteredPromoCode) {
-    const codePromo = availableDiscounts.find(
+    const codePromo = availableDiscountsExVAT.find(
       d => d.method === "code" && d.code?.toUpperCase() === enteredPromoCode.toUpperCase()
     );
     if (codePromo) {
@@ -107,7 +131,9 @@ export function calculateOrderTotals(
     if (promo.minRequirement?.type === "min_amount" && promo.minRequirement.value) {
       if (subtotalAfterGlobal < promo.minRequirement.value) {
         if (promo.code?.toUpperCase() === enteredPromoCode?.toUpperCase()) {
-          codeError = `El código requiere una compra mínima de $${promo.minRequirement.value}.`;
+          const originalPromo = availableDiscounts.find(d => d.id === promo.id);
+          const reqValue = originalPromo?.minRequirement?.value || (promo.minRequirement.value * 1.16);
+          codeError = `El código requiere una compra mínima de $${round2(reqValue)}.`;
         }
         continue;
       }
@@ -124,7 +150,7 @@ export function calculateOrderTotals(
     } else if (promo.targetType === "specific_categories" && promo.targetIds && promo.targetIds.length > 0) {
       // Calculate eligible subtotal
       let eligibleSubtotal = 0;
-      items.forEach(item => {
+      itemsExVAT.forEach(item => {
         // If the item belongs to any of the target categories (case insensitive)
         const isEligible = item.categoryIds?.some(id => 
           promo.targetIds!.some(tId => tId.trim().toLowerCase() === id.trim().toLowerCase())
@@ -166,7 +192,7 @@ export function calculateOrderTotals(
   const total = round2(taxableSubtotal + tax);
 
   // 4. Distribute discounts to items for CFDI/Invoice generation
-  const processedItems = items.map(item => {
+  const processedItems = itemsExVAT.map(item => {
     const itemGross = item.unitPrice * item.quantity;
     const itemManualDiscount = itemGross * ((item.manualDiscountPercentage || 0) / 100);
     const itemNetBeforeGlobal = itemGross - itemManualDiscount;
@@ -187,7 +213,7 @@ export function calculateOrderTotals(
         if (isEligible) {
           // Calculate eligible subtotal to find ratio
           let eligibleSubtotal = 0;
-          items.forEach(i => {
+          itemsExVAT.forEach(i => {
             if (i.categoryIds?.some(id => bestPromo?.targetIds!.some(tId => tId.trim().toLowerCase() === id.trim().toLowerCase()))) {
               const iGross = i.unitPrice * i.quantity;
               const iManual = iGross * ((i.manualDiscountPercentage || 0) / 100);
@@ -209,6 +235,10 @@ export function calculateOrderTotals(
     };
   });
 
+  const originalAppliedPromo = bestPromo
+    ? availableDiscounts.find(d => d.id === bestPromo.id)
+    : null;
+
   return {
     subtotal,
     itemDiscountsTotal,
@@ -219,7 +249,7 @@ export function calculateOrderTotals(
     taxableSubtotal,
     tax,
     total,
-    appliedPromo: bestPromo,
+    appliedPromo: originalAppliedPromo,
     error: codeError,
     processedItems
   };

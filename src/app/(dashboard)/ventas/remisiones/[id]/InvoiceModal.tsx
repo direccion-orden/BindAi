@@ -99,8 +99,9 @@ export function InvoiceModal({
         Currency: "MXN",
         ExpeditionPlace: companyZipCode,
         Items: remission.items.map((item: any) => {
-          const discountAmt = item.quantity * item.unitPrice * (item.discountPercentage / 100);
-          const subtotalItem = (item.quantity * item.unitPrice) - discountAmt;
+          const itemUnitPriceExVAT = item.unitPrice / 1.16;
+          const discountAmt = item.quantity * itemUnitPriceExVAT * (item.discountPercentage / 100);
+          const subtotalItem = (item.quantity * itemUnitPriceExVAT) - discountAmt;
           
           return {
             ProductCode: item.satProductCode || "01010101",
@@ -108,9 +109,9 @@ export function InvoiceModal({
             Description: item.isService && item.description ? item.description : item.productName,
             Unit: item.satUnitName || "PIEZA",
             UnitCode: item.satUnitCode || "H87",
-            UnitPrice: Number(item.unitPrice.toFixed(4)),
+            UnitPrice: Number(itemUnitPriceExVAT.toFixed(4)),
             Quantity: item.quantity,
-            Subtotal: Number(subtotalItem.toFixed(4)),
+            Subtotal: Number((item.quantity * itemUnitPriceExVAT).toFixed(4)),
             Discount: Number(discountAmt.toFixed(4)),
             TaxObject: "02",
             Taxes: [

@@ -64,8 +64,8 @@ export default function FacturaPDFPage({ params }: { params: Promise<{ id: strin
     window.print();
   };
 
-  const subtotal = factura.items?.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)), 0) || 0;
-  const tax = subtotal * 0.16;
+  const subtotal = factura.subtotal !== undefined ? factura.subtotal : (factura.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)), 0) || 0);
+  const tax = factura.tax !== undefined ? factura.tax : subtotal * 0.16;
 
   const formattedDate = factura.createdAt ? new Date(factura.createdAt).toLocaleDateString('es-MX') : "";
 
@@ -166,7 +166,7 @@ export default function FacturaPDFPage({ params }: { params: Promise<{ id: strin
                 </thead>
                 <tbody className="divide-y divide-muted/30">
                   {factura.items?.map((item: any, idx: number) => {
-                    const netPrice = item.unitPrice * (1 - item.discountPercentage / 100);
+                    const netPrice = (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100);
                     const amount = item.quantity * netPrice;
                     return (
                       <tr key={idx} className="border-muted/30 hover:bg-transparent">

@@ -284,16 +284,17 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         Items: items.map((item: any) => {
           const engineItem = totals.processedItems?.find(ei => ei.id === (item.lineKey || item.variantId));
           const discountAmt = engineItem ? engineItem.finalDiscountAmt : 0;
-          const subtotalItem = (item.quantity * item.unitPrice) - discountAmt;
+          const itemUnitPriceExVAT = engineItem ? engineItem.unitPrice : (item.unitPrice / 1.16);
+          const subtotalItem = (item.quantity * itemUnitPriceExVAT) - discountAmt;
           return {
             ProductCode: "01010101",
             IdentificationNumber: item.variantId || "SKU",
             Description: item.isService && item.description ? item.description : item.productName,
             Unit: "PIEZA",
             UnitCode: "H87",
-            UnitPrice: Number(item.unitPrice.toFixed(4)),
+            UnitPrice: Number(itemUnitPriceExVAT.toFixed(4)),
             Quantity: item.quantity,
-            Subtotal: Number((item.quantity * item.unitPrice).toFixed(4)),
+            Subtotal: Number((item.quantity * itemUnitPriceExVAT).toFixed(4)),
             Discount: Number(discountAmt.toFixed(4)),
             TaxObject: "02",
             Taxes: [

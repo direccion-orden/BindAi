@@ -43,15 +43,41 @@ export default function ImportarProductosPage() {
             let count = 0;
             let success = 0;
 
+            const isSciNotation = (val: string) => {
+              if (!val) return false;
+              return /e\+/i.test(val);
+            };
+
+            const cleanCode = (val: any): string => {
+              if (!val) return "";
+              let str = String(val).trim();
+              if (isSciNotation(str)) {
+                const num = Number(str);
+                if (!isNaN(num)) {
+                  try {
+                    const big = BigInt(Math.round(num));
+                    return big.toString();
+                  } catch (e) {
+                    return String(num);
+                  }
+                }
+              }
+              return str;
+            };
+
             // ALWAYS fetch products to prevent overwriting images and prices
             const q = query(collection(db, "companies", companyId, "products"));
             const snapshot = await getDocs(q);
             const productMap = new Map();
             const productByIdMap = new Map();
+            const productByTitleMap = new Map();
             
             snapshot.docs.forEach(d => {
               const p = { id: d.id, ...d.data() } as any;
               productByIdMap.set(d.id, p);
+              if (p.title) {
+                productByTitleMap.set(String(p.title).trim().toLowerCase(), p);
+              }
               if (p.variants && p.variants[0]) {
                 if (p.variants[0].barcode) productMap.set(String(p.variants[0].barcode).trim(), p);
                 if (p.variants[0].sku) productMap.set(String(p.variants[0].sku).trim(), p);
@@ -63,7 +89,10 @@ export default function ImportarProductosPage() {
               for (const record of records) {
                 if (!record.Código) continue;
                 const code = String(record.Código).trim();
-                const product = productMap.get(code);
+                let product = productMap.get(code);
+                if (!product && isSciNotation(code)) {
+                  product = productMap.get(cleanCode(code));
+                }
                 if (!product) continue;
 
                 const rawPrice = record["P-A"];
@@ -93,11 +122,28 @@ export default function ImportarProductosPage() {
             } else {
               // MODO PRODUCTOS NORMAL
               for (const record of records) {
-                const productId = record.ID && record.ID.length > 20 ? record.ID : (record.Codigo || record.SKU);
+                const csvId = record.ID || "";
+                let existingProduct = null;
+                let productId = "";
+
+                if (csvId && !isSciNotation(csvId) && csvId.length > 20) {
+                  productId = csvId;
+                  existingProduct = productByIdMap.get(productId);
+                } else {
+                  const titleKey = (record.Titulo || record.Codigo || "").trim().toLowerCase();
+                  existingProduct = productByTitleMap.get(titleKey);
+                  if (existingProduct) {
+                    productId = existingProduct.id;
+                  } else {
+                    productId = csvId && !isSciNotation(csvId) ? csvId : (record.Codigo || record.SKU);
+                    if (productId && isSciNotation(productId)) {
+                      productId = cleanCode(productId);
+                    }
+                  }
+                }
+
                 if (!productId) continue;
 
-                const existingProduct = productByIdMap.get(productId);
-                
                 const ref = doc(db, "companies", companyId, "products", productId);
                 
                 const title = record.Titulo || record.Codigo || "Sin título";
@@ -119,22 +165,33 @@ export default function ImportarProductosPage() {
                 
                 let variants = [];
                 if (existingVariants.length === 0) {
+                  const sku = cleanCode(record.SKU || record.Codigo || "");
+                  const barcode = cleanCode(record.Codigo || "");
                   variants = [
                     {
                       id: `var-${productId}`,
                       title: "Default Title",
                       price: priceValue !== null ? priceValue : cost,
                       cost: cost,
-                      sku: record.SKU || record.Codigo || "",
-                      barcode: record.Codigo || "",
+                      sku: sku,
+                      barcode: barcode,
                       inventoryQuantity: 0,
                       weight: parseFloat(record.Peso) || 0,
                     }
                   ];
                 } else if (existingVariants.length === 1) {
                   const singleVar = { ...existingVariants[0] };
-                  singleVar.sku = record.SKU || record.Codigo || singleVar.sku || "";
-                  singleVar.barcode = record.Codigo || singleVar.barcode || "";
+                  
+                  const csvSku = record.SKU || record.Codigo || "";
+                  const csvBarcode = record.Codigo || "";
+
+                  if (csvSku && !isSciNotation(csvSku)) {
+                    singleVar.sku = csvSku;
+                  }
+                  if (csvBarcode && !isSciNotation(csvBarcode)) {
+                    singleVar.barcode = csvBarcode;
+                  }
+
                   singleVar.price = priceValue !== null ? priceValue : (singleVar.price !== undefined ? singleVar.price : cost);
                   if (rawCost !== undefined && rawCost !== "") {
                     singleVar.cost = cost;
@@ -143,25 +200,34 @@ export default function ImportarProductosPage() {
                   variants = [singleVar];
                 } else {
                   // Multiple variants exist: Match by SKU or barcode, or default to the first
-                  const csvSku = (record.SKU || record.Codigo || "").trim().toLowerCase();
-                  const csvBarcode = (record.Codigo || "").trim().toLowerCase();
+                  const csvSku = cleanCode(record.SKU || record.Codigo || "").trim().toLowerCase();
+                  const csvBarcode = cleanCode(record.Codigo || "").trim().toLowerCase();
                   let matchedIndex = existingVariants.findIndex((v: any) => 
-                    (v.sku && v.sku.trim().toLowerCase() === csvSku) ||
-                    (v.barcode && v.barcode.trim().toLowerCase() === csvBarcode)
+                    (v.sku && String(v.sku).trim().toLowerCase() === csvSku) ||
+                    (v.barcode && String(v.barcode).trim().toLowerCase() === csvBarcode)
                   );
                   
                   if (matchedIndex === -1) matchedIndex = 0;
                   
                   variants = existingVariants.map((v: any, idx: number) => {
                     if (idx === matchedIndex) {
-                      return {
-                        ...v,
-                        sku: record.SKU || record.Codigo || v.sku || "",
-                        barcode: record.Codigo || v.barcode || "",
-                        price: priceValue !== null ? priceValue : (v.price !== undefined ? v.price : cost),
-                        cost: rawCost !== undefined && rawCost !== "" ? cost : (v.cost !== undefined ? v.cost : cost),
-                        weight: parseFloat(record.Peso) || v.weight || 0,
-                      };
+                      const updatedVar = { ...v };
+                      const csvSkuVal = record.SKU || record.Codigo || "";
+                      const csvBarcodeVal = record.Codigo || "";
+
+                      if (csvSkuVal && !isSciNotation(csvSkuVal)) {
+                        updatedVar.sku = csvSkuVal;
+                      }
+                      if (csvBarcodeVal && !isSciNotation(csvBarcodeVal)) {
+                        updatedVar.barcode = csvBarcodeVal;
+                      }
+
+                      updatedVar.price = priceValue !== null ? priceValue : (v.price !== undefined ? v.price : cost);
+                      if (rawCost !== undefined && rawCost !== "") {
+                        updatedVar.cost = cost;
+                      }
+                      updatedVar.weight = parseFloat(record.Peso) || v.weight || 0;
+                      return updatedVar;
                     }
                     return v;
                   });

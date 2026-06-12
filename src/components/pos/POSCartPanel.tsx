@@ -10,15 +10,15 @@ function CartItemRow({ item }: { item: CartItem }) {
   
   const isService = !!item.product.isService || item.product.tags?.includes('Servicios') || item.product.productType === 'Servicios';
   const price = item.customPrice !== undefined ? item.customPrice : (item.product.price || 0);
-  const totalItemPrice = Math.round(price * 1.16 * item.quantity);
+  const totalItemPrice = price * item.quantity;
   
-  const priceWithTax = Math.round(price * 1.16);
+  const priceWithTax = price;
   const [localPriceInput, setLocalPriceInput] = useState<string>("");
 
   useEffect(() => {
     const parsedLocal = parseFloat(localPriceInput);
     if (isNaN(parsedLocal) || Math.abs(parsedLocal - priceWithTax) > 0.001) {
-      setLocalPriceInput(priceWithTax.toFixed(0));
+      setLocalPriceInput(priceWithTax.toFixed(2));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceWithTax]);
@@ -27,13 +27,12 @@ function CartItemRow({ item }: { item: CartItem }) {
     setLocalPriceInput(val);
     const parsed = parseFloat(val);
     if (!isNaN(parsed) && parsed >= 0) {
-      // Divide by 1.16 to store the pre-tax price in context
-      updateItemPrice(item.key || item.product.sku, parsed / 1.16);
+      updateItemPrice(item.key || item.product.sku, parsed);
     }
   };
 
   const handlePriceBlur = () => {
-    setLocalPriceInput(priceWithTax.toFixed(0));
+    setLocalPriceInput(priceWithTax.toFixed(2));
   };
 
   return (

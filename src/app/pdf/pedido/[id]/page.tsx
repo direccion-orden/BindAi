@@ -66,6 +66,18 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
 
   const formattedDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-MX') : "";
 
+  const displaySubtotal = order.subtotal !== undefined 
+    ? order.subtotal 
+    : (order.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16)), 0) || 0);
+
+  const displayDiscount = order.totalDiscount !== undefined 
+    ? order.totalDiscount 
+    : (order.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16) * ((item.discountPercentage || 0) / 100)), 0) || 0);
+
+  const displayTax = order.tax !== undefined 
+    ? order.tax 
+    : (displaySubtotal - displayDiscount) * 0.16;
+
   return (
     <>
       <style dangerouslySetInnerHTML={{__html: `
@@ -190,11 +202,17 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
               <div className="w-full max-w-full sm:max-w-[320px] bg-muted/5 py-3 px-6 rounded-2xl border-2 border-primary/20">
                 <div className="flex justify-between items-center text-xs mb-1">
                   <span className="font-black text-muted-foreground uppercase tracking-widest text-[9px]">Subtotal</span>
-                  <span className="font-semibold text-foreground font-mono">${order.subtotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                  <span className="font-semibold text-foreground font-mono">${displaySubtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
                 </div>
+                {displayDiscount > 0 && (
+                  <div className="flex justify-between items-center text-xs mb-1">
+                    <span className="font-black text-emerald-600 uppercase tracking-widest text-[9px]">Descuento</span>
+                    <span className="font-semibold text-emerald-600 font-mono">-${displayDiscount.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-xs mb-2 pb-2 border-b border-muted">
                   <span className="font-black text-muted-foreground uppercase tracking-widest text-[9px]">IVA (16%)</span>
-                  <span className="font-semibold text-foreground font-mono">${order.tax?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                  <span className="font-semibold text-foreground font-mono">${displayTax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="font-black text-foreground uppercase text-[9px] sm:text-[11px] tracking-[0.25em]">Total</span>

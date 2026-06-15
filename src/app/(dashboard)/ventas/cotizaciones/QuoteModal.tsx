@@ -166,6 +166,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
           variantId: variant.id,
           productName: product.title,
           variantTitle: variant.title !== "Default Title" ? variant.title : "",
+          sku: variant.sku || "",
           quantity: 1,
           unitPrice: variant.price || 0,
           discountPercentage: 0,
@@ -186,6 +187,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
             variantId: variant.id,
             productName: product.title,
             variantTitle: variant.title !== "Default Title" ? variant.title : "",
+            sku: variant.sku || "",
             quantity: 1,
             unitPrice: variant.price || 0,
             discountPercentage: 0,
@@ -363,25 +365,57 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                       <div className="flex-1">
                         {isEditing ? (
                           item.isService ? (
-                            <textarea
-                              value={item.description || ""}
-                              onChange={(e) => updateItem(item.lineKey || item.variantId, 'description', e.target.value)}
-                              placeholder="Descripción del servicio..."
-                              className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
-                              rows={2}
-                            />
+                            <div className="space-y-1 w-full">
+                              {item.sku && (
+                                <div>
+                                  <span className="inline-block font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 text-[10px] uppercase font-bold">
+                                    {item.sku}
+                                  </span>
+                                </div>
+                              )}
+                              <textarea
+                                value={item.description || ""}
+                                onChange={(e) => updateItem(item.lineKey || item.variantId, 'description', e.target.value)}
+                                placeholder="Descripción del servicio..."
+                                className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
+                                rows={2}
+                              />
+                            </div>
                           ) : (
                             <>
-                              <p className="font-bold">{item.productName}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-bold">{item.productName}</p>
+                                {item.sku && (
+                                  <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 text-[10px] uppercase font-bold">
+                                    {item.sku}
+                                  </span>
+                                )}
+                              </div>
                               {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
                             </>
                           )
                         ) : (
                           item.isService ? (
-                            <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
+                            <div className="space-y-1">
+                              {item.sku && (
+                                <div>
+                                  <span className="inline-block font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 text-[10px] uppercase font-bold">
+                                    {item.sku}
+                                  </span>
+                                </div>
+                              )}
+                              <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
+                            </div>
                           ) : (
                             <>
-                              <p className="font-bold">{item.productName}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-bold">{item.productName}</p>
+                                {item.sku && (
+                                  <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 text-[10px] uppercase font-bold">
+                                    {item.sku}
+                                  </span>
+                                )}
+                              </div>
                               {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
                             </>
                           )

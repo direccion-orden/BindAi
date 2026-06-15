@@ -382,10 +382,26 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
                     </div>
                     <div className="flex-1">
                       {item.isService ? (
-                        <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
+                        <div className="space-y-1">
+                          {item.sku && (
+                            <div>
+                              <span className="inline-block font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 text-[10px] uppercase font-bold">
+                                {item.sku}
+                              </span>
+                            </div>
+                          )}
+                          <p className="font-semibold text-sm leading-tight text-foreground/90 whitespace-pre-wrap">{item.description}</p>
+                        </div>
                       ) : (
                         <>
-                          <p className="font-bold">{item.productName}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-bold">{item.productName}</p>
+                            {item.sku && (
+                              <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 text-[10px] uppercase font-bold">
+                                {item.sku}
+                              </span>
+                            )}
+                          </div>
                           {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
                         </>
                       )}

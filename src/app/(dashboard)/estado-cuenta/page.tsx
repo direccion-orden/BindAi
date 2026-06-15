@@ -38,6 +38,7 @@ interface AccountStatementLine {
   cargo: number;
   abono: number;
   runningBalance: number;
+  items?: any[];
 }
 
 interface AccountStatement {
@@ -250,7 +251,8 @@ export default function EstadoCuentaPage() {
             description: "Pedido de Venta (Pendiente)",
             cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
             abono: 0,
-            runningBalance: 0
+            runningBalance: 0,
+            items: d.items || []
           });
         }
       });
@@ -268,7 +270,8 @@ export default function EstadoCuentaPage() {
             description: "Remisión de Mercancía (Pendiente de Factura)",
             cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
             abono: 0,
-            runningBalance: 0
+            runningBalance: 0,
+            items: d.items || []
           });
         }
       });
@@ -285,7 +288,8 @@ export default function EstadoCuentaPage() {
             description: "Factura de Venta (CFDI)",
             cargo: parseFloat(d.totalAmount) || d.totalAmount || 0,
             abono: 0,
-            runningBalance: 0
+            runningBalance: 0,
+            items: d.items || []
           });
         }
       });
@@ -626,6 +630,404 @@ export default function EstadoCuentaPage() {
     doc.save(`EdoCta_${statement.client.legalName.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`);
   };
 
+  // New PDF generation grouped by Products & Services
+  const handleDownloadPDFGrouped = async () => {
+    if (!statement) return;
+
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
+
+    // Palette: warm taupe-greys matching CSS variables
+    const TAUPE_DARK = [56, 52, 50];      // hsl(38,6%,22%) — foreground
+    const TAUPE_MID = [120, 113, 108];     // hsl(38,6%,45%) — primary
+    const TAUPE_LIGHT = [210, 206, 201];   // hsl(38,8%,85%) — border
+    const TAUPE_BG = [243, 241, 238];      // hsl(38,13%,94%) — background
+    const ACCENT = [122, 107, 140];        // hsl(266,12%,52%) — accent
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    let y = 14;
+    const maxY = doc.internal.pageSize.getHeight() - 16;
+
+    // Helper to truncate text based on target width in mm
+    const truncateText = (text: string, maxWidth: number, fontSize: number) => {
+      doc.setFontSize(fontSize);
+      const textWidth = doc.getTextWidth(text);
+      if (textWidth <= maxWidth) return text;
+      
+      let truncated = text;
+      while (truncated.length > 0 && doc.getTextWidth(truncated + "…") > maxWidth) {
+        truncated = truncated.slice(0, -1);
+      }
+      return truncated + "…";
+    };
+
+    // --- Logo + Header ---
+    const logoH = 10;
+    const logoW = logoH * (293.75 / 67.31); // aspect ratio from SVG viewBox
+    try {
+      const logoDataUrl = await loadLogoAsDataUrl();
+      doc.addImage(logoDataUrl, 'PNG', margin, y, logoW, logoH);
+    } catch {
+      // Fallback: text-only header if logo fails
+    }
+
+    // Title on the right, same line as logo
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+    doc.text("Estado de Cuenta (Prod/Serv)", pageWidth - margin, y + 7, { align: "right" });
+    y += logoH + 3;
+
+    // Divider line
+    doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+    doc.setLineWidth(0.4);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 5;
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+    doc.text(`Cliente: ${statement.client.legalName}`, margin, y);
+    doc.text(
+      `Generado: ${new Date(statement.generatedAt).toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}`,
+      pageWidth - margin,
+      y,
+      { align: "right" }
+    );
+    y += 8;
+
+    // --- Process movement lines into Products, Services, and Abonos ---
+    const linesToProcess = filteredLines.length > 0 ? filteredLines : statement.lines;
+    const productsList: any[] = [];
+    const servicesList: any[] = [];
+    const abonosList: any[] = [];
+
+    let totalProductCargos = 0;
+    let totalServiceCargos = 0;
+    let totalAbonos = 0;
+
+    linesToProcess.forEach(line => {
+      if (line.abono > 0) {
+        abonosList.push({
+          date: line.date,
+          type: TYPE_LABELS[line.type] || line.type,
+          number: line.number,
+          description: line.description,
+          amount: line.abono
+        });
+        totalAbonos += line.abono;
+      } else if (line.cargo > 0) {
+        const docItems = line.items || [];
+        if (docItems.length === 0) {
+          // Fallback if no items inside document, treat as product cargo
+          productsList.push({
+            date: line.date,
+            number: line.number,
+            concept: line.description || "Cargo General",
+            quantity: 1,
+            unitPrice: line.cargo,
+            total: line.cargo
+          });
+          totalProductCargos += line.cargo;
+        } else {
+          // Compute raw item totals to get proportions
+          let rawDocTotal = 0;
+          const processedItems = docItems.map((item: any) => {
+            const qty = parseFloat(item.quantity) || 1;
+            const price = parseFloat(item.unitPrice) || 0;
+            const disc = parseFloat(item.discountPercentage) || 0;
+            const rawTotal = qty * price * (1 - disc / 100);
+            rawDocTotal += rawTotal;
+            return { item, qty, price, rawTotal };
+          });
+
+          processedItems.forEach(({ item, qty, price, rawTotal }) => {
+            const itemShare = rawDocTotal > 0 ? rawTotal / rawDocTotal : 1 / docItems.length;
+            const allocatedTotal = line.cargo * itemShare;
+            
+            const skuVal = (item.sku || item.variantSku || "").toUpperCase().trim();
+            const isExcludedService = skuVal === "SER-PROD" || skuVal === "SER-FAB" || skuVal === "SER-PRODUCTO";
+            const isService = !isExcludedService && (!!item.isService || (typeof item.sku === 'string' && item.sku.startsWith("SER-")) || (typeof item.variantSku === 'string' && item.variantSku.startsWith("SER-")));
+            const conceptName = isService ? (item.description || item.productName) : item.productName;
+
+            const targetList = isService ? servicesList : productsList;
+            targetList.push({
+              date: line.date,
+              number: line.number,
+              concept: conceptName || "Concepto sin nombre",
+              quantity: qty,
+              unitPrice: price,
+              total: allocatedTotal
+            });
+
+            if (isService) {
+              totalServiceCargos += allocatedTotal;
+            } else {
+              totalProductCargos += allocatedTotal;
+            }
+          });
+        }
+      }
+    });
+
+    // Proportional division of abonos
+    const totalCargos = totalProductCargos + totalServiceCargos;
+    let ratioProducts = 0.5;
+    let ratioServices = 0.5;
+
+    if (totalCargos > 0.01) {
+      ratioProducts = totalProductCargos / totalCargos;
+      ratioServices = totalServiceCargos / totalCargos;
+    }
+
+    const allocatedAbonosProducts = totalAbonos * ratioProducts;
+    const allocatedAbonosServices = totalAbonos * ratioServices;
+    const saldoTotal = totalCargos - totalAbonos;
+
+    const owedProducts = totalProductCargos - allocatedAbonosProducts;
+    const owedServices = totalServiceCargos - allocatedAbonosServices;
+
+    // --- Summary Box ---
+    doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, 22, 2, 2, "F");
+    doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, 22, 2, 2, "S");
+
+    const colW = (pageWidth - margin * 2) / 3;
+
+    // Col 1: Products
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+    doc.text("PRODUCTOS", margin + 6, y + 5);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+    doc.text(`Total Cargos: ${formatCurrency(totalProductCargos)}`, margin + 6, y + 10);
+    doc.text(`Abonos Asignados: ${formatCurrency(allocatedAbonosProducts)}`, margin + 6, y + 14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+    doc.text(`Saldo Pendiente: ${formatCurrency(owedProducts)}`, margin + 6, y + 18);
+
+    // Col 2: Services
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+    doc.text("SERVICIOS", margin + colW + 6, y + 5);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+    doc.text(`Total Cargos: ${formatCurrency(totalServiceCargos)}`, margin + colW + 6, y + 10);
+    doc.text(`Abonos Asignados: ${formatCurrency(allocatedAbonosServices)}`, margin + colW + 6, y + 14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+    doc.text(`Saldo Pendiente: ${formatCurrency(owedServices)}`, margin + colW + 6, y + 18);
+
+    // Col 3: Consolidated
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    doc.text("RESUMEN CONSOLIDADO", margin + colW * 2 + 6, y + 5);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+    doc.text(`Total Cargos: ${formatCurrency(totalCargos)}`, margin + colW * 2 + 6, y + 10);
+    doc.text(`Total Abonos: ${formatCurrency(totalAbonos)}`, margin + colW * 2 + 6, y + 14);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    doc.text(`Saldo Total: ${formatCurrency(saldoTotal)}`, margin + colW * 2 + 6, y + 19);
+
+    y += 28;
+
+    // --- Table Renderer helper ---
+    const checkPageBreak = (heightNeeded: number) => {
+      if (y + heightNeeded > maxY) {
+        doc.addPage();
+        y = 14;
+        return true;
+      }
+      return false;
+    };
+
+    const renderTable = (
+      title: string,
+      headers: string[],
+      widths: number[],
+      alignments: ("left" | "right" | "center")[],
+      rows: any[][],
+      sumValue: number,
+      sumLabel: string
+    ) => {
+      // Draw Table Title
+      checkPageBreak(12);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      doc.text(title, margin, y + 5);
+      y += 8;
+
+      const drawHeader = (yPos: number) => {
+        doc.setFillColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+        doc.rect(margin, yPos, pageWidth - margin * 2, 6, "F");
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(240, 238, 235);
+        let hx = margin + 2;
+        headers.forEach((h, i) => {
+          if (alignments[i] === "right") {
+            doc.text(h, hx + widths[i] - 4, yPos + 4.5, { align: "right" });
+          } else if (alignments[i] === "center") {
+            doc.text(h, hx + widths[i]/2 - 2, yPos + 4.5, { align: "center" });
+          } else {
+            doc.text(h, hx, yPos + 4.5);
+          }
+          hx += widths[i];
+        });
+      };
+
+      checkPageBreak(7);
+      drawHeader(y);
+      y += 6;
+
+      if (rows.length === 0) {
+        checkPageBreak(8);
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(8);
+        doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+        doc.text("No hay movimientos en esta sección.", margin + 4, y + 5);
+        y += 8;
+        return;
+      }
+
+      rows.forEach((row, rowIdx) => {
+        checkPageBreak(6);
+        if (y === 14) {
+          drawHeader(y);
+          y += 6;
+        }
+
+        if (rowIdx % 2 === 0) {
+          doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+          doc.rect(margin, y, pageWidth - margin * 2, 5.5, "F");
+        }
+
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+
+        let cx = margin + 2;
+        row.forEach((cell, cellIdx) => {
+          const text = String(cell);
+          const align = alignments[cellIdx];
+          
+          if (align === "right") {
+            doc.text(text, cx + widths[cellIdx] - 4, y + 4, { align: "right" });
+          } else if (align === "center") {
+            doc.text(text, cx + widths[cellIdx]/2 - 2, y + 4, { align: "center" });
+          } else {
+            const maxW = widths[cellIdx] - 4;
+            const truncated = truncateText(text, maxW, 7);
+            doc.text(truncated, cx, y + 4);
+          }
+          cx += widths[cellIdx];
+        });
+
+        y += 5.5;
+      });
+
+      checkPageBreak(7);
+      doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+      doc.setLineWidth(0.3);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 1.5;
+
+      checkPageBreak(6);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      
+      const totalText = formatCurrency(sumValue);
+      doc.text(sumLabel, pageWidth - margin - 50, y + 4, { align: "right" });
+      doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+      doc.text(totalText, pageWidth - margin - 4, y + 4, { align: "right" });
+      y += 9;
+    };
+
+    // --- Render Tables ---
+    const productRows = productsList.map(item => [
+      formatDate(item.date),
+      item.number,
+      item.concept,
+      String(item.quantity),
+      formatCurrency(item.unitPrice),
+      formatCurrency(item.total)
+    ]);
+    renderTable(
+      "Detalle de Productos",
+      ["Fecha", "Documento", "Producto / Concepto", "Cant.", "P. Unitario", "Importe"],
+      [24, 30, 115, 18, 30, 34],
+      ["left", "left", "left", "center", "right", "right"],
+      productRows,
+      totalProductCargos,
+      "Total Cargos Productos:"
+    );
+
+    const serviceRows = servicesList.map(item => [
+      formatDate(item.date),
+      item.number,
+      item.concept,
+      String(item.quantity),
+      formatCurrency(item.unitPrice),
+      formatCurrency(item.total)
+    ]);
+    renderTable(
+      "Detalle de Servicios",
+      ["Fecha", "Documento", "Servicio / Concepto", "Cant.", "P. Unitario", "Importe"],
+      [24, 30, 115, 18, 30, 34],
+      ["left", "left", "left", "center", "right", "right"],
+      serviceRows,
+      totalServiceCargos,
+      "Total Cargos Servicios:"
+    );
+
+    const abonoRows = abonosList.map(item => [
+      formatDate(item.date),
+      item.type,
+      item.number,
+      item.description,
+      formatCurrency(item.amount)
+    ]);
+    renderTable(
+      "Abonos y Anticipos",
+      ["Fecha", "Tipo", "Folio / Referencia", "Descripción", "Importe"],
+      [24, 30, 40, 123, 34],
+      ["left", "left", "left", "left", "right"],
+      abonoRows,
+      totalAbonos,
+      "Total Abonos y Anticipos:"
+    );
+
+    // --- Footer ---
+    checkPageBreak(12);
+    doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+    doc.setLineWidth(0.4);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+    
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    doc.text(`Saldo Total: ${formatCurrency(saldoTotal)}`, pageWidth - margin, y, { align: "right" });
+
+    doc.save(`EdoCta_ProdServ_${statement.client.legalName.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -833,15 +1235,26 @@ export default function EstadoCuentaPage() {
                 />
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 shrink-0"
-              onClick={handleDownloadPDF}
-            >
-              <FileDown className="h-4 w-4" />
-              Descargar PDF
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0"
+                onClick={handleDownloadPDF}
+              >
+                <FileDown className="h-4 w-4" />
+                Descargar PDF (Folio)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0 bg-stone-100 hover:bg-stone-200 border-stone-300 text-stone-800 dark:bg-stone-800 dark:hover:bg-stone-700 dark:border-stone-700 dark:text-stone-200"
+                onClick={handleDownloadPDFGrouped}
+              >
+                <FileDown className="h-4 w-4" />
+                Descargar PDF (Prod/Serv)
+              </Button>
+            </div>
           </div>
 
           {/* Statement Table */}

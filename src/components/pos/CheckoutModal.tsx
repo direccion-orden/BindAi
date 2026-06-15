@@ -206,6 +206,16 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   };
 
   const startRecyclerPayment = async () => {
+      const targetAmount = Math.round(parseFloat(currentAmount) || remaining);
+      if (isNaN(targetAmount) || targetAmount <= 0) {
+          alert("El monto a cobrar debe ser mayor a 0.");
+          return;
+      }
+      if (targetAmount > Math.round(remaining)) {
+          alert(`El monto no puede exceder el restante pendiente ($${Math.round(remaining)}).`);
+          return;
+      }
+
       setRecyclerStatus('waiting');
       setRecyclerInserted(0);
       setRecyclerEventMessage('Iniciando sesión en reciclador...');
@@ -260,11 +270,10 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               console.log("Error during proactive reset:", e);
           }
 
-          const roundedRemaining = Math.round(remaining);
           const response = await fetch('http://localhost:3001/api/session', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ request: 'PayAmount', value: roundedRemaining * 100 }),
+              body: JSON.stringify({ request: 'PayAmount', value: targetAmount * 100 }),
               signal: AbortSignal.timeout(5000)
           });
           
@@ -330,7 +339,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       
                       // Set amount
                       const completedEvent = currentTxEvents.find((e: any) => e.EventName === 'PaymentComplete' || e.event === 'PaymentComplete');
-                      let inserted = remaining;
+                      let inserted = targetAmount;
                       
                       if (completedEvent?.transaction?.cash_in !== undefined) {
                           inserted = completedEvent.transaction.cash_in / 100;
@@ -342,8 +351,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       
                       // Automatically add the payment after a brief delay
                       setTimeout(() => {
-                          const roundedTarget = Math.round(remaining);
-                          const appliedAmount = (inserted === roundedTarget) ? remaining : round2(inserted);
+                          const appliedAmount = (inserted === targetAmount && targetAmount === Math.round(remaining)) ? remaining : round2(inserted);
                           
                           setPayments(prev => [...prev, {
                             method: 'efectivo',
@@ -430,7 +438,15 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     
     // Round to 2 decimal places to avoid floating point precision issues
     const roundedAmount = Number(Math.round(Number(defaultAmount + 'e2')) + 'e-2');
-    setCurrentAmount(method === 'efectivo' ? "" : roundedAmount.toString());
+    if (method === 'efectivo') {
+      if (cashMode === 'recycler') {
+        setCurrentAmount(Math.round(remaining).toString());
+      } else {
+        setCurrentAmount("");
+      }
+    } else {
+      setCurrentAmount(roundedAmount.toString());
+    }
 
     // Auto-trigger local agent check and startup
     if (method === 'efectivo' && cashMode === 'recycler') {
@@ -1075,18 +1091,33 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                               </span>
                           </div>
 
-                          <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-                              Conecta con el hardware local para cobrar {formatMoney(Math.round(remaining))} automáticamente.
+                          <p className="text-sm text-muted-foreground mb-4 max-w-xs">
+                              Ingresa el monto a cobrar y conecta con el hardware local.
                           </p>
+
+                          <div className="w-full max-w-xs mb-6">
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Monto a Enviar</label>
+                            <div className="relative mt-1">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-muted-foreground font-bold">$</span>
+                              <Input 
+                                type="number" 
+                                className="pl-8 h-12 text-xl font-bold bg-muted/20 text-center"
+                                value={currentAmount}
+                                onChange={(e) => setCurrentAmount(e.target.value)}
+                                min={1}
+                                max={Math.round(remaining)}
+                              />
+                            </div>
+                          </div>
 
                           <div className="w-full max-w-xs flex flex-col gap-2">
                               <Button 
                                   onClick={startRecyclerPayment} 
                                   size="lg" 
-                                  className="w-full"
-                                  disabled={agentStarting}
+                                  className="w-full font-bold"
+                                  disabled={agentStarting || !currentAmount || (parseFloat(currentAmount) || 0) <= 0}
                               >
-                                  Iniciar Cobro ({formatMoney(Math.round(remaining))})
+                                  Iniciar Cobro ({formatMoney(parseFloat(currentAmount) || Math.round(remaining))})
                               </Button>
                           </div>
                         </>

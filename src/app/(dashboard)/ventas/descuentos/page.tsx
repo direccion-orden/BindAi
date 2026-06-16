@@ -92,7 +92,7 @@ export default function DescuentosPage() {
             Administra cupones y descuentos automáticos para tus ventas.
           </p>
         </div>
-        <Link href="/ventas/descuentos/nuevo">
+        <Link href="/ventas/descuentos/nuevo" target="_blank">
           <Button className="gap-2">
             <Plus className="w-4 h-4" /> Crear Descuento
           </Button>
@@ -119,7 +119,7 @@ export default function DescuentosPage() {
             <p className="text-muted-foreground mb-6 max-w-sm">
               Crea códigos de descuento para compartirlos con tus clientes o configura promociones automáticas.
             </p>
-            <Link href="/ventas/descuentos/nuevo">
+            <Link href="/ventas/descuentos/nuevo" target="_blank">
               <Button>Crear tu primer descuento</Button>
             </Link>
           </div>
@@ -168,7 +168,7 @@ export default function DescuentosPage() {
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="icon" asChild>
-                          <Link href={`/ventas/descuentos/${discount.id}`}>
+                          <Link href={`/ventas/descuentos/${discount.id}`} target="_blank">
                             <Edit2 className="w-4 h-4" />
                           </Link>
                         </Button>

@@ -235,12 +235,12 @@ export default function ProductosPage() {
           <Button variant="outline" className="gap-2" onClick={handleExportCSV}>
             <Download className="w-4 h-4" /> Exportar CSV
           </Button>
-          <Link href="/productos/importar">
+          <Link href="/productos/importar" target="_blank">
             <Button variant="outline" className="gap-2">
               <Package className="w-4 h-4" /> Importar CSV
             </Button>
           </Link>
-          <Link href="/productos/nuevo">
+          <Link href="/productos/nuevo" target="_blank">
             <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
               <Plus className="w-4 h-4" /> Agregar Producto
             </Button>
@@ -352,7 +352,7 @@ export default function ProductosPage() {
                             )}
                           </div>
                           <div>
-                            <Link href={`/productos/${product.id}`} className="font-semibold hover:underline text-foreground">
+                            <Link href={`/productos/${product.id}`} target="_blank" className="font-semibold hover:underline text-foreground">
                               {product.title}
                             </Link>
                             <div className="text-xs text-muted-foreground mt-0.5">

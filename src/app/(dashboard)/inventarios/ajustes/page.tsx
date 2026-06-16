@@ -64,7 +64,7 @@ export default function AjustesPage() {
             Registra mermas, caducidades, robos o ajustes positivos por conteo físico.
           </p>
         </div>
-        <Link href="/inventarios/ajustes/nuevo">
+        <Link href="/inventarios/ajustes/nuevo" target="_blank">
           <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700">
             <Plus className="w-4 h-4" /> Nuevo Ajuste
           </Button>

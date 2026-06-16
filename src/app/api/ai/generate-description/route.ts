@@ -1,15 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+import { adminDb } from "@/lib/firebase/admin";
+
 export async function POST(req: NextRequest) {
   try {
-    const { title, description, productType, vendor } = await req.json();
+    const { title, description, productType, vendor, companyId } = await req.json();
 
-    if (!process.env.GEMINI_API_KEY) {
-       return NextResponse.json({ error: "Falta configurar GEMINI_API_KEY en las variables de entorno." }, { status: 500 });
+    let apiKey = process.env.GEMINI_API_KEY;
+
+    if (companyId && adminDb) {
+      try {
+        const companyDoc = await adminDb.collection("companies").doc(companyId).get();
+        if (companyDoc.exists) {
+          const companyData = companyDoc.data();
+          if (companyData?.geminiApiKey) {
+            apiKey = companyData.geminiApiKey;
+          }
+        }
+      } catch (e) {
+        console.error("Error reading company geminiApiKey in API route:", e);
+      }
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    if (!apiKey) {
+       return NextResponse.json({ error: "Falta configurar la API KEY de Gemini (GEMINI_API_KEY) en las variables de entorno o en el perfil de la empresa." }, { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `

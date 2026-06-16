@@ -1,15 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package, Table, LayoutGrid, Search } from "lucide-react";
+import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package, Table, LayoutGrid, Search, Copy, Eye, FileDown, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { QuoteModal } from "./QuoteModal";
 import { getNextSequence } from "@/lib/firebase/counters";
 
 interface QuoteItem {
@@ -54,9 +53,43 @@ export default function CotizacionesCRMPage() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [draggedQuoteId, setDraggedQuoteId] = useState<string | null>(null);
-  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
   const router = useRouter();
+
+  const handleCopyQuote = async (quote: Quote) => {
+    if (!companyId) return;
+    const confirm = window.confirm("¿Deseas duplicar esta cotización?");
+    if (!confirm) return;
+    try {
+      const newId = crypto.randomUUID();
+      const quoteNumber = await getNextSequence(companyId, 'cotizaciones');
+      const newQuote = {
+        ...quote,
+        id: newId,
+        quoteNumber,
+        status: 'nueva',
+        createdAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, "companies", companyId, "quotes", newId), newQuote);
+      alert(`Cotización duplicada con éxito bajo el folio ${quoteNumber}`);
+    } catch (error) {
+      console.error("Error duplicating quote:", error);
+      alert("Hubo un error al duplicar la cotización.");
+    }
+  };
+
+  const handleDeleteQuote = async (quoteId: string) => {
+    if (!companyId) return;
+    const confirm = window.confirm("¿Estás seguro de que deseas eliminar esta cotización?");
+    if (!confirm) return;
+    try {
+      await deleteDoc(doc(db, "companies", companyId, "quotes", quoteId));
+      alert("Cotización eliminada con éxito");
+    } catch (error) {
+      console.error("Error deleting quote:", error);
+      alert("Hubo un error al eliminar la cotización.");
+    }
+  };
 
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
@@ -224,6 +257,27 @@ export default function CotizacionesCRMPage() {
       }
     }
 
+    if (targetStatusId === "perdida") {
+      const markAsCanceled = window.confirm("¿Deseas marcar esta cotización como Cancelada?\n\n- [Aceptar]: Cancelar la cotización (se removerá del tablero)\n- [Cancelar]: Dejar activa en la columna de Perdida");
+      const finalStatus = markAsCanceled ? "cancelada" : "perdida";
+      
+      if (markAsCanceled) {
+        setQuotes(prev => prev.map(q => q.id === draggedQuoteId ? { ...q, status: "cancelada" } : q));
+      }
+      
+      try {
+        await updateDoc(doc(db, "companies", companyId, "quotes", draggedQuoteId), {
+          status: finalStatus
+        });
+        return;
+      } catch (e) {
+        console.error(e);
+        alert("Error al actualizar la cotización.");
+        setQuotes(prev => prev.map(q => q.id === draggedQuoteId ? { ...q, status: quote.status } : q));
+        return;
+      }
+    }
+
     try {
       await updateDoc(doc(db, "companies", companyId, "quotes", draggedQuoteId), {
         status: targetStatusId
@@ -243,7 +297,7 @@ export default function CotizacionesCRMPage() {
       key={quote.id}
       draggable
       onDragStart={(e) => handleDragStart(e, quote.id)}
-      onClick={() => setSelectedQuote(quote)}
+      onClick={() => window.open(`/ventas/cotizaciones/${quote.id}`, "_blank")}
       className="bg-white border rounded-lg p-4 shadow-sm cursor-pointer hover:border-blue-300 transition-colors group relative"
     >
       <div className="flex justify-between items-start mb-2">
@@ -277,7 +331,7 @@ export default function CotizacionesCRMPage() {
   );
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
+    <div className={viewMode === "table" ? "h-[calc(100vh-8rem)] flex flex-col space-y-6" : "flex flex-col space-y-6"}>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 border-b pb-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Cotizaciones (CRM)</h1>
@@ -306,7 +360,7 @@ export default function CotizacionesCRMPage() {
               Tablero Kanban
             </Button>
           </div>
-          <Link href="/ventas/cotizaciones/nueva">
+          <Link href="/ventas/cotizaciones/nueva" target="_blank">
             <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold h-10 px-4 text-xs shadow-md">
               <Plus className="w-4 h-4" /> Nueva Cotización
             </Button>
@@ -409,15 +463,18 @@ export default function CotizacionesCRMPage() {
           )}
         </div>
 
-        <div className="text-right whitespace-nowrap bg-blue-50 border border-blue-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
-          <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Total Cotizaciones</span>
-          <span className="text-lg font-black text-blue-800">${totalCotizaciones.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
-        </div>
+        {viewMode === "table" && (
+          <div className="text-right whitespace-nowrap bg-blue-50 border border-blue-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
+            <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Total Cotizaciones</span>
+            <span className="text-lg font-black text-blue-800">${totalCotizaciones.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+          </div>
+        )}
       </div>
 
+
       {viewMode === "kanban" ? (
-        <div className="flex-1 overflow-x-auto overflow-y-hidden">
-          <div className="flex h-full gap-4 pb-4 px-1" style={{ width: 'max-content', minWidth: '100%' }}>
+        <div className="flex-1 overflow-x-auto pb-4">
+          <div className="flex gap-4 pb-4 px-1" style={{ width: 'max-content', minWidth: '100%' }}>
             {CRM_STAGES.map((stage) => {
               const stageQuotes = filteredQuotes.filter(q => q.status === stage.id);
               const totalStageAmount = stageQuotes.reduce((sum, q) => sum + q.totalAmount, 0);
@@ -425,7 +482,7 @@ export default function CotizacionesCRMPage() {
               return (
                 <div 
                   key={stage.id} 
-                  className={`flex flex-col w-80 shrink-0 border rounded-xl overflow-hidden shadow-sm h-full ${stage.id === 'ganada' ? 'bg-emerald-50/50 border-emerald-200' : stage.id === 'perdida' ? 'bg-red-50/50 border-red-200' : 'bg-slate-50 border-slate-200'}`}
+                  className={`flex flex-col w-80 shrink-0 border rounded-xl overflow-hidden shadow-sm h-fit ${stage.id === 'ganada' ? 'bg-emerald-50/50 border-emerald-200' : stage.id === 'perdida' ? 'bg-red-50/50 border-red-200' : 'bg-slate-50 border-slate-200'}`}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, stage.id)}
                 >
@@ -445,7 +502,7 @@ export default function CotizacionesCRMPage() {
                     </div>
                   </div>
 
-                  <div className="flex-1 p-3 overflow-y-auto space-y-3 custom-scrollbar">
+                  <div className="p-3 space-y-3">
                     {stageQuotes.map(renderOrderCard => renderQuoteCard(renderOrderCard))}
                     {stageQuotes.length === 0 && (
                       <div className="h-24 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-xs text-slate-400 font-medium">
@@ -515,19 +572,44 @@ export default function CotizacionesCRMPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <Link href={`/pdf/cotizacion/${quote.id}`} target="_blank">
-                              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 hover:bg-slate-50">
-                                PDF
+                          <div className="flex justify-end items-center gap-1">
+                            <Link href={`/ventas/cotizaciones/${quote.id}`} target="_blank">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 shrink-0"
+                                title="Abrir Detalles"
+                              >
+                                <Eye className="w-4 h-4" />
                               </Button>
                             </Link>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-8 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 font-semibold"
-                              onClick={() => setSelectedQuote(quote)}
+                            <Link href={`/pdf/cotizacion/${quote.id}`} target="_blank">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0"
+                                title="Descargar PDF"
+                              >
+                                <FileDown className="w-4 h-4" />
+                              </Button>
+                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 shrink-0"
+                              onClick={() => handleCopyQuote(quote)}
+                              title="Copiar"
                             >
-                              Ver Detalles
+                              <Copy className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-rose-600 hover:text-rose-800 hover:bg-rose-50 shrink-0"
+                              onClick={() => handleDeleteQuote(quote.id)}
+                              title="Cancelar"
+                            >
+                              <Ban className="w-4 h-4" />
                             </Button>
                           </div>
                         </td>
@@ -539,14 +621,6 @@ export default function CotizacionesCRMPage() {
             </table>
           </div>
         </div>
-      )}
-
-      {selectedQuote && (
-        <QuoteModal 
-          quote={selectedQuote} 
-          onClose={() => setSelectedQuote(null)} 
-          stages={CRM_STAGES} 
-        />
       )}
     </div>
   );

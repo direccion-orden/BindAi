@@ -163,7 +163,7 @@ export default function NuevoProductoPage() {
       const res = await fetch("/api/ai/generate-description", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, productType, vendor }),
+        body: JSON.stringify({ title, description, productType, vendor, companyId }),
       });
 
       const data = await res.json();

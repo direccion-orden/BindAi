@@ -267,7 +267,7 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
               )}
             </div>
             <p className="text-muted-foreground text-sm mt-1">
-              Cliente: {factura.clientName} | Pedido Origen: <Link href={`/ventas/pedidos/${factura.orderId}`} className="text-indigo-600 hover:underline">{factura.orderNumber}</Link>
+              Cliente: {factura.clientName} | Pedido Origen: <Link href={`/ventas/pedidos/${factura.orderId}`} target="_blank" className="text-indigo-600 hover:underline">{factura.orderNumber}</Link>
             </p>
           </div>
         </div>
@@ -281,7 +281,7 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
 
           {factura.status === 'por_timbrar' && (
             <>
-              <Link href={`/ventas/facturas/${factura.id}/editar`}>
+              <Link href={`/ventas/facturas/${factura.id}/editar`} target="_blank">
                 <Button variant="outline" disabled={timbrando}>
                   Editar Factura
                 </Button>

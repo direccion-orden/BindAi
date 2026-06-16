@@ -1,11 +1,27 @@
 "use server";
 
+import { adminDb } from "@/lib/firebase/admin";
 import { GoogleGenAI } from '@google/genai';
 
-export async function generateQuoteImage(promptText: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
+export async function generateQuoteImage(promptText: string, companyId?: string): Promise<string> {
+  let apiKey = process.env.GEMINI_API_KEY;
+
+  if (companyId && adminDb) {
+    try {
+      const companyDoc = await adminDb.collection("companies").doc(companyId).get();
+      if (companyDoc.exists) {
+        const companyData = companyDoc.data();
+        if (companyData?.geminiApiKey) {
+          apiKey = companyData.geminiApiKey;
+        }
+      }
+    } catch (e) {
+      console.error("Error reading company geminiApiKey from Firestore:", e);
+    }
+  }
+
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY no está configurada.');
+    return "ERROR: La clave de API de Gemini (GEMINI_API_KEY) no está configurada en las variables de entorno ni en el perfil de la empresa.";
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -31,13 +47,17 @@ Architectural interior photography style, realistic proportions, natural perspec
     });
 
     if (!response.generatedImages || response.generatedImages.length === 0 || !response.generatedImages[0]?.image?.imageBytes) {
-      throw new Error("No images were generated.");
+      return "ERROR: No se generaron imágenes.";
     }
 
     const base64Image = response.generatedImages[0].image.imageBytes;
     return `data:image/jpeg;base64,${base64Image}`;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating image with Google Imagen:", error);
-    throw new Error("No se pudo generar la imagen con IA.");
+    const msg = error?.message || String(error);
+    if (msg.includes("paid plans") || msg.includes("upgrade")) {
+      return "ERROR: Imagen no está disponible en planes gratuitos de Gemini. Por favor actualiza tu cuenta de Gemini a un plan de pago.";
+    }
+    return `ERROR: ${msg}`;
   }
 }

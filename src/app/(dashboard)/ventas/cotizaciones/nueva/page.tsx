@@ -278,11 +278,17 @@ export default function NuevaCotizacionPage() {
       let imageUrl = "";
       if (imagePrompt) {
         try {
-          imageUrl = await generateQuoteImage(imagePrompt);
+          const resImg = await generateQuoteImage(imagePrompt, companyId);
+          if (resImg.startsWith("ERROR:")) {
+            alert(resImg.replace("ERROR:", "").trim());
+          } else {
+            imageUrl = resImg;
+          }
         } catch (err) {
           console.error("Imagen generation failed", err);
         }
       }
+
 
       const quoteRef = doc(db, "companies", companyId, "quotes", quoteId);
       await setDoc(quoteRef, {

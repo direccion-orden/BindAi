@@ -63,7 +63,7 @@ export default function AuditoriasPage() {
             Conteos cíclicos e inventarios físicos generales para conciliar existencias.
           </p>
         </div>
-        <Link href="/inventarios/auditorias/nueva">
+        <Link href="/inventarios/auditorias/nueva" target="_blank">
           <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700">
             <Plus className="w-4 h-4" /> Nueva Auditoría
           </Button>

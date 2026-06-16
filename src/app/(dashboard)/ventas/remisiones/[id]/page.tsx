@@ -143,7 +143,7 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
             </div>
             <p className="text-muted-foreground text-sm mt-1">
               Cliente: {remission.clientName} | Ref. Pedido: {remission.orderId ? (
-                <Link href={`/ventas/pedidos/${remission.orderId}`} className="text-indigo-600 hover:underline">{remission.orderNumber}</Link>
+                <Link href={`/ventas/pedidos/${remission.orderId}`} target="_blank" className="text-indigo-600 hover:underline">{remission.orderNumber}</Link>
               ) : (
                 <span className="text-slate-500 font-medium">{remission.orderNumber || 'Venta de Mostrador'}</span>
               )}

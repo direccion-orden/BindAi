@@ -79,7 +79,7 @@ export default function TransferenciasPage() {
             Mueve mercancía entre tus almacenes y sucursales.
           </p>
         </div>
-        <Link href="/inventarios/transferencias/nueva">
+        <Link href="/inventarios/transferencias/nueva" target="_blank">
           <Button className="gap-2">
             <Plus className="w-4 h-4" /> Nueva Transferencia
           </Button>
@@ -106,7 +106,7 @@ export default function TransferenciasPage() {
                     <div className="flex flex-col items-center justify-center space-y-3">
                       <Truck className="w-12 h-12 text-muted-foreground/30" />
                       <p>No hay transferencias registradas.</p>
-                      <Link href="/inventarios/transferencias/nueva">
+                      <Link href="/inventarios/transferencias/nueva" target="_blank">
                         <Button variant="outline" size="sm" className="mt-2">Crear mi primera transferencia</Button>
                       </Link>
                     </div>
@@ -138,7 +138,7 @@ export default function TransferenciasPage() {
                       {getStatusBadge(tx.status)}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link href={`/inventarios/transferencias/${tx.id}`}>
+                      <Link href={`/inventarios/transferencias/${tx.id}`} target="_blank">
                         <Button variant="ghost" size="sm">
                           Ver Detalles
                         </Button>

@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Truck, User, FileText, CheckCircle2, XCircle, Receipt, Plus, Search, DollarSign } from "lucide-react";
+import { Loader2, Truck, User, FileText, CheckCircle2, XCircle, Receipt, Plus, Search, DollarSign, Copy, Eye, FileDown, Ban } from "lucide-react";
+import { getNextSequence } from "@/lib/firebase/counters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -25,6 +26,43 @@ export default function RemisionesPage() {
   const { companyId } = useAuth();
   const [remissions, setRemissions] = useState<Remission[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const handleCopyRemission = async (remission: any) => {
+    if (!companyId) return;
+    const confirm = window.confirm("¿Deseas duplicar esta remisión?");
+    if (!confirm) return;
+    try {
+      const newId = crypto.randomUUID();
+      const remissionNumber = await getNextSequence(companyId, 'remisiones');
+      const newRemission = {
+        ...remission,
+        id: newId,
+        remissionNumber,
+        status: 'activa',
+        createdAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, "companies", companyId, "remisiones", newId), newRemission);
+      alert(`Remisión duplicada con éxito bajo el folio ${remissionNumber}`);
+    } catch (error) {
+      console.error("Error duplicating remission:", error);
+      alert("Hubo un error al duplicar la remisión.");
+    }
+  };
+
+  const handleCancelRemission = async (remissionId: string) => {
+    if (!companyId) return;
+    const confirm = window.confirm("¿Estás seguro de que deseas cancelar esta remisión?");
+    if (!confirm) return;
+    try {
+      await updateDoc(doc(db, "companies", companyId, "remisiones", remissionId), {
+        status: 'cancelada'
+      });
+      alert("Remisión cancelada con éxito");
+    } catch (error) {
+      console.error("Error cancelling remission:", error);
+      alert("Hubo un error al cancelar la remisión.");
+    }
+  };
 
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
@@ -146,7 +184,7 @@ export default function RemisionesPage() {
             Visualiza y gestiona las remisiones de salida de mercancía.
           </p>
         </div>
-        <Link href="/ventas/remisiones/nueva">
+        <Link href="/ventas/remisiones/nueva" target="_blank">
           <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
             <Plus className="w-4 h-4" /> Nueva Remisión (Directa)
           </Button>
@@ -266,7 +304,7 @@ export default function RemisionesPage() {
                 <th className="px-6 py-4">Total</th>
                 <th className="px-6 py-4">Fecha</th>
                 <th className="px-6 py-4">Estatus</th>
-                <th className="px-6 py-4">Acciones</th>
+                <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -302,13 +340,47 @@ export default function RemisionesPage() {
                       {remission.status === 'facturada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200"><Receipt className="w-3 h-3" /> Facturada</span>}
                       {remission.status === 'cancelada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 text-xs font-bold border border-red-200"><XCircle className="w-3 h-3" /> Cancelada</span>}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        <Link href={`/ventas/remisiones/${remission.id}`}>
-                          <Button variant="outline" size="sm" className="h-8 gap-2 text-xs">
-                            <FileText className="w-4 h-4" /> Ver Detalles
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end items-center gap-1">
+                        <Link href={`/ventas/remisiones/${remission.id}`} target="_blank">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 shrink-0"
+                            title="Abrir Detalles"
+                          >
+                            <Eye className="w-4 h-4" />
                           </Button>
                         </Link>
+                        <Link href={`/pdf/remision/${remission.id}`} target="_blank">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0"
+                            title="Descargar PDF"
+                          >
+                            <FileDown className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 shrink-0"
+                          onClick={() => handleCopyRemission(remission)}
+                          title="Copiar"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-rose-600 hover:text-rose-800 hover:bg-rose-50 shrink-0"
+                          onClick={() => handleCancelRemission(remission.id)}
+                          disabled={remission.status === 'cancelada'}
+                          title="Cancelar"
+                        >
+                          <Ban className="w-4 h-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>

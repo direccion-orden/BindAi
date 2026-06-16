@@ -274,7 +274,7 @@ export default function PrintLabelsPage() {
             <h1 className="text-3xl font-bold tracking-tight">Impresión de Etiquetas</h1>
             <p className="text-muted-foreground">Genera códigos de barras para tu inventario físico.</p>
           </div>
-          <Link href="/inventarios/etiquetas/formatos">
+          <Link href="/inventarios/etiquetas/formatos" target="_blank">
             <Button variant="outline">Configurar Formatos</Button>
           </Link>
         </div>

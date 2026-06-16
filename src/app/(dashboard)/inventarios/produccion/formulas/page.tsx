@@ -71,7 +71,7 @@ export default function FormulasPage() {
             </p>
           </div>
         </div>
-        <Link href="/inventarios/produccion/formulas/nueva">
+        <Link href="/inventarios/produccion/formulas/nueva" target="_blank">
           <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700">
             <Plus className="w-4 h-4" /> Nueva Fórmula
           </Button>

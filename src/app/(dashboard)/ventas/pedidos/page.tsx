@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Copy, Eye, FileDown, Ban } from "lucide-react";
+import { getNextSequence } from "@/lib/firebase/counters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -24,6 +25,43 @@ export default function PedidosPage() {
   const { companyId } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const handleCopyOrder = async (order: any) => {
+    if (!companyId) return;
+    const confirm = window.confirm("¿Deseas duplicar este pedido?");
+    if (!confirm) return;
+    try {
+      const newId = crypto.randomUUID();
+      const orderNumber = await getNextSequence(companyId, 'pedidos');
+      const newOrder = {
+        ...order,
+        id: newId,
+        orderNumber,
+        status: 'por_surtir',
+        createdAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, "companies", companyId, "pedidos", newId), newOrder);
+      alert(`Pedido duplicado con éxito bajo el folio ${orderNumber}`);
+    } catch (error) {
+      console.error("Error duplicating order:", error);
+      alert("Hubo un error al duplicar el pedido.");
+    }
+  };
+
+  const handleCancelOrder = async (orderId: string) => {
+    if (!companyId) return;
+    const confirm = window.confirm("¿Estás seguro de que deseas cancelar este pedido?");
+    if (!confirm) return;
+    try {
+      await updateDoc(doc(db, "companies", companyId, "pedidos", orderId), {
+        status: 'cancelado'
+      });
+      alert("Pedido cancelado con éxito");
+    } catch (error) {
+      console.error("Error cancelling order:", error);
+      alert("Hubo un error al cancelar el pedido.");
+    }
+  };
 
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
@@ -191,7 +229,7 @@ export default function PedidosPage() {
             Gestiona el surtido, empaque y preparación de envíos.
           </p>
         </div>
-        <Link href="/ventas/pedidos/nuevo">
+        <Link href="/ventas/pedidos/nuevo" target="_blank">
           <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
             <Plus className="w-4 h-4" /> Nuevo Pedido Directo
           </Button>
@@ -359,7 +397,7 @@ export default function PedidosPage() {
                     {renderSortIcon("status")}
                   </div>
                 </th>
-                <th className="px-6 py-4">Acciones</th>
+                <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -395,12 +433,48 @@ export default function PedidosPage() {
                       {order.status === 'remisionado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">Remisionado</span>}
                       {order.status === 'cancelado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold">Cancelado</span>}
                     </td>
-                    <td className="px-6 py-4">
-                      <Link href={`/ventas/pedidos/${order.id}`}>
-                        <Button variant="outline" size="sm" className="h-8 gap-2">
-                          <FileText className="w-4 h-4" /> Ver Detalles
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end items-center gap-1">
+                        <Link href={`/ventas/pedidos/${order.id}`} target="_blank">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 shrink-0"
+                            title="Abrir Detalles"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                        <Link href={`/pdf/pedido/${order.id}`} target="_blank">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0"
+                            title="Descargar PDF"
+                          >
+                            <FileDown className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 shrink-0"
+                          onClick={() => handleCopyOrder(order)}
+                          title="Copiar"
+                        >
+                          <Copy className="w-4 h-4" />
                         </Button>
-                      </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-rose-600 hover:text-rose-800 hover:bg-rose-50 shrink-0"
+                          onClick={() => handleCancelOrder(order.id)}
+                          disabled={order.status === 'cancelado'}
+                          title="Cancelar"
+                        >
+                          <Ban className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))

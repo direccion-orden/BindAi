@@ -290,7 +290,7 @@ export default function IngresosPage() {
                             {payment.documentType}
                           </span>
                           {docLink ? (
-                            <Link href={docLink} className="text-indigo-600 hover:text-indigo-800 hover:underline flex items-center font-medium">
+                            <Link href={docLink} target="_blank" className="text-indigo-600 hover:text-indigo-800 hover:underline flex items-center font-medium">
                               {getDocumentLabel(payment.documentType, payment.documentNumber)} <ArrowUpRight className="w-3 h-3 ml-0.5" />
                             </Link>
                           ) : (

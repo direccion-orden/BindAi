@@ -377,12 +377,12 @@ export default function ProduccionPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/inventarios/produccion/formulas">
+          <Link href="/inventarios/produccion/formulas" target="_blank">
             <Button variant="outline" className="gap-2">
               Fórmulas (BOM)
             </Button>
           </Link>
-          <Link href="/inventarios/produccion/nueva">
+          <Link href="/inventarios/produccion/nueva" target="_blank">
             <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700">
               <Plus className="w-4 h-4" /> Nueva Orden
             </Button>
@@ -397,7 +397,7 @@ export default function ProduccionPage() {
           </div>
           <h2 className="text-2xl font-bold tracking-tight">Bienvenido al Tablero Kanban de Producción</h2>
           <p className="text-muted-foreground max-w-md mx-auto mb-6 mt-2">Para usar el tablero de control visual, primero necesitas configurar las etapas de tu proceso productivo (Ej. Corte, Ensamble, Empaque).</p>
-          <Link href="/catalogos/etapas-produccion">
+          <Link href="/catalogos/etapas-produccion" target="_blank">
             <Button className="bg-indigo-600 hover:bg-indigo-700">Configurar Etapas de Producción</Button>
           </Link>
         </div>

@@ -38,35 +38,48 @@ const db = admin.firestore();
 const companyId = "0cb93750-138e-4b7d-832e-3a37b95c5093";
 
 async function run() {
-  const remsCol = db.collection('companies').doc(companyId).collection('remisiones');
-  const snap = await remsCol.get();
+  const clientsCol = db.collection('companies').doc(companyId).collection('clients');
   
-  console.log("Looking for remisiones matching 35908 or 35909:");
-  snap.docs.forEach(doc => {
+  console.log("=== CARRUSELLO Clients ===");
+  const carruselloSnap = await clientsCol.get();
+  carruselloSnap.docs.forEach(doc => {
     const data = doc.data();
-    const id = doc.id;
-    const remissionNumber = String(data.remissionNumber || "");
-    const orderNumber = String(data.orderNumber || "");
-    
-    // Check if it matches 35908 or 35909 in either field
-    if (
-      id.includes("35908") || id.includes("35909") ||
-      remissionNumber.includes("35908") || remissionNumber.includes("35909") ||
-      orderNumber.includes("35908") || orderNumber.includes("35909") ||
-      // Or if orderNumber is SHOPIFY-3666 or SHOPIFY-3665 (which correspond to 35909 and 35908)
-      orderNumber.includes("3666") || orderNumber.includes("3667")
-    ) {
-      console.log(`Document ID: ${id}`);
-      console.log(`  remissionNumber: ${data.remissionNumber} (${typeof data.remissionNumber})`);
-      console.log(`  orderNumber: ${data.orderNumber}`);
-      console.log(`  clientName: ${data.clientName}`);
-      console.log(`  isShopifySale: ${data.isShopifySale}`);
-      console.log(`  migrated: ${data.migrated}`);
-      console.log(`  createdAt: ${data.createdAt}`);
-      console.log(`  totalAmount: ${data.totalAmount}`);
-      console.log("--------------------------------------");
+    const name = (data.name || data.LegalName || data.CommercialName || "").trim();
+    if (name.toUpperCase().includes("CARRUSELLO")) {
+      console.log(`ID: ${doc.id}`);
+      console.log(`  Name: "${name}"`);
+      console.log(`  RFC: "${data.RFC || data.rfc || ''}"`);
+      console.log(`  Email: "${data.Email || data.email || ''}"`);
+      console.log(`  Phone: "${data.Phone || data.phone || ''}"`);
+      console.log("------------------------");
+    }
+  });
+
+  console.log("\n=== Vania / Méndez search ===");
+  carruselloSnap.docs.forEach(doc => {
+    const data = doc.data();
+    const name = (data.name || data.LegalName || data.CommercialName || "").trim();
+    if (name.toUpperCase().includes("VANIA") || name.toUpperCase().includes("MÉNDEZ") || name.toUpperCase().includes("MENDEZ")) {
+      console.log(`ID: ${doc.id}`);
+      console.log(`  Name: "${name}"`);
+      console.log(`  RFC: "${data.RFC || data.rfc || ''}"`);
+      console.log(`  Email: "${data.Email || data.email || ''}"`);
+      console.log("------------------------");
+    }
+  });
+
+  console.log("\n=== Dulce / Vazquez search ===");
+  carruselloSnap.docs.forEach(doc => {
+    const data = doc.data();
+    const name = (data.name || data.LegalName || data.CommercialName || "").trim();
+    if (name.toUpperCase().includes("DULCE") || name.toUpperCase().includes("VAZQUEZ") || name.toUpperCase().includes("VÁSQUEZ")) {
+      console.log(`ID: ${doc.id}`);
+      console.log(`  Name: "${name}"`);
+      console.log(`  RFC: "${data.RFC || data.rfc || ''}"`);
+      console.log(`  Email: "${data.Email || data.email || ''}"`);
+      console.log("------------------------");
     }
   });
 }
 
-run();
+run().catch(console.error);

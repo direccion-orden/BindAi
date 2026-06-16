@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Save, Building2, ShieldCheck, Mail, MapPin, KeyRound, UploadCloud, CheckCircle2, MessageCircle, Server } from "lucide-react";
+import { Loader2, Save, Building2, ShieldCheck, Mail, MapPin, KeyRound, UploadCloud, CheckCircle2, MessageCircle, Server, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -35,7 +35,8 @@ export default function CompanyProfilePage() {
     smtpHost: "",
     smtpPort: "",
     smtpUser: "",
-    smtpPass: ""
+    smtpPass: "",
+    geminiApiKey: ""
   });
 
   useEffect(() => {
@@ -62,7 +63,8 @@ export default function CompanyProfilePage() {
           smtpHost: data.smtpHost || "",
           smtpPort: data.smtpPort || "",
           smtpUser: data.smtpUser || "",
-          smtpPass: data.smtpPass || ""
+          smtpPass: data.smtpPass || "",
+          geminiApiKey: data.geminiApiKey || ""
         });
       }
 
@@ -405,6 +407,30 @@ export default function CompanyProfilePage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* AI Configuration */}
+        <div className="bg-card border rounded-xl p-6 shadow-sm space-y-4">
+          <h3 className="font-semibold flex items-center gap-2 border-b pb-3 text-indigo-600">
+            <Sparkles className="w-5 h-5 text-indigo-600" />
+            Configuración de Inteligencia Artificial (Gemini)
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Configura una clave de API (API KEY) de Google Gemini para habilitar la generación de portadas con IA, descripciones automáticas y asistentes inteligentes en tu cuenta.
+          </p>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Gemini API Key</label>
+            <Input 
+              name="geminiApiKey" 
+              type="password"
+              value={formData.geminiApiKey} 
+              onChange={handleChange} 
+              placeholder="AIzaSy..." 
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Puedes obtener tu API Key de forma gratuita o de pago desde Google AI Studio (https://aistudio.google.com/).
+            </p>
           </div>
         </div>
 

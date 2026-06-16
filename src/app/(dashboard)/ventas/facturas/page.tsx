@@ -135,7 +135,7 @@ export default function FacturasPage() {
             Consulta facturas timbradas y pre-facturas pendientes de timbrado.
           </p>
         </div>
-        <Link href="/ventas/facturas/nueva">
+        <Link href="/ventas/facturas/nueva" target="_blank">
           <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md">
             <Plus className="w-4 h-4" /> Nueva Factura (Directa)
           </Button>
@@ -286,7 +286,7 @@ export default function FacturasPage() {
                     </td>
                     <td className="px-6 py-4 text-right font-bold">${inv.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
                     <td className="px-6 py-4 text-right">
-                      <Link href={`/ventas/facturas/${inv.id}`}>
+                      <Link href={`/ventas/facturas/${inv.id}`} target="_blank">
                         <Button variant="ghost" size="sm" className="h-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50">
                           Ver Detalles
                         </Button>

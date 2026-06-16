@@ -73,7 +73,7 @@ export default function RecepcionesPage() {
             Ingresa productos al inventario contra facturas, notas o facturas de proveedores.
           </p>
         </div>
-        <Link href="/compras/recepciones/nueva">
+        <Link href="/compras/recepciones/nueva" target="_blank">
           <Button className="gap-2">
             <Plus className="w-4 h-4" /> Nueva Recepción
           </Button>
@@ -101,7 +101,7 @@ export default function RecepcionesPage() {
                     <div className="flex flex-col items-center justify-center space-y-3">
                       <Truck className="w-12 h-12 text-muted-foreground/30" />
                       <p>No has registrado ninguna entrada de mercancía.</p>
-                      <Link href="/compras/recepciones/nueva">
+                      <Link href="/compras/recepciones/nueva" target="_blank">
                         <Button variant="outline" size="sm" className="mt-2">Registrar mi primera entrada</Button>
                       </Link>
                     </div>

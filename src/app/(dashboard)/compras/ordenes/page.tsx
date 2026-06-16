@@ -82,7 +82,7 @@ export default function OrdenesCompraPage() {
             Gestiona requisiciones a proveedores y haz seguimiento a las entregas.
           </p>
         </div>
-        <Link href="/compras/ordenes/nueva">
+        <Link href="/compras/ordenes/nueva" target="_blank">
           <Button className="gap-2">
             <Plus className="w-4 h-4" /> Nueva Orden
           </Button>
@@ -134,7 +134,7 @@ export default function OrdenesCompraPage() {
                       ${order.totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link href={`/compras/ordenes/${order.id}`}>
+                      <Link href={`/compras/ordenes/${order.id}`} target="_blank">
                         <Button variant="ghost" size="sm">Ver Detalle</Button>
                       </Link>
                     </td>

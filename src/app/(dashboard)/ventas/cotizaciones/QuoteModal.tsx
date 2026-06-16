@@ -78,11 +78,17 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
       let imageUrl = editData.imageUrl;
       if (editData.imagePrompt !== quote.imagePrompt && editData.imagePrompt) {
         try {
-          imageUrl = await generateQuoteImage(editData.imagePrompt);
+          const resImg = await generateQuoteImage(editData.imagePrompt, companyId);
+          if (resImg.startsWith("ERROR:")) {
+            alert(resImg.replace("ERROR:", "").trim());
+          } else {
+            imageUrl = resImg;
+          }
         } catch (err) {
           console.error("Imagen generation failed", err);
         }
       }
+
 
       let finalProjectName = null;
       if (editData.projectId) {

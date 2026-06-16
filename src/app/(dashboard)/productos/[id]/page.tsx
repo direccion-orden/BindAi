@@ -289,7 +289,7 @@ export default function EditarProductoPage() {
       const res = await fetch("/api/ai/generate-description", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, productType, vendor })
+        body: JSON.stringify({ title, description, productType, vendor, companyId })
       });
       
       const data = await res.json();
@@ -780,7 +780,7 @@ export default function EditarProductoPage() {
                       className="max-w-[200px] bg-muted/50"
                     />
                     <p className="text-xs text-muted-foreground mt-2">
-                      La cantidad de inventario solo puede modificarse mediante el módulo de <Link href="/inventarios/movimientos" className="text-indigo-600 underline">Movimientos</Link> o Transferencias.
+                      La cantidad de inventario solo puede modificarse mediante el módulo de <Link href="/inventarios/movimientos" target="_blank" className="text-indigo-600 underline">Movimientos</Link> o Transferencias.
                     </p>
                   </div>
                 </div>

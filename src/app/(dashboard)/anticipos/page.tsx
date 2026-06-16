@@ -157,7 +157,7 @@ export default function DashboardPage() {
           </p>
         </div>
         
-        <Link href="/nuevo">
+        <Link href="/nuevo" target="_blank">
           <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shrink-0">
             <Plus className="w-4 h-4" />
             Registrar Anticipo

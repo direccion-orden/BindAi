@@ -34,7 +34,7 @@ export default function InventariosDashboardPage() {
           <p className="text-xs text-muted-foreground">Cíclicos y Generales</p>
         </div>
 
-        <Link href="/inventarios/etiquetas" className="block">
+        <Link href="/inventarios/etiquetas" target="_blank" className="block">
           <div className="bg-card border rounded-xl p-6 shadow-sm flex flex-col items-center justify-center text-center space-y-2 hover:border-primary transition-colors cursor-pointer group h-full">
             <div className="p-3 bg-primary/10 rounded-full group-hover:bg-primary/20 transition-colors">
               <Boxes className="w-6 h-6 text-primary" />

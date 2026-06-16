@@ -36,6 +36,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [projects, setProjects] = useState<any[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
 
   useEffect(() => {
     if (!companyId || !params.id) return;
@@ -62,6 +63,15 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
       });
       getDocs(collection(db, "companies", companyId, "projects")).then(snap => {
         setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      });
+      getDocs(collection(db, "companies", companyId, "locations")).then(snap => {
+        setLocations(snap.docs.map(d => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: data.name || data.Name || "Sucursal sin nombre"
+          };
+        }));
       });
       getDocs(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active"))).then(snap => {
         setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
@@ -104,9 +114,15 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         finalProjectName = null;
       }
 
+      let finalLocationName = order.locationName || "";
+      if (order.locationId) {
+        finalLocationName = locations.find(l => l.id === order.locationId)?.name || order.locationName || "";
+      }
+
       const updatedOrder = {
         ...order,
         projectName: finalProjectName,
+        locationName: finalLocationName,
         subtotal: calc.subtotal,
         totalDiscount: calc.totalDiscount,
         globalDiscountType: order.globalDiscountType || "none",
@@ -401,7 +417,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
           Información General del Pedido
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase">Cliente</label>
             <p className="font-bold text-slate-900 mt-1">{order.clientName || 'Sin Cliente'}</p>
@@ -434,6 +450,24 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                 </span>
               )}
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase">Sucursal</label>
+            {isEditing ? (
+              <select 
+                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
+                value={order.locationId || ""}
+                onChange={e => setOrder({...order, locationId: e.target.value})}
+              >
+                <option value="">Seleccionar Sucursal</option>
+                {locations.map(l => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="font-bold text-slate-900 mt-1">{order.locationName || 'N/A'}</p>
+            )}
           </div>
 
           <div>

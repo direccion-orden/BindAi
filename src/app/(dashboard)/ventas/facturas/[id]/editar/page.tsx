@@ -59,6 +59,9 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
   const [productSearch, setProductSearch] = useState("");
   const [items, setItems] = useState<OrderItem[]>([]);
   
+  const [locations, setLocations] = useState<any[]>([]);
+  const [locationId, setLocationId] = useState("");
+  
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("detalle");
 
@@ -79,6 +82,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         setItems(data.items || []);
         setProjectId(data.projectId || "");
         setEnteredPromoCode(data.promoCode || "");
+        setLocationId(data.locationId || "");
       }
       setFacturaLoaded(true);
     };
@@ -98,11 +102,21 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
       setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          name: data.name || data.Name || "Sucursal sin nombre"
+        };
+      }));
+    });
+
     const unsubD = onSnapshot(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active")), (snap) => {
       setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); unsubD(); };
+    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubD(); };
   }, [companyId, params.id]);
 
   const getFilteredClients = () => {
@@ -247,6 +261,11 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
       return;
     }
 
+    if (!locationId) {
+      alert("Debes seleccionar una Sucursal (Origen).");
+      return;
+    }
+
     if (!window.confirm("¿Guardar cambios en la factura y prepararla para timbrar?")) {
       return;
     }
@@ -331,6 +350,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         totalAmount: totals.total,
         projectId: projectId || null,
         projectName: projectId ? projects.find(p => p.id === projectId)?.name : null,
+        locationId,
+        locationName: locations.find(l => l.id === locationId)?.name || originalFactura?.locationName || "",
         cfdiPayload: cfdiPayload,
         updatedAt: new Date().toISOString()
       });
@@ -403,7 +424,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
           Datos Generales de la Factura
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
           {/* Column 1 & 2: Client search or new client inputs */}
           {isNewClient ? (
             <div className="space-y-3 bg-blue-50/30 p-3 rounded-lg border border-blue-100 col-span-1 md:col-span-2">
@@ -484,7 +505,23 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
             </div>
           )}
 
-          {/* Column 3: Proyecto */}
+          {/* Column 3: Sucursal */}
+          <div className="space-y-2 col-span-1">
+            <label className="text-xs font-medium text-slate-500 uppercase">Sucursal (Origen) *</label>
+            <select 
+              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+              value={locationId}
+              onChange={e => setLocationId(e.target.value)}
+              required
+            >
+              <option value="" disabled>Selecciona sucursal...</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Column 4: Proyecto */}
           <div className="space-y-2 col-span-1">
             <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
               <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />

@@ -354,11 +354,15 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
               <p className="text-xs text-slate-500 font-semibold uppercase mb-1">UUID / Folio Fiscal</p>
               <p className="font-bold text-indigo-700 whitespace-nowrap tracking-tighter text-[clamp(11px,1.5vw,16px)]">{factura.facturamaUuid || '--'}</p>
             </div>
-            <div className="min-w-0 lg:col-span-2 lg:pl-8">
+            <div className="min-w-0 lg:col-span-2">
+              <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Sucursal</p>
+              <p className="font-bold truncate">{factura.locationName || 'N/A'}</p>
+            </div>
+            <div className="min-w-0 lg:col-span-2 lg:pl-4">
               <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Fecha</p>
               <p className="font-bold whitespace-nowrap text-[clamp(11px,1.5vw,14px)]">{new Date(factura.createdAt).toLocaleDateString('es-MX')}</p>
             </div>
-            <div className="min-w-0 lg:col-span-4">
+            <div className="min-w-0 lg:col-span-2">
               <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Creado por</p>
               <p className="font-bold whitespace-nowrap tracking-tight text-[clamp(11px,1.5vw,16px)]">{factura.createdBy}</p>
             </div>

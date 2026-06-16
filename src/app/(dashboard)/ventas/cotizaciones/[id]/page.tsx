@@ -351,7 +351,20 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">Sucursal</p>
-            <p className="font-bold text-slate-900">{editData.locationName || "N/A"}</p>
+            {isEditing ? (
+              <select 
+                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
+                value={editData.locationId || ""}
+                onChange={e => setEditData({...editData, locationId: e.target.value})}
+              >
+                <option value="">Seleccionar Sucursal</option>
+                {locations.map(l => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="font-bold text-slate-900">{editData.locationName || "N/A"}</p>
+            )}
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">Estatus</p>
@@ -640,24 +653,6 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                 ))}
               </select>
             </div>
-
-            {isEditing && (
-              <div className="space-y-1 mt-2">
-                <label className="text-xs font-semibold text-indigo-900 flex items-center gap-1">
-                   Vincular a Sucursal
-                </label>
-                <select 
-                  className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-sm shadow-sm"
-                  value={editData.locationId || ""}
-                  onChange={e => setEditData({...editData, locationId: e.target.value})}
-                >
-                  <option value="">Seleccionar Sucursal</option>
-                  {locations.map(l => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
         </div>
 

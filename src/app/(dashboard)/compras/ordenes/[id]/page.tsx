@@ -241,7 +241,7 @@ export default function DetalleOrdenCompraPage() {
       </div>
 
       <div className="bg-card border rounded-xl shadow-sm overflow-hidden p-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mb-8">
           <div>
             <p className="text-sm text-muted-foreground mb-1">Proveedor</p>
             <p className="font-semibold">{order.vendorName}</p>
@@ -253,6 +253,10 @@ export default function DetalleOrdenCompraPage() {
           <div>
             <p className="text-sm text-muted-foreground mb-1">Entrega Esperada</p>
             <p className="font-semibold">{order.expectedDate ? new Date(order.expectedDate).toLocaleDateString('es-MX') : "No especificada"}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Sucursal</p>
+            <p className="font-semibold">{order.locationName || "No especificada"}</p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground mb-1">Importe Total</p>

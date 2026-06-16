@@ -27,6 +27,8 @@ export interface PurchaseOrder {
   createdBy: string;
   notes?: string;
   paidAmount?: number;
+  locationId?: string;
+  locationName?: string;
   items: PurchaseOrderItem[];
 }
 

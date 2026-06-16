@@ -104,6 +104,10 @@ export default function NuevaRemisionPage() {
     const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
       const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setAccounts(allAcc.filter((a: any) => a.type === "INGRESOS" && a.level >= 2));
+      const targetAcc = allAcc.find((a: any) => a.code === "401.1");
+      if (targetAcc) {
+        setAccountId(targetAcc.id);
+      }
     });
 
     const unsubD = onSnapshot(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active")), (snap) => {
@@ -250,8 +254,8 @@ export default function NuevaRemisionPage() {
       return;
     }
 
-    if (!locationId || !accountId) {
-      alert("Debes seleccionar una Sucursal y una Cuenta Contable de Ingreso.");
+    if (!locationId) {
+      alert("Debes seleccionar una Sucursal.");
       return;
     }
 
@@ -276,6 +280,11 @@ export default function NuevaRemisionPage() {
       const remId = crypto.randomUUID();
       const remNumber = await getNextSequence(companyId, 'remisiones');
 
+      const targetAcc = accounts.find(a => a.code === "401.1");
+      const finalAccountId = targetAcc?.id || accountId || "";
+      const finalAccountCode = targetAcc?.code || "401.1";
+      const finalAccountName = targetAcc?.name || "Ventas Nacionales";
+
       const remRef = doc(db, "companies", companyId, "remisiones", remId);
       await setDoc(remRef, {
         id: remId,
@@ -297,9 +306,9 @@ export default function NuevaRemisionPage() {
         projectName: projectId ? (projects.find(p => p.id === projectId)?.name || null) : null,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || "",
-        accountId,
-        accountCode: accounts.find(a => a.id === accountId)?.code || "",
-        accountName: accounts.find(a => a.id === accountId)?.name || "",
+        accountId: finalAccountId,
+        accountCode: finalAccountCode,
+        accountName: finalAccountName,
         status: "activa", 
         createdAt: new Date().toISOString(),
         createdBy: user?.email || "Unknown"
@@ -400,7 +409,7 @@ export default function NuevaRemisionPage() {
           Datos Generales de la Remisión
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
           {/* Column 1: Client search or new client inputs */}
           {isNewClient ? (
             <div className="space-y-3 bg-emerald-50/30 p-3 rounded-lg border border-emerald-100 col-span-1">
@@ -499,24 +508,6 @@ export default function NuevaRemisionPage() {
             </select>
           </div>
 
-          {/* Column 3: Cuenta Contable */}
-          <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
-              <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
-              Cuenta Contable *
-            </label>
-            <select 
-              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm"
-              value={accountId}
-              onChange={e => setAccountId(e.target.value)}
-              required
-            >
-              <option value="" disabled>Selecciona cuenta de ingreso...</option>
-              {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-              ))}
-            </select>
-          </div>
 
           {/* Column 4: Proyecto */}
           <div className="space-y-2 col-span-1">

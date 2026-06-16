@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Receipt, Truck } from "lucide-react";
 import { createCfdi } from "@/actions/facturama";
-import { doc, updateDoc, setDoc, getDoc } from "firebase/firestore";
+import { doc, updateDoc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 
 // Re-use utility for sequence
@@ -81,6 +81,25 @@ export function ProcessOrderModal({
     const remId = crypto.randomUUID();
     const remNumber = await getNextSequence(companyId, 'remisiones');
 
+    let accountId = "";
+    let accountCode = "401.1";
+    let accountName = "Ventas Nacionales";
+
+    try {
+      const q = query(
+        collection(db, "companies", companyId, "accounts"),
+        where("code", "==", "401.1")
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        accountId = snap.docs[0].id;
+        accountCode = snap.docs[0].data().code || "401.1";
+        accountName = snap.docs[0].data().name || "Ventas Nacionales";
+      }
+    } catch (err) {
+      console.error("Error querying account 401.1 for order remission:", err);
+    }
+
     // 1. Create Remission
     await setDoc(doc(db, "companies", companyId, "remisiones", remId), {
       id: remId,
@@ -98,6 +117,9 @@ export function ProcessOrderModal({
       projectName: order.projectName || null,
       locationId: order.locationId || null,
       locationName: order.locationName || "",
+      accountId,
+      accountCode,
+      accountName,
       createdAt: new Date().toISOString(),
       createdBy: order.createdBy,
       status: 'activa'

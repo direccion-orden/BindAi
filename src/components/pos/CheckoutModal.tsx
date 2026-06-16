@@ -573,6 +573,25 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       const remId = crypto.randomUUID();
       const remNumber = await getNextSequence(companyId, 'remisiones');
       
+      let accountId = "";
+      let accountCode = "401.1";
+      let accountName = "Ventas Nacionales";
+
+      try {
+        const q = query(
+          collection(db, "companies", companyId, "accounts"),
+          where("code", "==", "401.1")
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          accountId = snap.docs[0].id;
+          accountCode = snap.docs[0].data().code || "401.1";
+          accountName = snap.docs[0].data().name || "Ventas Nacionales";
+        }
+      } catch (err) {
+        console.error("Error querying account 401.1 in POS:", err);
+      }
+
       const remissionData = sanitizeFirestoreData({
         id: remId,
         remissionNumber: remNumber,
@@ -614,6 +633,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         projectName: null,
         locationId: branchId || null,
         locationName: branchName || "",
+        accountId,
+        accountCode,
+        accountName,
         status: 'activa',
         createdAt: new Date().toISOString(),
         createdBy: user?.email || "POS",

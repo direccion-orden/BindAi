@@ -344,7 +344,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
       </div>
 
       <div className="bg-card border rounded-xl p-6 shadow-sm space-y-6">
-        <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border">
+        <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">Cliente</p>
             <p className="font-bold text-slate-900">{editData.clientName}</p>
@@ -367,10 +367,39 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
             )}
           </div>
           <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase">Proyecto</p>
+            {isEditing ? (
+              <select 
+                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
+                value={editData.projectId || ""}
+                onChange={e => setEditData({...editData, projectId: e.target.value})}
+              >
+                <option value="">Ninguno</option>
+                {projects.filter(p => p.clientId === editData.clientId).map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="font-bold text-slate-900">{editData.projectName || "Ninguno"}</p>
+            )}
+          </div>
+          <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">Estatus</p>
-            <p className="font-bold text-slate-950">
-              {CRM_STAGES.find(s => s.id === editData.status)?.name || editData.status}
-            </p>
+            {isEditing ? (
+              <select 
+                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
+                value={editData.status || ""}
+                onChange={e => setEditData({...editData, status: e.target.value})}
+              >
+                {CRM_STAGES.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="font-bold text-slate-950 mt-1">
+                {CRM_STAGES.find(s => s.id === editData.status)?.name || editData.status}
+              </p>
+            )}
           </div>
         </div>
 
@@ -638,21 +667,6 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
               <span className="text-indigo-700">${displayTotal?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
             </div>
             
-            <div className="space-y-1 mt-4">
-              <label className="text-xs font-semibold text-indigo-900 flex items-center gap-1">
-                <FolderOpen className="w-3 h-3 text-indigo-500" /> Vincular a Proyecto (Opcional)
-              </label>
-              <select 
-                className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-sm shadow-sm"
-                value={editData.projectId || ""}
-                onChange={e => setEditData({...editData, projectId: e.target.value})}
-              >
-                <option value="">Ninguno</option>
-                {projects.filter(p => p.clientId === editData.clientId).map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
           </div>
         </div>
 

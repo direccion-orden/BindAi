@@ -66,6 +66,7 @@ export default function NuevaCotizacionPage() {
   
   const [locations, setLocations] = useState<any[]>([]);
   const [locationId, setLocationId] = useState("");
+  const [status, setStatus] = useState("nueva");
 
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [enteredPromoCode, setEnteredPromoCode] = useState("");
@@ -302,7 +303,7 @@ export default function NuevaCotizacionPage() {
         imageUrl,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || "",
-        status: "nueva", // Initial CRM Stage
+        status: status,
         items: items,
         subtotal: totals.subtotal,
         totalDiscount: totals.totalDiscount,
@@ -383,7 +384,7 @@ export default function NuevaCotizacionPage() {
           <User className="w-4 h-4 text-indigo-600" />
           Datos Generales de la Cotización
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
           {/* Column 1: Client search or new client inputs */}
           {isNewClient ? (
             <div className="space-y-3 bg-blue-50/30 p-3 rounded-lg border border-blue-100 col-span-1">
@@ -466,7 +467,7 @@ export default function NuevaCotizacionPage() {
             </div>
           )}
 
-          {/* Column 2: Sucursal and Project */}
+          {/* Column 2: Sucursal */}
           <div className="space-y-2 col-span-1">
             <label className="text-xs font-medium text-slate-500 uppercase">Sucursal *</label>
             <select 
@@ -479,22 +480,38 @@ export default function NuevaCotizacionPage() {
                 <option key={l.id} value={l.id}>{l.name}</option>
               ))}
             </select>
+          </div>
 
-            {!isNewClient && clientId && (
-              <div className="space-y-1 mt-1.5">
-                <label className="text-[10px] font-medium text-slate-500 uppercase">Vincular a Proyecto</label>
-                <select 
-                  className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm"
-                  value={projectId}
-                  onChange={e => setProjectId(e.target.value)}
-                >
-                  <option value="">Ninguno</option>
-                  {projects.filter(p => p.clientId === clientId).map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+          {/* Column 3: Proyecto and Estatus */}
+          <div className="space-y-2 col-span-1">
+            <div>
+              <label className="text-xs font-medium text-slate-500 uppercase">Vincular a Proyecto</label>
+              <select 
+                className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm disabled:opacity-50 mt-1"
+                value={projectId}
+                onChange={e => setProjectId(e.target.value)}
+                disabled={isNewClient || !clientId}
+              >
+                <option value="">Ninguno</option>
+                {!isNewClient && clientId && projects.filter(p => p.clientId === clientId).map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 uppercase">Estatus</label>
+              <select 
+                className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm mt-1"
+                value={status}
+                onChange={e => setStatus(e.target.value)}
+              >
+                <option value="nueva">Nueva / Prospecto</option>
+                <option value="enviada">Enviada al Cliente</option>
+                <option value="negociacion">En Negociación</option>
+                <option value="ganada">Ganada (Crear Pedido)</option>
+                <option value="perdida">Perdida</option>
+              </select>
+            </div>
           </div>
 
           {/* Column 3: Date and notes */}

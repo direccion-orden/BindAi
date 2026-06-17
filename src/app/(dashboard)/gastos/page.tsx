@@ -163,7 +163,12 @@ export default function GastosPage() {
             // Limit to 500 for safety, though typically less per batch
             verData.invoices.slice(0, 400).forEach((inv: any) => {
                const docRef = doc(db, "companies", companyId, "expenses_inbox", inv.uuid);
-               b.set(docRef, inv);
+               const exists = invoices.some((x: any) => x.uuid === inv.uuid);
+               if (exists) {
+                 b.update(docRef, { xmlBase64: inv.xmlBase64 });
+               } else {
+                 b.set(docRef, inv);
+               }
             });
             await b.commit();
           }
@@ -245,7 +250,12 @@ export default function GastosPage() {
             const b = await batch;
             verData.invoices.slice(0, 400).forEach((inv: any) => {
                const docRef = doc(db, "companies", companyId, "expenses_inbox", inv.uuid);
-               b.set(docRef, inv);
+               const exists = invoices.some((x: any) => x.uuid === inv.uuid);
+               if (exists) {
+                 b.update(docRef, { xmlBase64: inv.xmlBase64 });
+               } else {
+                 b.set(docRef, inv);
+               }
             });
             await b.commit();
           }

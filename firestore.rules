@@ -207,6 +207,9 @@ service cloud.firestore {
       match /metrics/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /sales_goals/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
     }
     
     // Por seguridad, cualquier otra colecciÃƒÆ’Ã‚Â³n global queda bloqueada

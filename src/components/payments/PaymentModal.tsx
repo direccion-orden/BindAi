@@ -4,6 +4,7 @@ import { db } from "@/lib/firebase/client";
 import { Loader2, DollarSign, Calendar, CreditCard, FileText, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { UNIFIED_PAYMENT_METHODS } from "@/lib/constants/paymentMethods";
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -22,7 +23,7 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
 
   const [amount, setAmount] = useState<number>(0);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [method, setMethod] = useState("Transferencia");
+  const [method, setMethod] = useState("Efectivo");
   const [reference, setReference] = useState("");
 
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
@@ -35,7 +36,7 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
     if (isOpen) {
       setAmount(Number(saldoPendiente.toFixed(2)));
       setDate(new Date().toISOString().split("T")[0]);
-      setMethod("Transferencia");
+      setMethod("Efectivo");
       setReference("");
       setBankAccountId("");
       setVatRate(0.16);
@@ -202,7 +203,7 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
     }
   };
 
-  const methods = ["Efectivo", "Transferencia", "Tarjeta de Crédito", "Tarjeta de Débito", "Cheque", "Otro"];
+  const methods = UNIFIED_PAYMENT_METHODS;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">

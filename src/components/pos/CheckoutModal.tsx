@@ -12,11 +12,19 @@ import { Input } from "@/components/ui/input";
 import { DenominationCapture, DenominationCounts } from "@/components/pos/DenominationCapture";
 import { ThermalTicket } from "@/components/pos/ThermalTicket";
 
+import { UNIFIED_PAYMENT_METHODS } from "@/lib/constants/paymentMethods";
+
 interface CheckoutModalProps {
   onClose: () => void;
 }
 
-export type PaymentMethodType = 'efectivo' | 'tarjeta' | 'transferencia' | 'puntos' | 'saldoFavor';
+export type PaymentMethodType = 
+  | 'Efectivo' 
+  | 'Tarjeta de Débito' 
+  | 'Tarjeta de Crédito' 
+  | 'Transferencia' 
+  | 'Tarjeta de Regalo' 
+  | 'Monedero Electrónico';
 
 interface PaymentEntry {
   method: PaymentMethodType;
@@ -104,7 +112,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const [agentStarting, setAgentStarting] = useState(false);
 
   useEffect(() => {
-      if (currentMethod === 'efectivo' && cashMode === 'recycler') {
+      if (currentMethod === 'Efectivo' && cashMode === 'recycler') {
           let active = true;
           const checkConnection = async () => {
               try {
@@ -199,7 +207,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   // Amount entered in the current payment input
   const inputAmount = parseFloat(currentAmount) || 0;
   // If they are paying with cash, and inputAmount > remaining, the change is inputAmount - remaining
-  const changeToGive = (currentMethod === 'efectivo' && inputAmount > remaining) ? round2(inputAmount - remaining) : 0;
+  const changeToGive = (currentMethod === 'Efectivo' && inputAmount > remaining) ? round2(inputAmount - remaining) : 0;
 
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
@@ -354,7 +362,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                           const appliedAmount = (inserted === targetAmount && targetAmount === Math.round(remaining)) ? remaining : round2(inserted);
                           
                           setPayments(prev => [...prev, {
-                            method: 'efectivo',
+                            method: 'Efectivo',
                             amount: appliedAmount,
                             reference: txId || undefined
                           }]);
@@ -423,8 +431,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   };
 
   const handleSelectMethod = (method: PaymentMethodType) => {
-    if (isPublic && (method === 'puntos' || method === 'saldoFavor')) {
-      alert("Debes seleccionar un cliente registrado para usar Puntos o Saldo a Favor.");
+    if (isPublic && method === 'Monedero Electrónico') {
+      alert("Debes seleccionar un cliente registrado para usar Monedero Electrónico.");
       return;
     }
     setCurrentMethod(method);
@@ -433,12 +441,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     
     // Default the amount to the remaining balance or max available
     let defaultAmount = remaining;
-    if (method === 'puntos') defaultAmount = Math.min(remaining, clientPoints);
-    if (method === 'saldoFavor') defaultAmount = Math.min(remaining, clientWallet);
+    if (method === 'Monedero Electrónico') defaultAmount = Math.min(remaining, clientWallet);
     
     // Round to 2 decimal places to avoid floating point precision issues
     const roundedAmount = Number(Math.round(Number(defaultAmount + 'e2')) + 'e-2');
-    if (method === 'efectivo') {
+    if (method === 'Efectivo') {
       if (cashMode === 'recycler') {
         setCurrentAmount(Math.round(remaining).toString());
       } else {
@@ -449,7 +456,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     }
 
     // Auto-trigger local agent check and startup
-    if (method === 'efectivo' && cashMode === 'recycler') {
+    if (method === 'Efectivo' && cashMode === 'recycler') {
       autoCheckAndStartAgent();
     }
   };
@@ -457,17 +464,13 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const handleAddPayment = () => {
     if (!currentMethod || inputAmount <= 0) return;
     
-    if (currentMethod === 'puntos' && inputAmount > clientPoints) {
-      alert("El cliente no tiene suficientes puntos.");
-      return;
-    }
-    if (currentMethod === 'saldoFavor' && inputAmount > clientWallet) {
-      alert("El cliente no tiene suficiente saldo a favor.");
+    if (currentMethod === 'Monedero Electrónico' && inputAmount > clientWallet) {
+      alert("El cliente no tiene suficiente saldo en Monedero Electrónico.");
       return;
     }
 
     // Efectivo specific validations
-    if (currentMethod === 'efectivo') {
+    if (currentMethod === 'Efectivo') {
       if (cashMode === 'manual') {
         const denomSum = Object.entries(currentDenomsIn).reduce((acc, [k, v]) => acc + parseFloat(k) * (v || 0), 0);
         if (Math.abs(denomSum - inputAmount) > 0.01) {
@@ -487,13 +490,13 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     }
 
     // El pago real aplicado a la cuenta no puede exceder el restante
-    const appliedAmount = currentMethod === 'efectivo' ? inputAmount - changeToGive : inputAmount;
+    const appliedAmount = currentMethod === 'Efectivo' ? inputAmount - changeToGive : inputAmount;
 
     setPayments(prev => [...prev, {
       method: currentMethod,
       amount: appliedAmount,
-      denominationsIn: currentMethod === 'efectivo' ? currentDenomsIn : undefined,
-      denominationsOut: currentMethod === 'efectivo' && changeToGive > 0 ? changeDenoms : undefined,
+      denominationsIn: currentMethod === 'Efectivo' ? currentDenomsIn : undefined,
+      denominationsOut: currentMethod === 'Efectivo' && changeToGive > 0 ? changeDenoms : undefined,
       reference: currentReference.trim() || undefined
     }]);
 
@@ -514,7 +517,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const calculateEarnedPoints = () => {
     if (isPublic) return 0;
     const paidWithRealMoney = payments
-      .filter(p => p.method !== 'puntos' && p.method !== 'saldoFavor')
+      .filter(p => p.method !== 'Monedero Electrónico')
       .reduce((sum, p) => sum + p.amount, 0);
     // Solo ganas puntos por el dinero real pagado
     return parseFloat((paidWithRealMoney * 0.01).toFixed(2));
@@ -715,7 +718,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
       // 2. Registrar Movimientos de Caja (Solo Efectivo)
       for (const p of payments) {
-        if (p.method === 'efectivo') {
+        if (p.method === 'Efectivo') {
           // Movimiento de entrada (lo que nos entregó el cliente)
           // Monto original sin restar el cambio
           const cashReceived = p.amount + (p.denominationsOut ? Object.entries(p.denominationsOut).reduce((acc, [k,v])=>acc+parseFloat(k)*v,0) : 0);
@@ -755,7 +758,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         await addDoc(collection(db, "companies", companyId, "payments"), sanitizeFirestoreData({
           amount: p.amount,
           date: new Date().toISOString().split("T")[0],
-          method: p.method === 'efectivo' ? 'Efectivo' : p.method === 'tarjeta' ? 'Tarjeta' : p.method === 'transferencia' ? 'Transferencia' : p.method,
+          method: p.method,
           reference: p.reference ? `Venta POS ${remNumber} (Ref: ${p.reference})` : `Venta POS ${remNumber}`,
           paymentReference: p.reference || null,
           documentId: remId,
@@ -771,16 +774,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
       // 3. Actualizar Perfil del Cliente
       if (!isPublic && client) {
-         let pointsDeducted = payments.filter(p => p.method === 'puntos').reduce((sum, p) => sum + p.amount, 0);
-         let walletDeducted = payments.filter(p => p.method === 'saldoFavor').reduce((sum, p) => sum + p.amount, 0);
+         let walletDeducted = payments.filter(p => p.method === 'Monedero Electrónico').reduce((sum, p) => sum + p.amount, 0);
          
          const clientRef = doc(db, "companies", companyId, "clients", client.id);
          
-         // Ganancia neta de puntos = Puntos ganados - Puntos gastados
-         const netPoints = pointsEarned - pointsDeducted;
-         
          await updateDoc(clientRef, {
-             points: increment(netPoints),
              walletBalance: increment(-walletDeducted)
          });
       }
@@ -1033,7 +1031,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <button 
-                    onClick={() => handleSelectMethod('efectivo')}
+                    onClick={() => handleSelectMethod('Efectivo')}
                     className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
                   >
                       <Banknote className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
@@ -1042,44 +1040,46 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       </span>
                   </button>
                   <button 
-                    onClick={() => handleSelectMethod('tarjeta')}
+                    onClick={() => handleSelectMethod('Tarjeta de Débito')}
                     className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
                   >
                       <CreditCard className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
-                      <span className="text-sm font-semibold">Tarjeta / Terminal</span>
+                      <span className="text-sm font-semibold">Tarjeta de Débito</span>
                   </button>
                   <button 
-                    onClick={() => handleSelectMethod('transferencia')}
+                    onClick={() => handleSelectMethod('Tarjeta de Crédito')}
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
+                  >
+                      <CreditCard className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <span className="text-sm font-semibold">Tarjeta de Crédito</span>
+                  </button>
+                  <button 
+                    onClick={() => handleSelectMethod('Transferencia')}
                     className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
                   >
                       <Landmark className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
                       <span className="text-sm font-semibold">Transferencia</span>
                   </button>
+                  <button 
+                    onClick={() => handleSelectMethod('Tarjeta de Regalo')}
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
+                  >
+                      <Gift className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <span className="text-sm font-semibold">Tarjeta de Regalo</span>
+                  </button>
                   
-                  {!isPublic && (
-                    <>
-                      <button 
-                        onClick={() => handleSelectMethod('puntos')}
-                        className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-orange-500/50 hover:bg-orange-50 transition-all group relative"
-                      >
-                          <div className="absolute top-2 right-2 text-[10px] bg-orange-100 text-orange-700 font-bold px-1.5 rounded-full">
-                            ${clientPoints.toFixed(2)}
-                          </div>
-                          <Gift className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-orange-500 transition-colors" />
-                          <span className="text-sm font-semibold">Puntos</span>
-                      </button>
-                      <button 
-                        onClick={() => handleSelectMethod('saldoFavor')}
-                        className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-blue-500/50 hover:bg-blue-50 transition-all group relative"
-                      >
-                          <div className="absolute top-2 right-2 text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 rounded-full">
-                            ${clientWallet.toFixed(2)}
-                          </div>
-                          <Wallet className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-blue-500 transition-colors" />
-                          <span className="text-sm font-semibold">Saldo a Favor</span>
-                      </button>
-                    </>
-                  )}
+                  <button 
+                    onClick={() => handleSelectMethod('Monedero Electrónico')}
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-blue-500/50 hover:bg-blue-50 transition-all group relative"
+                  >
+                      {!isPublic && (
+                        <div className="absolute top-2 right-2 text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 rounded-full">
+                          ${clientWallet.toFixed(2)}
+                        </div>
+                      )}
+                      <Wallet className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-blue-500 transition-colors" />
+                      <span className="text-sm font-semibold">Monedero Electrónico</span>
+                  </button>
               </div>
             </div>
           ) : (
@@ -1094,7 +1094,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               </div>
 
               <div className="space-y-6 flex-1">
-                {currentMethod === 'efectivo' ? (
+                {currentMethod === 'Efectivo' ? (
                   cashMode === 'recycler' ? (
                     <div className="flex-1 flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl bg-muted/10 animate-in zoom-in text-center">
                       <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
@@ -1256,12 +1256,12 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                             autoFocus
                         />
                     </div>
-                    {(currentMethod === 'puntos' || currentMethod === 'saldoFavor') && (
+                    {currentMethod === 'Monedero Electrónico' && (
                       <p className="text-xs text-muted-foreground mt-2">
-                        Disponible: {formatMoney(currentMethod === 'puntos' ? clientPoints : clientWallet)}
+                        Disponible: {formatMoney(clientWallet)}
                       </p>
                     )}
-                    {(currentMethod === 'tarjeta' || currentMethod === 'transferencia') && (
+                    {currentMethod !== 'Monedero Electrónico' && (
                       <div className="mt-4">
                         <label className="text-xs font-semibold text-muted-foreground uppercase">Referencia de Pago</label>
                         <Input 

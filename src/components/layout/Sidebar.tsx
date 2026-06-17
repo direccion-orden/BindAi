@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper } from "lucide-react";
+import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolean; onCloseMobile?: () => void }) {
@@ -57,6 +57,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/ventas/remisiones", label: "Remisiones (Entregas)", icon: Truck },
         { href: "/ventas/facturas", label: "Facturación (CFDI)", icon: Receipt },
         { href: "/ventas/descuentos", label: "Descuentos", icon: Tag },
+        { href: "/ventas/metas", label: "Metas", icon: Target },
         { href: "/ventas/importar", label: "Importar Historial (Bind)", icon: ArrowRightLeft },
         { href: "/punto-de-venta", label: "Punto de Venta (POS)", icon: ShoppingCart },
       ]

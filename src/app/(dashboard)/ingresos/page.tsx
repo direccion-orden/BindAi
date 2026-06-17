@@ -9,19 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { NewIncomeModal } from "@/components/payments/NewIncomeModal";
+import { UNIFIED_PAYMENT_METHODS } from "@/lib/constants/paymentMethods";
 
-const PAYMENT_METHODS = [
-  "Efectivo",
-  "Transferencia",
-  "Tarjeta",
-  "Tarjeta de Crédito",
-  "Tarjeta de Débito",
-  "Cheque",
-  "Anticipo",
-  "Puntos",
-  "Saldo a Favor",
-  "Otro"
-];
+const PAYMENT_METHODS = UNIFIED_PAYMENT_METHODS;
 
 export default function IngresosPage() {
   const { companyId } = useAuth();

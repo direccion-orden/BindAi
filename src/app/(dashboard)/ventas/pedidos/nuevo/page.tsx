@@ -58,9 +58,11 @@ export default function NuevoPedidoPage() {
   
   const [locations, setLocations] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
   
   const [locationId, setLocationId] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [warehouseId, setWarehouseId] = useState("");
 
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [enteredPromoCode, setEnteredPromoCode] = useState("");
@@ -106,8 +108,17 @@ export default function NuevoPedidoPage() {
     // Fetch Accounts (Ingresos)
     const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
       const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Filter for Ingresos (usually type INGRESOS or code starting with 4)
-      setAccounts(allAcc.filter((a: any) => a.type === "INGRESOS" && a.level >= 2));
+      const ingresosAcc = allAcc.filter((a: any) => a.type === "INGRESOS" && a.level >= 2);
+      setAccounts(ingresosAcc);
+      const targetAcc = allAcc.find((a: any) => a.code === "401.1");
+      if (targetAcc) {
+        setAccountId(targetAcc.id);
+      }
+    });
+
+    // Fetch Warehouses
+    const unsubW = onSnapshot(query(collection(db, "companies", companyId, "warehouses")), (snap) => {
+      setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
     // Fetch Discounts
@@ -115,7 +126,7 @@ export default function NuevoPedidoPage() {
       setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubD(); };
+    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubW(); unsubD(); };
   }, [companyId]);
 
   const getFilteredClients = () => {
@@ -253,8 +264,8 @@ export default function NuevoPedidoPage() {
       return;
     }
     
-    if (!locationId || !accountId) {
-      alert("Debes seleccionar una Sucursal y una Cuenta Contable de Ingreso.");
+    if (!locationId || !warehouseId) {
+      alert("Debes seleccionar una Sucursal y un Almacén.");
       return;
     }
 
@@ -274,6 +285,11 @@ export default function NuevoPedidoPage() {
 
       const orderId = crypto.randomUUID();
       const orderNumber = await getNextSequence(companyId, 'pedidos');
+
+      const targetAcc = accounts.find(a => a.code === "401.1");
+      const finalAccountId = targetAcc?.id || accountId || "";
+      const finalAccountCode = targetAcc?.code || "401.1";
+      const finalAccountName = targetAcc?.name || "Ventas Nacionales";
 
       const orderRef = doc(db, "companies", companyId, "pedidos", orderId);
       await setDoc(orderRef, {
@@ -298,9 +314,11 @@ export default function NuevoPedidoPage() {
         projectName: projectId ? projects.find(p => p.id === projectId)?.name : null,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || "",
-        accountId,
-        accountCode: accounts.find(a => a.id === accountId)?.code || "",
-        accountName: accounts.find(a => a.id === accountId)?.name || "",
+        warehouseId,
+        warehouseName: warehouses.find(w => w.id === warehouseId)?.name || "",
+        accountId: finalAccountId,
+        accountCode: finalAccountCode,
+        accountName: finalAccountName,
         status: "por_surtir", 
         createdAt: new Date().toISOString(),
         createdBy: user?.email || "Unknown"
@@ -366,7 +384,7 @@ export default function NuevoPedidoPage() {
         <>
           {/* Top Header Card: Datos Generales */}
       <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-        <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
+        <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
           <User className="w-4 h-4 text-indigo-600" />
           Datos Generales del Pedido
         </h3>
@@ -405,7 +423,7 @@ export default function NuevoPedidoPage() {
             </div>
           ) : (
             <div className="space-y-2 relative col-span-1">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center h-5">
                 <label className="text-xs font-medium text-slate-500 uppercase">Cliente *</label>
                 <Button 
                   variant="ghost" 
@@ -459,7 +477,9 @@ export default function NuevoPedidoPage() {
 
           {/* Column 2: Sucursal */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Sucursal *</label>
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase">Sucursal *</label>
+            </div>
             <select 
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
               value={locationId}
@@ -472,25 +492,29 @@ export default function NuevoPedidoPage() {
             </select>
           </div>
 
-          {/* Column 3: Cuenta Contable */}
+          {/* Column 3: Almacén */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Cuenta Contable *</label>
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase">Almacén *</label>
+            </div>
             <select 
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
-              value={accountId}
-              onChange={e => setAccountId(e.target.value)}
+              value={warehouseId}
+              onChange={e => setWarehouseId(e.target.value)}
+              required
             >
-              <option value="" disabled>Selecciona cuenta de ingreso...</option>
-              {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+              <option value="" disabled>Selecciona un almacén...</option>
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>
-            <p className="text-[10px] text-muted-foreground">Requerido para generar la póliza.</p>
           </div>
 
           {/* Column 4: Proyecto */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Proyecto (Opcional)</label>
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase">Proyecto (Opcional)</label>
+            </div>
             <select 
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
               value={projectId}
@@ -510,11 +534,11 @@ export default function NuevoPedidoPage() {
         {/* Left Column: Items */}
         
           <div className="bg-card border rounded-xl shadow-sm flex flex-col min-h-[500px]">
-            <div className="p-5 border-b flex justify-between items-center bg-blue-50/30">
-              <h3 className="font-semibold text-lg flex items-center gap-2 text-blue-900">
-                <Package className="w-5 h-5 text-blue-600" /> Partidas del Pedido
+            <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-slate-800">
+                <Package className="w-5 h-5 text-indigo-600" /> Partidas del Pedido
               </h3>
-              <span className="text-sm text-blue-700 font-medium">{items.length} productos</span>
+              <span className="text-sm text-slate-500 font-medium">{items.length} productos</span>
             </div>
             
             <div className="p-5 border-b bg-muted/30 relative">
@@ -679,56 +703,58 @@ export default function NuevoPedidoPage() {
             </h3>
 
             <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
-                  <Percent className="w-3.5 h-3.5"/> Descuento Global
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-                    value={globalDiscountType}
-                    onChange={(e) => {
-                      setGlobalDiscountType(e.target.value as any);
-                      setGlobalDiscountValue(0);
-                    }}
-                  >
-                    <option value="none">Ninguno</option>
-                    <option value="percentage">Porcentaje (%)</option>
-                    <option value="fixed_amount">Monto ($)</option>
-                  </select>
-                  {globalDiscountType !== "none" && (
-                    <Input
-                      type="number"
-                      min={0}
-                      max={globalDiscountType === "percentage" ? 100 : undefined}
-                      step={globalDiscountType === "percentage" ? 1 : 0.01}
-                      placeholder={globalDiscountType === "percentage" ? "10" : "100.00"}
-                      value={globalDiscountValue || ""}
-                      onChange={(e) => setGlobalDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                      className="h-9 text-sm w-28"
-                    />
+              <div className="flex flex-wrap gap-4 justify-end items-end w-full">
+                <div className="flex flex-col items-end space-y-1 w-48">
+                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                    <Percent className="w-3.5 h-3.5"/> Descuento Global
+                  </label>
+                  <div className="flex gap-2 w-full justify-end">
+                    <select
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                      value={globalDiscountType}
+                      onChange={(e) => {
+                        setGlobalDiscountType(e.target.value as any);
+                        setGlobalDiscountValue(0);
+                      }}
+                    >
+                      <option value="none">Ninguno</option>
+                      <option value="percentage">%</option>
+                      <option value="fixed_amount">$</option>
+                    </select>
+                    {globalDiscountType !== "none" && (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={globalDiscountType === "percentage" ? 100 : undefined}
+                        step={globalDiscountType === "percentage" ? 1 : 0.01}
+                        placeholder={globalDiscountType === "percentage" ? "10" : "100.00"}
+                        value={globalDiscountValue || ""}
+                        onChange={(e) => setGlobalDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="h-9 text-sm w-20 shrink-0"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end space-y-1 w-48">
+                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1 mb-1">
+                    <Percent className="w-3.5 h-3.5"/> Código Promocional
+                  </label>
+                  <Input 
+                    value={enteredPromoCode}
+                    onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
+                    placeholder="Ej. VERANO20"
+                    className="h-9 text-sm font-mono uppercase w-full text-right pr-3"
+                  />
+                  {totals.error && enteredPromoCode && (
+                    <p className="text-[10px] text-red-500 mt-1 font-medium text-right w-full">{totals.error}</p>
+                  )}
+                  {totals.appliedPromo && (
+                    <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1 justify-end w-full">
+                      ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
+                    </p>
                   )}
                 </div>
-              </div>
-
-              <div className="space-y-1 pt-2">
-                <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1 mb-1">
-                  <Percent className="w-3.5 h-3.5"/> Código Promocional
-                </label>
-                <Input 
-                  value={enteredPromoCode}
-                  onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
-                  placeholder="Ej. VERANO20"
-                  className="h-9 text-sm font-mono uppercase"
-                />
-                {totals.error && enteredPromoCode && (
-                  <p className="text-[10px] text-red-500 mt-1 font-medium">{totals.error}</p>
-                )}
-                {totals.appliedPromo && (
-                  <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1">
-                    ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
-                  </p>
-                )}
               </div>
 
               <div className="pt-4 space-y-2 border-t mt-4 text-sm">

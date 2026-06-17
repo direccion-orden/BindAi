@@ -553,8 +553,8 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                       onChange={(e) => handleGlobalDiscountTypeChange(e.target.value)}
                     >
                       <option value="none">Ninguno</option>
-                      <option value="percentage">Porcentaje (%)</option>
-                      <option value="fixed_amount">Monto ($)</option>
+                      <option value="percentage">%</option>
+                      <option value="fixed_amount">$</option>
                     </select>
                     {(editData.globalDiscountType && editData.globalDiscountType !== "none") && (
                       <Input

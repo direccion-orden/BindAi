@@ -216,7 +216,7 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
 
       {activeTab === "detalle" && (
         <div className="bg-white border rounded-xl shadow-sm p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8 bg-slate-50 p-4 rounded-lg border">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8 bg-slate-50 p-4 rounded-lg border border-slate-200">
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Estatus</p>
             <div className="mt-1">
@@ -229,6 +229,10 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Sucursal</p>
             <p className="font-bold text-slate-900">{remission.locationName || 'N/A'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Almacén</p>
+            <p className="font-bold text-slate-900">{remission.warehouseName || 'N/A'}</p>
           </div>
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Proyecto Vinculado</p>

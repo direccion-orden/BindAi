@@ -63,6 +63,8 @@ export default function NuevaRemisionPage() {
   
   const [locationId, setLocationId] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [warehouseId, setWarehouseId] = useState("");
 
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [enteredPromoCode, setEnteredPromoCode] = useState("");
@@ -110,11 +112,16 @@ export default function NuevaRemisionPage() {
       }
     });
 
+    // Fetch Warehouses
+    const unsubW = onSnapshot(query(collection(db, "companies", companyId, "warehouses")), (snap) => {
+      setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     const unsubD = onSnapshot(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active")), (snap) => {
       setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubD(); };
+    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubD(); unsubW(); };
   }, [companyId]);
 
   const getFilteredClients = () => {
@@ -254,8 +261,8 @@ export default function NuevaRemisionPage() {
       return;
     }
 
-    if (!locationId) {
-      alert("Debes seleccionar una Sucursal.");
+    if (!locationId || !warehouseId) {
+      alert("Debes seleccionar una Sucursal y un Almacén.");
       return;
     }
 
@@ -306,6 +313,8 @@ export default function NuevaRemisionPage() {
         projectName: projectId ? (projects.find(p => p.id === projectId)?.name || null) : null,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || "",
+        warehouseId,
+        warehouseName: warehouses.find(w => w.id === warehouseId)?.name || "",
         accountId: finalAccountId,
         accountCode: finalAccountCode,
         accountName: finalAccountName,
@@ -404,12 +413,12 @@ export default function NuevaRemisionPage() {
         <>
           {/* Top Header Card: Datos Generales */}
       <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-        <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
+        <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
           <User className="w-4 h-4 text-emerald-600" />
           Datos Generales de la Remisión
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
           {/* Column 1: Client search or new client inputs */}
           {isNewClient ? (
             <div className="space-y-3 bg-emerald-50/30 p-3 rounded-lg border border-emerald-100 col-span-1">
@@ -443,7 +452,7 @@ export default function NuevaRemisionPage() {
             </div>
           ) : (
             <div className="space-y-2 relative col-span-1">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center h-5">
                 <label className="text-xs font-medium text-slate-500 uppercase">Cliente *</label>
                 <Button 
                   variant="ghost" 
@@ -494,7 +503,9 @@ export default function NuevaRemisionPage() {
 
           {/* Column 2: Sucursal */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Sucursal (Origen) *</label>
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase">Sucursal (Origen) *</label>
+            </div>
             <select 
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
               value={locationId}
@@ -508,13 +519,36 @@ export default function NuevaRemisionPage() {
             </select>
           </div>
 
+          {/* Column 3: Almacén */}
+          <div className="space-y-2 col-span-1">
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                Almacén *
+              </label>
+            </div>
+            <select 
+              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+              value={warehouseId}
+              onChange={e => setWarehouseId(e.target.value)}
+              required
+            >
+              <option value="" disabled>Selecciona almacén...</option>
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+
 
           {/* Column 4: Proyecto */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
-              <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
-              Proyecto (Opcional)
-            </label>
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
+                <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
+                Proyecto (Opcional)
+              </label>
+            </div>
             <select 
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm disabled:opacity-50"
               value={projectId}
@@ -534,12 +568,12 @@ export default function NuevaRemisionPage() {
         {/* Left Column: Line Items */}
         
           <div className="bg-card border rounded-xl shadow-sm flex flex-col min-h-[500px]">
-            <div className="p-5 border-b flex justify-between items-center bg-blue-50/30">
-              <h3 className="font-semibold text-lg flex items-center gap-2 text-blue-900">
-                <Truck className="w-5 h-5 text-blue-600" />
+            <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-slate-800">
+                <Truck className="w-5 h-5 text-indigo-600" />
                 Mercancía a Entregar
               </h3>
-              <span className="text-sm text-blue-700 font-medium">{items.length} partidas</span>
+              <span className="text-sm text-slate-500 font-medium">{items.length} partidas</span>
             </div>
             
             <div className="p-5 border-b bg-muted/30 relative">
@@ -698,56 +732,58 @@ export default function NuevaRemisionPage() {
             </h3>
 
             <div className="space-y-3">
-              <div className="space-y-1">
-                 <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+              <div className="flex flex-wrap gap-4 justify-end items-end w-full">
+                <div className="flex flex-col items-end space-y-1 w-48">
+                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
                     <Percent className="w-3.5 h-3.5"/> Descuento Global
-                 </label>
-                 <div className="flex gap-2">
-                   <select
-                     className="flex h-9 w-32 rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-                     value={globalDiscountType}
-                     onChange={(e) => {
-                       setGlobalDiscountType(e.target.value as any);
-                       setGlobalDiscountValue(0);
-                     }}
-                   >
-                     <option value="none">Ninguno</option>
-                     <option value="percentage">Porcentaje (%)</option>
-                     <option value="fixed_amount">Monto ($)</option>
-                   </select>
-                   {globalDiscountType !== "none" && (
-                     <Input
-                       type="number"
-                       min={0}
-                       max={globalDiscountType === "percentage" ? 100 : undefined}
-                       step={globalDiscountType === "percentage" ? 1 : 0.01}
-                       placeholder={globalDiscountType === "percentage" ? "10" : "100.00"}
-                       value={globalDiscountValue || ""}
-                       onChange={(e) => setGlobalDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                       className="h-9 text-sm"
-                     />
-                   )}
-                 </div>
-              </div>
+                  </label>
+                  <div className="flex gap-2 w-full justify-end">
+                    <select
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                      value={globalDiscountType}
+                      onChange={(e) => {
+                        setGlobalDiscountType(e.target.value as any);
+                        setGlobalDiscountValue(0);
+                      }}
+                    >
+                      <option value="none">Ninguno</option>
+                      <option value="percentage">%</option>
+                      <option value="fixed_amount">$</option>
+                    </select>
+                    {globalDiscountType !== "none" && (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={globalDiscountType === "percentage" ? 100 : undefined}
+                        step={globalDiscountType === "percentage" ? 1 : 0.01}
+                        placeholder={globalDiscountType === "percentage" ? "10" : "100.00"}
+                        value={globalDiscountValue || ""}
+                        onChange={(e) => setGlobalDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="h-9 text-sm w-20 shrink-0"
+                      />
+                    )}
+                  </div>
+                </div>
 
-              <div className="space-y-1 pt-2">
-                 <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1 mb-1">
+                <div className="flex flex-col items-end space-y-1 w-48">
+                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1 mb-1">
                     <Percent className="w-3.5 h-3.5"/> Código Promocional
-                 </label>
-                 <Input 
+                  </label>
+                  <Input 
                     value={enteredPromoCode}
                     onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
                     placeholder="Ej. VERANO20"
-                    className="h-9 text-sm font-mono uppercase bg-white"
-                 />
-                 {totals.error && enteredPromoCode && (
-                   <p className="text-[10px] text-red-500 mt-1 font-medium">{totals.error}</p>
-                 )}
-                 {totals.appliedPromo && (
-                   <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1">
-                     ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
-                   </p>
-                 )}
+                    className="h-9 text-sm font-mono uppercase bg-white w-full text-right pr-3"
+                  />
+                  {totals.error && enteredPromoCode && (
+                    <p className="text-[10px] text-red-500 mt-1 font-medium text-right w-full">{totals.error}</p>
+                  )}
+                  {totals.appliedPromo && (
+                    <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1 justify-end w-full">
+                      ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="pt-4 space-y-2 border-t mt-4 text-sm">

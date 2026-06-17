@@ -38,6 +38,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
   const [productSearch, setProductSearch] = useState("");
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
 
   useEffect(() => {
     if (!companyId || !params.id) return;
@@ -71,6 +72,9 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
           const data = d.data();
           return { id: d.id, name: data.name || data.Name || "Sucursal sin nombre" };
         }));
+      });
+      getDocs(collection(db, "companies", companyId, "warehouses")).then(snap => {
+        setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
       getDocs(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active"))).then(snap => {
         setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
@@ -131,10 +135,16 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
         finalLocationName = locations.find(l => l.id === editData.locationId)?.name || editData.locationName || null;
       }
 
+      let finalWarehouseName = editData.warehouseName || null;
+      if (editData.warehouseId) {
+        finalWarehouseName = warehouses.find(w => w.id === editData.warehouseId)?.name || editData.warehouseName || null;
+      }
+
       const updatedQuote = {
         ...editData,
         projectName: finalProjectName,
         locationName: finalLocationName,
+        warehouseName: finalWarehouseName,
         subtotal: calc.subtotal,
         totalDiscount: calc.totalDiscount,
         globalDiscountType: editData.globalDiscountType || "none",
@@ -344,7 +354,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
       </div>
 
       <div className="bg-card border rounded-xl p-6 shadow-sm space-y-6">
-        <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">Cliente</p>
             <p className="font-bold text-slate-900">{editData.clientName}</p>
@@ -364,6 +374,23 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
               </select>
             ) : (
               <p className="font-bold text-slate-900">{editData.locationName || "N/A"}</p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase">Almacén</p>
+            {isEditing ? (
+              <select 
+                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
+                value={editData.warehouseId || ""}
+                onChange={e => setEditData({...editData, warehouseId: e.target.value})}
+              >
+                <option value="">Seleccionar Almacén</option>
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="font-bold text-slate-900">{editData.warehouseName || "N/A"}</p>
             )}
           </div>
           <div>
@@ -629,8 +656,8 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                     onChange={(e) => handleGlobalDiscountTypeChange(e.target.value)}
                   >
                     <option value="none">Ninguno</option>
-                    <option value="percentage">Porcentaje (%)</option>
-                    <option value="fixed_amount">Monto ($)</option>
+                    <option value="percentage">%</option>
+                    <option value="fixed_amount">$</option>
                   </select>
                   {(editData.globalDiscountType && editData.globalDiscountType !== "none") && (
                     <Input

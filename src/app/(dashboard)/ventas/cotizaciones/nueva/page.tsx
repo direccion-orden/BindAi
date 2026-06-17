@@ -66,6 +66,8 @@ export default function NuevaCotizacionPage() {
   
   const [locations, setLocations] = useState<any[]>([]);
   const [locationId, setLocationId] = useState("");
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [warehouseId, setWarehouseId] = useState("");
   const [status, setStatus] = useState("nueva");
 
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
@@ -112,7 +114,12 @@ export default function NuevaCotizacionPage() {
       }));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); unsubD(); unsubLoc(); };
+    // Fetch Warehouses
+    const unsubW = onSnapshot(query(collection(db, "companies", companyId, "warehouses")), (snap) => {
+      setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsubC(); unsubP(); unsubProj(); unsubD(); unsubLoc(); unsubW(); };
   }, [companyId]);
 
   const getFilteredClients = () => {
@@ -245,8 +252,8 @@ export default function NuevaCotizacionPage() {
       finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
     }
 
-    if (!locationId) {
-      alert("Selecciona una sucursal.");
+    if (!locationId || !warehouseId) {
+      alert("Selecciona una sucursal y un almacén.");
       return;
     }
 
@@ -303,6 +310,8 @@ export default function NuevaCotizacionPage() {
         imageUrl,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || "",
+        warehouseId,
+        warehouseName: warehouses.find(w => w.id === warehouseId)?.name || "",
         status: status,
         items: items,
         subtotal: totals.subtotal,
@@ -380,7 +389,7 @@ export default function NuevaCotizacionPage() {
         <>
           {/* Top Header Card: Datos Generales */}
       <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-        <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
+        <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
           <User className="w-4 h-4 text-indigo-600" />
           Datos Generales de la Cotización
         </h3>
@@ -418,7 +427,7 @@ export default function NuevaCotizacionPage() {
             </div>
           ) : (
             <div className="space-y-2 relative col-span-1">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center h-5">
                 <label className="text-xs font-medium text-slate-500 uppercase">Cliente *</label>
                 <Button 
                   variant="ghost" 
@@ -467,25 +476,45 @@ export default function NuevaCotizacionPage() {
             </div>
           )}
 
-          {/* Column 2: Sucursal */}
-          <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Sucursal *</label>
-            <select 
-              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
-              value={locationId}
-              onChange={e => setLocationId(e.target.value)}
-            >
-              <option value="">Seleccionar Sucursal</option>
-              {locations.map(l => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
+          {/* Column 2: Sucursal and Almacén */}
+          <div className="space-y-4 col-span-1">
+            <div className="space-y-2">
+              <div className="flex items-center h-5">
+                <label className="text-xs font-medium text-slate-500 uppercase">Sucursal *</label>
+              </div>
+              <select 
+                className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+                value={locationId}
+                onChange={e => setLocationId(e.target.value)}
+              >
+                <option value="">Seleccionar Sucursal</option>
+                {locations.map(l => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-500 uppercase">Almacén *</label>
+              <select 
+                className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+                value={warehouseId}
+                onChange={e => setWarehouseId(e.target.value)}
+                required
+              >
+                <option value="" disabled>Seleccionar Almacén</option>
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Column 3: Proyecto and Estatus */}
           <div className="space-y-2 col-span-1">
             <div>
-              <label className="text-xs font-medium text-slate-500 uppercase">Vincular a Proyecto</label>
+              <div className="flex items-center h-5">
+                <label className="text-xs font-medium text-slate-500 uppercase">Vincular a Proyecto</label>
+              </div>
               <select 
                 className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm disabled:opacity-50 mt-1"
                 value={projectId}
@@ -517,7 +546,9 @@ export default function NuevaCotizacionPage() {
           {/* Column 3: Date and notes */}
           <div className="space-y-2 col-span-1">
             <div>
-              <label className="text-xs font-medium text-slate-500 uppercase">Válido Hasta</label>
+              <div className="flex items-center h-5">
+                <label className="text-xs font-medium text-slate-500 uppercase">Válido Hasta</label>
+              </div>
               <Input 
                 type="date"
                 value={validUntil}
@@ -558,11 +589,11 @@ export default function NuevaCotizacionPage() {
         {/* Left Column: Items */}
         
           <div className="bg-card border rounded-xl shadow-sm flex flex-col min-h-[500px]">
-            <div className="p-5 border-b flex justify-between items-center bg-blue-50/30">
-              <h3 className="font-semibold text-lg flex items-center gap-2 text-blue-900">
-                <Package className="w-5 h-5 text-blue-600" /> Partidas
+            <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-slate-800">
+                <Package className="w-5 h-5 text-indigo-600" /> Partidas
               </h3>
-              <span className="text-sm text-blue-700 font-medium">{items.length} productos</span>
+              <span className="text-sm text-slate-500 font-medium">{items.length} productos</span>
             </div>
             
             <div className="p-5 border-b bg-muted/30 relative">
@@ -727,56 +758,58 @@ export default function NuevaCotizacionPage() {
             </h3>
 
             <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
-                  <Percent className="w-3.5 h-3.5"/> Descuento Global
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-                    value={globalDiscountType}
-                    onChange={(e) => {
-                      setGlobalDiscountType(e.target.value as any);
-                      setGlobalDiscountValue(0);
-                    }}
-                  >
-                    <option value="none">Ninguno</option>
-                    <option value="percentage">Porcentaje (%)</option>
-                    <option value="fixed_amount">Monto ($)</option>
-                  </select>
-                  {globalDiscountType !== "none" && (
-                    <Input
-                      type="number"
-                      min={0}
-                      max={globalDiscountType === "percentage" ? 100 : undefined}
-                      step={globalDiscountType === "percentage" ? 1 : 0.01}
-                      placeholder={globalDiscountType === "percentage" ? "10" : "100.00"}
-                      value={globalDiscountValue || ""}
-                      onChange={(e) => setGlobalDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                      className="h-9 text-sm w-28"
-                    />
+              <div className="flex flex-wrap gap-4 justify-end items-end w-full">
+                <div className="flex flex-col items-end space-y-1 w-48">
+                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                    <Percent className="w-3.5 h-3.5"/> Descuento Global
+                  </label>
+                  <div className="flex gap-2 w-full justify-end">
+                    <select
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                      value={globalDiscountType}
+                      onChange={(e) => {
+                        setGlobalDiscountType(e.target.value as any);
+                        setGlobalDiscountValue(0);
+                      }}
+                    >
+                      <option value="none">Ninguno</option>
+                      <option value="percentage">%</option>
+                      <option value="fixed_amount">$</option>
+                    </select>
+                    {globalDiscountType !== "none" && (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={globalDiscountType === "percentage" ? 100 : undefined}
+                        step={globalDiscountType === "percentage" ? 1 : 0.01}
+                        placeholder={globalDiscountType === "percentage" ? "10" : "100.00"}
+                        value={globalDiscountValue || ""}
+                        onChange={(e) => setGlobalDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="h-9 text-sm w-20 shrink-0"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end space-y-1 w-48">
+                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                    <Percent className="w-3.5 h-3.5"/> Código Promocional
+                  </label>
+                  <Input 
+                    value={enteredPromoCode}
+                    onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
+                    placeholder="Ej. VERANO20"
+                    className="h-9 text-sm font-mono uppercase w-full text-right pr-3"
+                  />
+                  {totals.error && enteredPromoCode && (
+                    <p className="text-[10px] text-red-500 mt-1 font-medium text-right w-full">{totals.error}</p>
+                  )}
+                  {totals.appliedPromo && (
+                    <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1 justify-end w-full">
+                      ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
+                    </p>
                   )}
                 </div>
-              </div>
-
-              <div className="space-y-1 pt-2">
-                <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
-                  <Percent className="w-3.5 h-3.5"/> Código Promocional
-                </label>
-                <Input 
-                  value={enteredPromoCode}
-                  onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
-                  placeholder="Ej. VERANO20"
-                  className="h-9 text-sm font-mono uppercase"
-                />
-                {totals.error && enteredPromoCode && (
-                  <p className="text-[10px] text-red-500 mt-1 font-medium">{totals.error}</p>
-                )}
-                {totals.appliedPromo && (
-                  <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1">
-                    ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
-                  </p>
-                )}
               </div>
 
               <div className="pt-4 space-y-2 border-t mt-4 text-sm">

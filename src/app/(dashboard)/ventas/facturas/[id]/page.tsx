@@ -345,12 +345,12 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
 
       {activeTab === "detalle" && (
         <div className="bg-white border rounded-xl shadow-sm p-6 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-6 mb-8 bg-slate-50 p-4 rounded-lg border overflow-hidden">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-6 mb-8 bg-slate-50 p-4 rounded-lg border border-slate-200 overflow-hidden">
             <div className="min-w-0 lg:col-span-2">
               <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Estatus</p>
               <p className="font-bold capitalize truncate">{factura.status.replace('_', ' ')}</p>
             </div>
-            <div className="min-w-0 lg:col-span-4">
+            <div className="min-w-0 lg:col-span-3">
               <p className="text-xs text-slate-500 font-semibold uppercase mb-1">UUID / Folio Fiscal</p>
               <p className="font-bold text-indigo-700 whitespace-nowrap tracking-tighter text-[clamp(11px,1.5vw,16px)]">{factura.facturamaUuid || '--'}</p>
             </div>
@@ -358,7 +358,11 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
               <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Sucursal</p>
               <p className="font-bold truncate">{factura.locationName || 'N/A'}</p>
             </div>
-            <div className="min-w-0 lg:col-span-2 lg:pl-4">
+            <div className="min-w-0 lg:col-span-2">
+              <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Almacén</p>
+              <p className="font-bold truncate">{factura.warehouseName || 'N/A'}</p>
+            </div>
+            <div className="min-w-0 lg:col-span-1 lg:pl-1">
               <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Fecha</p>
               <p className="font-bold whitespace-nowrap text-[clamp(11px,1.5vw,14px)]">{new Date(factura.createdAt).toLocaleDateString('es-MX')}</p>
             </div>

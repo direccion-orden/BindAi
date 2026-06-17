@@ -38,6 +38,9 @@ interface Quote {
   projectName?: string | null;
   locationId?: string | null;
   locationName?: string | null;
+  clientId?: string | null;
+  warehouseId?: string | null;
+  warehouseName?: string | null;
 }
 
 const CRM_STAGES = [
@@ -229,6 +232,7 @@ export default function CotizacionesCRMPage() {
             orderNumber,
             quoteId: quote.id,
             quoteNumber: quote.quoteNumber,
+            clientId: quote.clientId || null,
             clientName: quote.clientName,
             items: quote.items || [],
             subtotal: quote.subtotal || 0,
@@ -236,6 +240,10 @@ export default function CotizacionesCRMPage() {
             totalAmount: quote.totalAmount,
             projectId: quote.projectId || null,
             projectName: quote.projectName || null,
+            locationId: quote.locationId || null,
+            locationName: quote.locationName || "",
+            warehouseId: quote.warehouseId || null,
+            warehouseName: quote.warehouseName || "",
             status: "por_surtir", // 'por_surtir', 'surtido', 'entregado', 'remisionado'
             createdAt: new Date().toISOString(),
             createdBy: quote.createdBy,

@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt, Percent, MessageSquare, FileText } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Receipt, Building2, Percent, MessageSquare, FileText } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
@@ -61,6 +61,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
   
   const [locations, setLocations] = useState<any[]>([]);
   const [locationId, setLocationId] = useState("");
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [warehouseId, setWarehouseId] = useState("");
   
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("detalle");
@@ -83,6 +85,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         setProjectId(data.projectId || "");
         setEnteredPromoCode(data.promoCode || "");
         setLocationId(data.locationId || "");
+        setWarehouseId(data.warehouseId || "");
       }
       setFacturaLoaded(true);
     };
@@ -112,11 +115,15 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
       }));
     });
 
+    const unsubW = onSnapshot(query(collection(db, "companies", companyId, "warehouses")), (snap) => {
+      setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     const unsubD = onSnapshot(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active")), (snap) => {
       setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubD(); };
+    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubD(); unsubW(); };
   }, [companyId, params.id]);
 
   const getFilteredClients = () => {
@@ -261,8 +268,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
       return;
     }
 
-    if (!locationId) {
-      alert("Debes seleccionar una Sucursal (Origen).");
+    if (!locationId || !warehouseId) {
+      alert("Debes seleccionar una Sucursal y un Almacén.");
       return;
     }
 
@@ -352,6 +359,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         projectName: projectId ? projects.find(p => p.id === projectId)?.name : null,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || originalFactura?.locationName || "",
+        warehouseId,
+        warehouseName: warehouses.find(w => w.id === warehouseId)?.name || originalFactura?.warehouseName || "",
         cfdiPayload: cfdiPayload,
         updatedAt: new Date().toISOString()
       });
@@ -419,12 +428,12 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         <>
           {/* Top Header Card: Datos Generales */}
           <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-        <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
+        <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
           <User className="w-4 h-4 text-indigo-600" />
           Datos Generales de la Factura
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
           {/* Column 1 & 2: Client search or new client inputs */}
           {isNewClient ? (
             <div className="space-y-3 bg-blue-50/30 p-3 rounded-lg border border-blue-100 col-span-1 md:col-span-2">
@@ -456,7 +465,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
             </div>
           ) : (
             <div className="space-y-2 relative col-span-1 md:col-span-2">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center h-5">
                 <label className="text-xs font-medium text-slate-500 uppercase">Cliente *</label>
                 <Button 
                   variant="ghost" 
@@ -507,7 +516,9 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
 
           {/* Column 3: Sucursal */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Sucursal (Origen) *</label>
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase">Sucursal (Origen) *</label>
+            </div>
             <select 
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
               value={locationId}
@@ -521,12 +532,35 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
             </select>
           </div>
 
+          {/* Column 5: Almacén */}
+          <div className="space-y-2 col-span-1">
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                Almacén *
+              </label>
+            </div>
+            <select 
+              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+              value={warehouseId}
+              onChange={e => setWarehouseId(e.target.value)}
+              required
+            >
+              <option value="" disabled>Selecciona almacén...</option>
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Column 4: Proyecto */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
-              <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
-              Proyecto (Opcional)
-            </label>
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
+                <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
+                Proyecto (Opcional)
+              </label>
+            </div>
             <select 
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm disabled:opacity-50"
               value={projectId}
@@ -546,12 +580,12 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         {/* Left Column: Line Items */}
         
           <div className="bg-card border rounded-xl shadow-sm flex flex-col min-h-[500px]">
-            <div className="p-5 border-b flex justify-between items-center bg-blue-50/30">
-              <h3 className="font-semibold text-lg flex items-center gap-2 text-blue-900">
-                <Receipt className="w-5 h-5 text-blue-600" />
+            <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-slate-800">
+                <Receipt className="w-5 h-5 text-indigo-600" />
                 Conceptos a Facturar
               </h3>
-              <span className="text-sm text-blue-700 font-medium">{items.length} partidas</span>
+              <span className="text-sm text-slate-500 font-medium">{items.length} partidas</span>
             </div>
             
             <div className="p-5 border-b bg-muted/30 relative">
@@ -710,7 +744,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
             </h3>
 
             <div className="space-y-3">
-              <div className="space-y-1">
+              <div className="flex flex-col items-end w-full space-y-1">
                  <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1 mb-1">
                     <Percent className="w-3.5 h-3.5"/> Código Promocional
                  </label>
@@ -718,13 +752,13 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
                     value={enteredPromoCode}
                     onChange={(e) => setEnteredPromoCode(e.target.value.toUpperCase())}
                     placeholder="Ej. VERANO20"
-                    className="h-9 text-sm font-mono uppercase bg-white"
+                    className="h-9 text-sm font-mono uppercase bg-white w-64 text-right pr-3"
                  />
                  {totals.error && enteredPromoCode && (
-                   <p className="text-[10px] text-red-500 mt-1 font-medium">{totals.error}</p>
+                   <p className="text-[10px] text-red-500 mt-1 font-medium text-right w-64">{totals.error}</p>
                  )}
                  {totals.appliedPromo && (
-                   <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1">
+                   <p className="text-[10px] text-emerald-600 mt-1 font-medium flex items-center gap-1 justify-end w-64">
                      ✓ Aplicado: {totals.appliedPromo.title || totals.appliedPromo.code}
                    </p>
                  )}

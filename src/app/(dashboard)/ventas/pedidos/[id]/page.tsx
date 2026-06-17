@@ -37,6 +37,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [productSearch, setProductSearch] = useState("");
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
 
   useEffect(() => {
     if (!companyId || !params.id) return;
@@ -72,6 +73,9 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
             name: data.name || data.Name || "Sucursal sin nombre"
           };
         }));
+      });
+      getDocs(collection(db, "companies", companyId, "warehouses")).then(snap => {
+        setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
       getDocs(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active"))).then(snap => {
         setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
@@ -119,10 +123,16 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         finalLocationName = locations.find(l => l.id === order.locationId)?.name || order.locationName || "";
       }
 
+      let finalWarehouseName = order.warehouseName || "";
+      if (order.warehouseId) {
+        finalWarehouseName = warehouses.find(w => w.id === order.warehouseId)?.name || order.warehouseName || "";
+      }
+
       const updatedOrder = {
         ...order,
         projectName: finalProjectName,
         locationName: finalLocationName,
+        warehouseName: finalWarehouseName,
         subtotal: calc.subtotal,
         totalDiscount: calc.totalDiscount,
         globalDiscountType: order.globalDiscountType || "none",
@@ -411,13 +421,13 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
       {activeTab === "detalle" && (
         <>
           {/* Top Header Card: Datos Generales */}
-          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-        <h3 className="font-semibold text-sm text-indigo-950 flex items-center gap-2 border-b pb-2">
+           <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
+        <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
           <FileText className="w-4 h-4 text-indigo-600" />
           Información General del Pedido
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-start">
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase">Cliente</label>
             <p className="font-bold text-slate-900 mt-1">{order.clientName || 'Sin Cliente'}</p>
@@ -471,6 +481,24 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
           </div>
 
           <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase">Almacén</label>
+            {isEditing ? (
+              <select 
+                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
+                value={order.warehouseId || ""}
+                onChange={e => setOrder({...order, warehouseId: e.target.value})}
+              >
+                <option value="">Seleccionar Almacén</option>
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="font-bold text-slate-900 mt-1">{order.warehouseName || 'N/A'}</p>
+            )}
+          </div>
+
+          <div>
             <label className="text-xs font-semibold text-slate-500 uppercase">Proyecto Vinculado</label>
             {isEditing ? (
               <select 
@@ -494,11 +522,11 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         {/* Left Column: Items */}
         
           <div className="bg-card border rounded-xl shadow-sm flex flex-col min-h-[500px]">
-            <div className="p-5 border-b flex justify-between items-center bg-blue-50/30">
-              <h3 className="font-semibold text-lg flex items-center gap-2 text-blue-900">
-                <Package className="w-5 h-5 text-blue-600" /> Partidas del Pedido
+            <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-slate-800">
+                <Package className="w-5 h-5 text-indigo-600" /> Partidas del Pedido
               </h3>
-              <span className="text-sm text-blue-700 font-medium">{(order.items || []).length} partidas</span>
+              <span className="text-sm text-slate-500 font-medium">{(order.items || []).length} partidas</span>
             </div>
 
             {isEditing && (
@@ -706,19 +734,19 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
 
             <div className="space-y-3">
               {isEditing && (
-                <div className="space-y-1">
+                <div className="flex flex-col items-end w-full space-y-1">
                   <label className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
                     <Percent className="w-3.5 h-3.5"/> Descuento Global
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 w-64 justify-end">
                     <select
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
                       value={order.globalDiscountType || "none"}
                       onChange={(e) => handleGlobalDiscountTypeChange(e.target.value)}
                     >
                       <option value="none">Ninguno</option>
-                      <option value="percentage">Porcentaje (%)</option>
-                      <option value="fixed_amount">Monto ($)</option>
+                      <option value="percentage">%</option>
+                      <option value="fixed_amount">$</option>
                     </select>
                     {(order.globalDiscountType && order.globalDiscountType !== "none") && (
                       <Input
@@ -729,7 +757,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                         placeholder={order.globalDiscountType === "percentage" ? "10" : "100.00"}
                         value={order.globalDiscountValue !== undefined ? order.globalDiscountValue : ""}
                         onChange={(e) => handleGlobalDiscountValueChange(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="h-9 text-sm w-28"
+                        className="h-9 text-sm w-24 shrink-0"
                       />
                     )}
                   </div>

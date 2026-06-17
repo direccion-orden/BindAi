@@ -10,6 +10,19 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { NewIncomeModal } from "@/components/payments/NewIncomeModal";
 
+const PAYMENT_METHODS = [
+  "Efectivo",
+  "Transferencia",
+  "Tarjeta",
+  "Tarjeta de Crédito",
+  "Tarjeta de Débito",
+  "Cheque",
+  "Anticipo",
+  "Puntos",
+  "Saldo a Favor",
+  "Otro"
+];
+
 export default function IngresosPage() {
   const { companyId } = useAuth();
   const [payments, setPayments] = useState<any[]>([]);
@@ -20,6 +33,9 @@ export default function IngresosPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [isNewIncomeModalOpen, setIsNewIncomeModalOpen] = useState(false);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [sucursalFilter, setSucursalFilter] = useState("all");
+  const [methodFilter, setMethodFilter] = useState("all");
 
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
@@ -84,7 +100,17 @@ export default function IngresosPage() {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || d.data().Name || "Sucursal sin nombre"
+      })));
+    });
+
+    return () => {
+      unsubscribe();
+      unsubLoc();
+    };
   }, [companyId]);
 
   const filteredPayments = payments.filter((p) => {
@@ -102,6 +128,20 @@ export default function IngresosPage() {
       const isCancelled = p.status === "cancelado";
       if (statusFilter === "activo" && isCancelled) return false;
       if (statusFilter === "cancelado" && !isCancelled) return false;
+    }
+    // 2.5. Sucursal filter
+    if (sucursalFilter !== "all" && p.locationId !== sucursalFilter) {
+      return false;
+    }
+    // 2.6. Payment Method filter
+    if (methodFilter !== "all") {
+      const pMethod = p.method?.toLowerCase() || "";
+      const filterMethod = methodFilter.toLowerCase();
+      if (filterMethod === "tarjeta") {
+        if (!pMethod.includes("tarjeta")) return false;
+      } else {
+        if (pMethod !== filterMethod) return false;
+      }
     }
     // 3. Date filter
     if (dateFrom || dateTo) {
@@ -170,9 +210,11 @@ export default function IngresosPage() {
       <div className="flex flex-col md:flex-row flex-wrap gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
         <div className="flex flex-col sm:flex-row gap-3 items-end flex-1 w-full">
           <div className="space-y-1 w-full sm:w-64">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Buscar
-            </span>
+            <div className="flex items-center h-5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Buscar
+              </span>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -185,9 +227,11 @@ export default function IngresosPage() {
           </div>
           
           <div className="space-y-1 w-full sm:w-40">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Estatus
-            </span>
+            <div className="flex items-center h-5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Estatus
+              </span>
+            </div>
             <select
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               value={statusFilter}
@@ -199,10 +243,48 @@ export default function IngresosPage() {
             </select>
           </div>
 
+          <div className="space-y-1 w-full sm:w-40">
+            <div className="flex items-center h-5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Sucursal
+              </span>
+            </div>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={sucursalFilter}
+              onChange={(e) => setSucursalFilter(e.target.value)}
+            >
+              <option value="all">Todas</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1 w-full sm:w-40">
+            <div className="flex items-center h-5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Método de Pago
+              </span>
+            </div>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value)}
+            >
+              <option value="all">Todos</option>
+              {PAYMENT_METHODS.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-1 w-full sm:w-44">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Fecha
-            </span>
+            <div className="flex items-center h-5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Fecha
+              </span>
+            </div>
             <select
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
               value={dateFilterOption}
@@ -222,7 +304,9 @@ export default function IngresosPage() {
           {dateFilterOption === "custom" && (
             <>
               <div className="space-y-1 w-full sm:w-36">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
+                <div className="flex items-center h-5">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</span>
+                </div>
                 <Input
                   type="date"
                   className="h-9 bg-background"
@@ -232,7 +316,9 @@ export default function IngresosPage() {
               </div>
 
               <div className="space-y-1 w-full sm:w-36">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
+                <div className="flex items-center h-5">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hasta</span>
+                </div>
                 <Input
                   type="date"
                   className="h-9 bg-background"

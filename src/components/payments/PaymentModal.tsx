@@ -86,6 +86,8 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
         documentNumber: document.orderNumber || document.remissionNumber || document.invoiceNumber || document.id,
         clientId: document.clientId || "",
         clientName: document.clientName || "",
+        locationId: document.locationId || null,
+        locationName: document.locationName || "",
         bankAccountId,
         createdAt: new Date().toISOString()
       };

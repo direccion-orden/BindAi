@@ -70,7 +70,9 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
               type: "Order",
               number: d.orderNumber || d.number || `PED-${docSnap.id.substring(0, 6)}`,
               total,
-              balance
+              balance,
+              locationId: d.locationId || null,
+              locationName: d.locationName || ""
             });
           }
         }
@@ -89,7 +91,9 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
               type: "Remission",
               number: d.remissionNumber || d.number || `REM-${docSnap.id.substring(0, 6)}`,
               total,
-              balance
+              balance,
+              locationId: d.locationId || null,
+              locationName: d.locationName || ""
             });
           }
         }
@@ -108,7 +112,9 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
               type: "Invoice",
               number: d.invoiceNumber ? `FAC-${d.invoiceNumber}` : `FAC-${docSnap.id.substring(0, 6)}`,
               total,
-              balance
+              balance,
+              locationId: d.locationId || null,
+              locationName: d.locationName || ""
             });
           }
         }
@@ -164,6 +170,8 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
           documentNumber: docObj?.number || docId,
           clientId: anticipo.clientId || "",
           clientName: anticipo.clientName || "",
+          locationId: (docObj as any)?.locationId || null,
+          locationName: (docObj as any)?.locationName || "",
           bankAccountId: anticipo.bankAccountId || "CUENTA_MOCK",
           createdAt: new Date().toISOString()
         };

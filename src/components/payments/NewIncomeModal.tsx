@@ -180,6 +180,8 @@ export function NewIncomeModal({ isOpen, onClose, companyId }: NewIncomeModalPro
         documentNumber: selectedDoc.orderNumber || selectedDoc.remissionNumber || selectedDoc.invoiceNumber || selectedDoc.id,
         clientId: selectedDoc.clientId || "",
         clientName: selectedDoc.clientName || "",
+        locationId: selectedDoc.locationId || null,
+        locationName: selectedDoc.locationName || "",
         bankAccountId,
         createdAt: new Date().toISOString()
       };

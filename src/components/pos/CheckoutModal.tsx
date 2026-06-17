@@ -763,6 +763,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           documentNumber: remNumber,
           clientId: client?.id || "public",
           clientName: client?.name || "Público en General",
+          locationId: branchId || null,
+          locationName: branchName || "",
           createdAt: new Date().toISOString()
         }));
       }

@@ -10,6 +10,8 @@ export interface ErpDocument {
   number: string;
   total: number;
   balance: number;
+  locationId?: string | null;
+  locationName?: string;
 }
 
 const API_BASE = "https://api.bind.com.mx/api";

@@ -20,6 +20,7 @@ export default function ReporteComercialPage() {
   // States for raw Firestore data
   const [locations, setLocations] = useState<any[]>([]);
   const [remisiones, setRemisiones] = useState<any[]>([]);
+  const [facturas, setFacturas] = useState<any[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
   const [categories, setCategories] = useState<{ [key: string]: string }>({});
@@ -38,9 +39,10 @@ export default function ReporteComercialPage() {
       setLoading(true);
       try {
         // Parallel queries to Firestore
-        const [locSnap, remSnap, pedSnap, goalSnap, catSnap] = await Promise.all([
+        const [locSnap, remSnap, factSnap, pedSnap, goalSnap, catSnap] = await Promise.all([
           getDocs(collection(db, "companies", companyId, "locations")),
           getDocs(collection(db, "companies", companyId, "remisiones")),
+          getDocs(collection(db, "companies", companyId, "facturas")),
           getDocs(collection(db, "companies", companyId, "pedidos")),
           getDocs(collection(db, "companies", companyId, "sales_goals")),
           getDocs(collection(db, "companies", companyId, "categories"))
@@ -57,6 +59,10 @@ export default function ReporteComercialPage() {
         // Map Remisiones (Active only)
         const rems = remSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         setRemisiones(rems);
+
+        // Map Facturas
+        const facts = factSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setFacturas(facts);
 
         // Map Pedidos
         const peds = pedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -95,6 +101,16 @@ export default function ReporteComercialPage() {
       return true;
     });
 
+    const activeFacturas = facturas.filter(f => {
+      if (f.status === "cancelada") return false;
+      if (f.posSaleId || f.remisionId || f.remissionId) return false; // Ignore facturas generated from existing remisiones to avoid double counting
+      const date = new Date(f.createdAt || f.date);
+      if (isNaN(date.getTime()) || date.getFullYear() !== selectedYear) return false;
+      if (selectedSucursal !== "all" && f.locationId !== selectedSucursal) return false;
+      if (selectedMonth !== "all" && (date.getMonth() + 1) !== parseInt(selectedMonth)) return false;
+      return true;
+    });
+
     const activePedidos = pedidos.filter(p => {
       if (p.status === "cancelado") return false;
       const date = new Date(p.createdAt);
@@ -112,14 +128,15 @@ export default function ReporteComercialPage() {
     });
 
     // 2. KPI Cards calculations
-    const totalSales = activeRemisiones.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+    const totalSales = activeRemisiones.reduce((sum, r) => sum + (r.totalAmount || 0), 0) +
+                       activeFacturas.reduce((sum, f) => sum + (f.totalAmount || 0), 0);
     
     // Backlog (pedidos pending delivery 'por_surtir')
     const pendingOrders = activePedidos.filter(p => p.status === 'por_surtir');
     const backlogAmount = pendingOrders.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
 
     // Ticket Promedio
-    const salesCount = activeRemisiones.length;
+    const salesCount = activeRemisiones.length + activeFacturas.length;
     const avgTicket = salesCount > 0 ? totalSales / salesCount : 0;
 
     // Win Rate (pedidos vs total quotes - since cotizaciones count is 0 in db, we display 0% gracefully)
@@ -139,7 +156,14 @@ export default function ReporteComercialPage() {
         if (isNaN(d.getTime()) || d.getFullYear() !== selectedYear) return false;
         if (selectedSucursal !== "all" && r.locationId !== selectedSucursal) return false;
         return d.getMonth() + 1 === monthNum;
-      }).reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+      }).reduce((sum, r) => sum + (r.totalAmount || 0), 0) +
+      facturas.filter(f => {
+        if (f.status === "cancelada" || f.posSaleId || f.remisionId || f.remissionId) return false;
+        const d = new Date(f.createdAt || f.date);
+        if (isNaN(d.getTime()) || d.getFullYear() !== selectedYear) return false;
+        if (selectedSucursal !== "all" && f.locationId !== selectedSucursal) return false;
+        return d.getMonth() + 1 === monthNum;
+      }).reduce((sum, f) => sum + (f.totalAmount || 0), 0);
 
       const goalInMonth = goals.filter(g => {
         if (g.year !== selectedYear) return false;
@@ -156,19 +180,23 @@ export default function ReporteComercialPage() {
 
     // 4. Sales by Category (PIE)
     const categoryTotals: { [key: string]: number } = {};
-    activeRemisiones.forEach(r => {
-      if (!r.items) return;
-      r.items.forEach((item: any) => {
-        const val = (item.quantity || 0) * (item.unitPrice || 0);
-        // Find category name
-        let catName = "Otros";
-        if (item.categoryIds && item.categoryIds.length > 0) {
-          const firstCatId = item.categoryIds[0];
-          catName = categories[firstCatId] || firstCatId || "Otros";
-        }
-        categoryTotals[catName] = (categoryTotals[catName] || 0) + val;
+    const processItemsForCategories = (documents: any[]) => {
+      documents.forEach(doc => {
+        if (!doc.items) return;
+        doc.items.forEach((item: any) => {
+          const val = (item.quantity || 0) * (item.unitPrice || 0);
+          // Find category name
+          let catName = "Otros";
+          if (item.categoryIds && item.categoryIds.length > 0) {
+            const firstCatId = item.categoryIds[0];
+            catName = categories[firstCatId] || firstCatId || "Otros";
+          }
+          categoryTotals[catName] = (categoryTotals[catName] || 0) + val;
+        });
       });
-    });
+    };
+    processItemsForCategories(activeRemisiones);
+    processItemsForCategories(activeFacturas);
 
     const categoryChartData = Object.entries(categoryTotals)
       .map(([name, value]) => ({ name, value: Math.round(value) }))
@@ -176,10 +204,14 @@ export default function ReporteComercialPage() {
 
     // 5. Top 5 Clients (BAR)
     const clientTotals: { [key: string]: number } = {};
-    activeRemisiones.forEach(r => {
-      const name = r.clientName || "Público en General";
-      clientTotals[name] = (clientTotals[name] || 0) + (r.totalAmount || 0);
-    });
+    const processClientTotals = (documents: any[]) => {
+      documents.forEach(doc => {
+        const name = doc.clientName || "Público en General";
+        clientTotals[name] = (clientTotals[name] || 0) + (doc.totalAmount || 0);
+      });
+    };
+    processClientTotals(activeRemisiones);
+    processClientTotals(activeFacturas);
 
     const topClientsData = Object.entries(clientTotals)
       .map(([name, value]) => ({ name, value: Math.round(value) }))
@@ -194,7 +226,14 @@ export default function ReporteComercialPage() {
         if (isNaN(date.getTime()) || date.getFullYear() !== selectedYear) return false;
         if (selectedMonth !== "all" && (date.getMonth() + 1) !== parseInt(selectedMonth)) return false;
         return true;
-      }).reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+      }).reduce((sum, r) => sum + (r.totalAmount || 0), 0) +
+      facturas.filter(f => {
+        if (f.status === "cancelada" || f.locationId !== loc.id || f.posSaleId || f.remisionId || f.remissionId) return false;
+        const date = new Date(f.createdAt || f.date);
+        if (isNaN(date.getTime()) || date.getFullYear() !== selectedYear) return false;
+        if (selectedMonth !== "all" && (date.getMonth() + 1) !== parseInt(selectedMonth)) return false;
+        return true;
+      }).reduce((sum, f) => sum + (f.totalAmount || 0), 0);
 
       const rGoal = goals.filter(g => {
         if (g.locationId !== loc.id || g.year !== selectedYear) return false;
@@ -228,7 +267,7 @@ export default function ReporteComercialPage() {
       topClientsData,
       branchPerformance
     };
-  }, [remisiones, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth]);
+  }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth]);
 
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }).format(amount);

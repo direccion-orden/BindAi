@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Plus, Truck, ArrowRight, CheckCircle2, DollarSign } from "lucide-react";
+import { Loader2, Plus, Truck, ArrowRight, CheckCircle2, DollarSign, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
@@ -38,6 +38,52 @@ export default function RecepcionesPage() {
   const [loading, setLoading] = useState(true);
   const [selectedReceiving, setSelectedReceiving] = useState<PurchaseReceiving | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "createdAt" || field === "totalCost" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedReceivings = [...receivings].sort((a, b) => {
+    let aVal = a[sortField as keyof PurchaseReceiving] || "";
+    let bVal = b[sortField as keyof PurchaseReceiving] || "";
+
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      if (sortField === "invoiceNumber") {
+        const aNum = parseInt(aVal.replace(/\D/g, ""), 10) || 0;
+        const bNum = parseInt(bVal.replace(/\D/g, ""), 10) || 0;
+        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      }
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal, "es") 
+        : bVal.localeCompare(aVal, "es");
+    }
+
+    if (typeof aVal === "number" && typeof bVal === "number") {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
+  });
 
   useEffect(() => {
     if (!companyId) return;
@@ -85,17 +131,57 @@ export default function RecepcionesPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground font-medium border-b">
               <tr>
-                <th className="px-6 py-4">ID / Factura</th>
-                <th className="px-6 py-4">Fecha</th>
-                <th className="px-6 py-4">Proveedor</th>
-                <th className="px-6 py-4">Almacén Destino</th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("invoiceNumber")}
+                >
+                  <div className="flex items-center">
+                    ID / Factura
+                    {renderSortIcon("invoiceNumber")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("createdAt")}
+                >
+                  <div className="flex items-center">
+                    Fecha
+                    {renderSortIcon("createdAt")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("vendorName")}
+                >
+                  <div className="flex items-center">
+                    Proveedor
+                    {renderSortIcon("vendorName")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("warehouseName")}
+                >
+                  <div className="flex items-center">
+                    Almacén Destino
+                    {renderSortIcon("warehouseName")}
+                  </div>
+                </th>
                 <th className="px-6 py-4">Artículos</th>
-                <th className="px-6 py-4">Costo Total</th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("totalCost")}
+                >
+                  <div className="flex items-center">
+                    Costo Total
+                    {renderSortIcon("totalCost")}
+                  </div>
+                </th>
                 <th className="px-6 py-4 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {receivings.length === 0 ? (
+              {sortedReceivings.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center space-y-3">
@@ -108,7 +194,7 @@ export default function RecepcionesPage() {
                   </td>
                 </tr>
               ) : (
-                receivings.map((rec) => (
+                sortedReceivings.map((rec) => (
                   <tr key={rec.id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-medium text-indigo-600">{rec.invoiceNumber || "S/N"}</div>

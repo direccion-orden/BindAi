@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Truck, User, FileText, CheckCircle2, XCircle, Receipt, Plus, Search, DollarSign, Copy, Eye, FileDown, Ban } from "lucide-react";
+import { Loader2, Truck, User, FileText, CheckCircle2, XCircle, Receipt, Plus, Search, DollarSign, Copy, Eye, FileDown, Ban, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -169,6 +169,52 @@ export default function RemisionesPage() {
     return true;
   });
 
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "createdAt" || field === "totalAmount" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedRemissions = [...filteredRemissions].sort((a, b) => {
+    let aVal = a[sortField as keyof Remission] || "";
+    let bVal = b[sortField as keyof Remission] || "";
+
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      if (sortField === "remissionNumber") {
+        const aNum = parseInt(aVal.replace(/\D/g, ""), 10) || 0;
+        const bNum = parseInt(bVal.replace(/\D/g, ""), 10) || 0;
+        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      }
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal, "es") 
+        : bVal.localeCompare(aVal, "es");
+    }
+
+    if (typeof aVal === "number" && typeof bVal === "number") {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
+  });
+
   const totalFilteredAmount = filteredRemissions.reduce((sum, rem) => sum + (rem.totalAmount || 0), 0);
 
   if (loading) {
@@ -298,17 +344,65 @@ export default function RemisionesPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
-                <th className="px-6 py-4">No. Remisión</th>
-                <th className="px-6 py-4">Cliente</th>
-                <th className="px-6 py-4">Sucursal</th>
-                <th className="px-6 py-4">Total</th>
-                <th className="px-6 py-4">Fecha</th>
-                <th className="px-6 py-4">Estatus</th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("remissionNumber")}
+                >
+                  <div className="flex items-center">
+                    No. Remisión
+                    {renderSortIcon("remissionNumber")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("clientName")}
+                >
+                  <div className="flex items-center">
+                    Cliente
+                    {renderSortIcon("clientName")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("locationName")}
+                >
+                  <div className="flex items-center">
+                    Sucursal
+                    {renderSortIcon("locationName")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("totalAmount")}
+                >
+                  <div className="flex items-center">
+                    Total
+                    {renderSortIcon("totalAmount")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("createdAt")}
+                >
+                  <div className="flex items-center">
+                    Fecha
+                    {renderSortIcon("createdAt")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("status")}
+                >
+                  <div className="flex items-center">
+                    Estatus
+                    {renderSortIcon("status")}
+                  </div>
+                </th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filteredRemissions.length === 0 ? (
+              {sortedRemissions.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                     <Truck className="w-12 h-12 mx-auto mb-3 opacity-20" />
@@ -316,7 +410,7 @@ export default function RemisionesPage() {
                   </td>
                 </tr>
               ) : (
-                filteredRemissions.map((remission) => (
+                sortedRemissions.map((remission) => (
                   <tr key={remission.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 font-bold text-slate-900">{remission.remissionNumber}</td>
                     <td className="px-6 py-4 font-medium text-slate-700">

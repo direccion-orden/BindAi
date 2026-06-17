@@ -6,7 +6,8 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Receipt, CloudDownload, RefreshCw, Loader2, AlertCircle, FileText, DollarSign, CheckCircle2 } from "lucide-react";
+import { Receipt, CloudDownload, RefreshCw, Loader2, AlertCircle, FileText, DollarSign, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Eye } from "lucide-react";
+import Link from "next/link";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 
 import { SatRequestsModal } from "@/components/features/sat/SatRequestsModal";
@@ -21,6 +22,47 @@ export default function GastosPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "date" || field === "total" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedInvoices = [...invoices].sort((a, b) => {
+    let aVal = a[sortField] || "";
+    let bVal = b[sortField] || "";
+
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal, "es") 
+        : bVal.localeCompare(aVal, "es");
+    }
+
+    if (typeof aVal === "number" && typeof bVal === "number") {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
+  });
   const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
@@ -317,21 +359,65 @@ export default function GastosPage() {
                   <table className="w-full text-sm">
                       <thead className="bg-muted/50 sticky top-0 z-10 backdrop-blur-sm">
                           <tr>
-                              <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Fecha</th>
-                              <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Emisor</th>
-                              <th className="px-4 py-3 text-left font-semibold text-muted-foreground">RFC</th>
-                              <th className="px-4 py-3 text-left font-semibold text-muted-foreground">UUID</th>
-                              <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Total</th>
+                              <th 
+                                className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                onClick={() => handleSort("date")}
+                              >
+                                <div className="flex items-center">
+                                  Fecha
+                                  {renderSortIcon("date")}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                onClick={() => handleSort("emisorName")}
+                              >
+                                <div className="flex items-center">
+                                  Emisor
+                                  {renderSortIcon("emisorName")}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                onClick={() => handleSort("emisorRfc")}
+                              >
+                                <div className="flex items-center">
+                                  RFC
+                                  {renderSortIcon("emisorRfc")}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                onClick={() => handleSort("uuid")}
+                              >
+                                <div className="flex items-center">
+                                  UUID
+                                  {renderSortIcon("uuid")}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 text-right font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                onClick={() => handleSort("total")}
+                              >
+                                <div className="flex items-center justify-end">
+                                  Total
+                                  {renderSortIcon("total")}
+                                </div>
+                              </th>
                               <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Acción</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y">
-                          {invoices.map((inv) => (
+                          {sortedInvoices.map((inv) => (
                               <tr key={inv.id} className="hover:bg-muted/30 transition-colors">
                                   <td className="px-4 py-3 whitespace-nowrap">{inv.date}</td>
                                   <td className="px-4 py-3 font-medium">{inv.emisorName}</td>
                                   <td className="px-4 py-3">{inv.emisorRfc}</td>
-                                  <td className="px-4 py-3 text-xs text-muted-foreground">{inv.uuid}</td>
+                                  <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                                    <Link href={`/gastos/${inv.id}`} target="_blank" className="text-indigo-600 hover:text-indigo-800 hover:underline">
+                                      {inv.uuid}
+                                    </Link>
+                                  </td>
                                   <td className="px-4 py-3 text-right">
                                       <div className="font-bold">{formatMoney(inv.total)}</div>
                                       {(inv.paidAmount || 0) > 0 && (
@@ -339,19 +425,35 @@ export default function GastosPage() {
                                       )}
                                   </td>
                                   <td className="px-4 py-3 text-center">
-                                      {(!inv.paidAmount || inv.paidAmount < inv.total - 0.01) ? (
-                                        <Button variant="outline" size="sm" onClick={() => {
-                                          setSelectedInvoice(inv);
-                                          setIsPaymentModalOpen(true);
-                                        }}>
-                                          <DollarSign className="w-3 h-3 mr-1" />
-                                          Registrar Pago
-                                        </Button>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
-                                          <CheckCircle2 className="w-3 h-3" /> Pagado
-                                        </span>
-                                      )}
+                                      <div className="flex items-center justify-center gap-2">
+                                        {(!inv.paidAmount || inv.paidAmount < inv.total - 0.01) ? (
+                                          <>
+                                            <Button variant="outline" size="sm" onClick={() => {
+                                              setSelectedInvoice(inv);
+                                              setIsPaymentModalOpen(true);
+                                            }}>
+                                              <DollarSign className="w-3 h-3 mr-1" />
+                                              Registrar Pago
+                                            </Button>
+                                            <Link href={`/gastos/${inv.id}`} target="_blank">
+                                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0" title="Ver Detalles">
+                                                <Eye className="w-4 h-4 text-indigo-600" />
+                                              </Button>
+                                            </Link>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">
+                                              <CheckCircle2 className="w-3 h-3" /> Pagado
+                                            </span>
+                                            <Link href={`/gastos/${inv.id}`} target="_blank">
+                                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0" title="Ver Detalles">
+                                                <Eye className="w-4 h-4 text-indigo-600" />
+                                              </Button>
+                                            </Link>
+                                          </>
+                                        )}
+                                      </div>
                                   </td>
                               </tr>
                           ))}

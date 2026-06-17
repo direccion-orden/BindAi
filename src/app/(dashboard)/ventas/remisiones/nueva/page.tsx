@@ -52,6 +52,14 @@ export default function NuevaRemisionPage() {
   const [newClientName, setNewClientName] = useState("");
   const [newClientPhone, setNewClientPhone] = useState("");
 
+  const [appliedDate, setAppliedDate] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<any[]>([]);
 
@@ -287,6 +295,13 @@ export default function NuevaRemisionPage() {
       const remId = crypto.randomUUID();
       const remNumber = await getNextSequence(companyId, 'remisiones');
 
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+      const appliedISO = new Date(`${appliedDate}T${hours}:${minutes}:${seconds}.${milliseconds}`).toISOString();
+
       const targetAcc = accounts.find(a => a.code === "401.1");
       const finalAccountId = targetAcc?.id || accountId || "";
       const finalAccountCode = targetAcc?.code || "401.1";
@@ -319,7 +334,7 @@ export default function NuevaRemisionPage() {
         accountCode: finalAccountCode,
         accountName: finalAccountName,
         status: "activa", 
-        createdAt: new Date().toISOString(),
+        createdAt: appliedISO,
         createdBy: user?.email || "Unknown"
       });
 
@@ -348,7 +363,7 @@ export default function NuevaRemisionPage() {
             quantity: item.quantity,
             reason: `Remisión Directa ${remNumber}`,
             referenceId: remId,
-            createdAt: new Date().toISOString()
+            createdAt: appliedISO
           });
         }
       }
@@ -418,7 +433,7 @@ export default function NuevaRemisionPage() {
           Datos Generales de la Remisión
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
           {/* Column 1: Client search or new client inputs */}
           {isNewClient ? (
             <div className="space-y-3 bg-emerald-50/30 p-3 rounded-lg border border-emerald-100 col-span-1">
@@ -560,6 +575,22 @@ export default function NuevaRemisionPage() {
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+          </div>
+
+          {/* Column 5: Fecha de Aplicación */}
+          <div className="space-y-2 col-span-1">
+            <div className="flex items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
+                Fecha de Aplicación *
+              </label>
+            </div>
+            <Input 
+              type="date"
+              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
+              value={appliedDate}
+              onChange={e => setAppliedDate(e.target.value)}
+              required
+            />
           </div>
         </div>
       </div>

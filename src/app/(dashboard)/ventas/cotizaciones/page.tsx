@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package, Table, LayoutGrid, Search, Copy, Eye, FileDown, Ban } from "lucide-react";
+import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package, Table, LayoutGrid, Search, Copy, Eye, FileDown, Ban, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -197,6 +197,52 @@ export default function CotizacionesCRMPage() {
       if (dateTo && localDate > dateTo) return false;
     }
     return true;
+  });
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "createdAt" || field === "totalAmount" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedQuotes = [...filteredQuotes].sort((a, b) => {
+    let aVal = a[sortField as keyof Quote] || "";
+    let bVal = b[sortField as keyof Quote] || "";
+
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      if (sortField === "quoteNumber") {
+        const aNum = parseInt(aVal.replace(/\D/g, ""), 10) || 0;
+        const bNum = parseInt(bVal.replace(/\D/g, ""), 10) || 0;
+        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      }
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal, "es") 
+        : bVal.localeCompare(aVal, "es");
+    }
+
+    if (typeof aVal === "number" && typeof bVal === "number") {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
   });
 
   const totalCotizaciones = filteredQuotes.reduce((sum, q) => sum + (q.totalAmount || 0), 0);
@@ -529,17 +575,65 @@ export default function CotizacionesCRMPage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold sticky top-0 z-10">
                 <tr>
-                  <th className="px-6 py-4">No. Cotización</th>
-                  <th className="px-6 py-4">Fecha</th>
-                  <th className="px-6 py-4">Cliente</th>
-                  <th className="px-6 py-4">Sucursal</th>
-                  <th className="px-6 py-4 text-right">Total</th>
-                  <th className="px-6 py-4">Estatus</th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("quoteNumber")}
+                  >
+                    <div className="flex items-center">
+                      No. Cotización
+                      {renderSortIcon("quoteNumber")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("createdAt")}
+                  >
+                    <div className="flex items-center">
+                      Fecha
+                      {renderSortIcon("createdAt")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("clientName")}
+                  >
+                    <div className="flex items-center">
+                      Cliente
+                      {renderSortIcon("clientName")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("locationName")}
+                  >
+                    <div className="flex items-center">
+                      Sucursal
+                      {renderSortIcon("locationName")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("totalAmount")}
+                  >
+                    <div className="flex items-center justify-end">
+                      Total
+                      {renderSortIcon("totalAmount")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("status")}
+                  >
+                    <div className="flex items-center">
+                      Estatus
+                      {renderSortIcon("status")}
+                    </div>
+                  </th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filteredQuotes.length === 0 ? (
+                {sortedQuotes.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                       <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
@@ -547,7 +641,7 @@ export default function CotizacionesCRMPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredQuotes.map((quote) => {
+                  sortedQuotes.map((quote) => {
                     const stage = CRM_STAGES.find(s => s.id === quote.status);
                     return (
                       <tr key={quote.id} className="hover:bg-slate-50 transition-colors">

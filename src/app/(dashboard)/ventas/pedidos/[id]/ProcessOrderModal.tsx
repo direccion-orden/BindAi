@@ -27,6 +27,14 @@ export function ProcessOrderModal({
   const [loading, setLoading] = useState(false);
   const [actionType, setActionType] = useState("remision"); // remision, pre-factura, factura
   
+  const [appliedDate, setAppliedDate] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+
   // Facturama Required Fields
   const [rfc, setRfc] = useState("XAXX010101000");
   const [razonSocial, setRazonSocial] = useState(order?.clientName || "");
@@ -100,6 +108,13 @@ export function ProcessOrderModal({
       console.error("Error querying account 401.1 for order remission:", err);
     }
 
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+    const appliedISO = new Date(`${appliedDate}T${hours}:${minutes}:${seconds}.${milliseconds}`).toISOString();
+
     // 1. Create Remission
     await setDoc(doc(db, "companies", companyId, "remisiones", remId), {
       id: remId,
@@ -120,7 +135,7 @@ export function ProcessOrderModal({
       accountId,
       accountCode,
       accountName,
-      createdAt: new Date().toISOString(),
+      createdAt: appliedISO,
       createdBy: order.createdBy,
       status: 'activa'
     });
@@ -155,7 +170,7 @@ export function ProcessOrderModal({
           quantity: item.quantity,
           reason: `Remisión ${remNumber} (Pedido ${order.orderNumber})`,
           referenceId: remId,
-          createdAt: new Date().toISOString()
+          createdAt: appliedISO
         });
       }
     }
@@ -321,6 +336,19 @@ export function ProcessOrderModal({
               <option value="factura">Factura CFDI 4.0 (Timbrado Inmediato)</option>
             </select>
           </div>
+
+          {actionType === "remision" && (
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">Fecha de Aplicación *</label>
+              <Input 
+                type="date"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                value={appliedDate}
+                onChange={e => setAppliedDate(e.target.value)}
+                required
+              />
+            </div>
+          )}
 
           {(actionType === "pre-factura" || actionType === "factura") && (
             <>

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, DollarSign, ArrowUpRight, Search, PlusCircle } from "lucide-react";
+import { Loader2, DollarSign, ArrowUpRight, Search, PlusCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -118,6 +118,58 @@ export default function EgresosPage() {
       if (dateTo && localDate > dateTo) return false;
     }
     return true;
+  });
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "date" || field === "amount" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedOutflows = [...filteredOutflows].sort((a, b) => {
+    let aVal = a[sortField] || "";
+    let bVal = b[sortField] || "";
+
+    if (sortField === "amount") {
+      const aNum = parseFloat(aVal) || 0;
+      const bNum = parseFloat(bVal) || 0;
+      return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+    }
+
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      if (sortField === "documentNumber") {
+        const aNum = parseInt(aVal.replace(/\D/g, ""), 10) || 0;
+        const bNum = parseInt(bVal.replace(/\D/g, ""), 10) || 0;
+        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      }
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal, "es") 
+        : bVal.localeCompare(aVal, "es");
+    }
+
+    if (typeof aVal === "number" && typeof bVal === "number") {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
   });
 
   const totalEgresos = filteredOutflows
@@ -253,24 +305,38 @@ export default function EgresosPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b">
               <tr>
-                <th className="px-4 py-3 font-semibold text-slate-600">Fecha</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Proveedor</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Documento</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Método</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Referencia</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Estatus</th>
-                <th className="px-4 py-3 font-semibold text-slate-600 text-right">Monto</th>
+                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("date")}>
+                  <div className="flex items-center">Fecha {renderSortIcon("date")}</div>
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("providerName")}>
+                  <div className="flex items-center">Proveedor {renderSortIcon("providerName")}</div>
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("documentNumber")}>
+                  <div className="flex items-center">Documento {renderSortIcon("documentNumber")}</div>
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("method")}>
+                  <div className="flex items-center">Método {renderSortIcon("method")}</div>
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("reference")}>
+                  <div className="flex items-center">Referencia {renderSortIcon("reference")}</div>
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("status")}>
+                  <div className="flex items-center">Estatus {renderSortIcon("status")}</div>
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors text-right" onClick={() => handleSort("amount")}>
+                  <div className="flex items-center justify-end">Monto {renderSortIcon("amount")}</div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filteredOutflows.length === 0 ? (
+              {sortedOutflows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     No se encontraron pagos registrados.
                   </td>
                 </tr>
               ) : (
-                filteredOutflows.map((payment) => {
+                sortedOutflows.map((payment) => {
                   const docLink = getDocumentLink(payment.documentType, payment.documentId);
                   
                   return (

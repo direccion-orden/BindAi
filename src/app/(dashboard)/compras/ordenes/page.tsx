@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Plus, FileText, Clock, CheckCircle2 } from "lucide-react";
+import { Loader2, Plus, FileText, Clock, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
@@ -36,6 +36,52 @@ export default function OrdenesCompraPage() {
   const { companyId } = useAuth();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "createdAt" || field === "totalAmount" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedOrders = [...orders].sort((a, b) => {
+    let aVal = a[sortField as keyof PurchaseOrder] || "";
+    let bVal = b[sortField as keyof PurchaseOrder] || "";
+
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      if (sortField === "orderNumber") {
+        const aNum = parseInt(aVal.replace(/\D/g, ""), 10) || 0;
+        const bNum = parseInt(bVal.replace(/\D/g, ""), 10) || 0;
+        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      }
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal, "es") 
+        : bVal.localeCompare(aVal, "es");
+    }
+
+    if (typeof aVal === "number" && typeof bVal === "number") {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
+  });
 
   useEffect(() => {
     if (!companyId) return;
@@ -96,18 +142,58 @@ export default function OrdenesCompraPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground font-medium border-b">
               <tr>
-                <th className="px-6 py-4">Folio</th>
-                <th className="px-6 py-4">Fecha</th>
-                <th className="px-6 py-4">Proveedor</th>
-                <th className="px-6 py-4">Estado</th>
-                <th className="px-6 py-4">Total Esperado</th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("orderNumber")}
+                >
+                  <div className="flex items-center">
+                    Folio
+                    {renderSortIcon("orderNumber")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("createdAt")}
+                >
+                  <div className="flex items-center">
+                    Fecha
+                    {renderSortIcon("createdAt")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("vendorName")}
+                >
+                  <div className="flex items-center">
+                    Proveedor
+                    {renderSortIcon("vendorName")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("status")}
+                >
+                  <div className="flex items-center">
+                    Estado
+                    {renderSortIcon("status")}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("totalAmount")}
+                >
+                  <div className="flex items-center">
+                    Total Esperado
+                    {renderSortIcon("totalAmount")}
+                  </div>
+                </th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {orders.length === 0 ? (
+              {sortedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center space-y-3">
                       <FileText className="w-12 h-12 text-muted-foreground/30" />
                       <p>Aún no hay órdenes de compra registradas.</p>
@@ -116,7 +202,7 @@ export default function OrdenesCompraPage() {
                   </td>
                 </tr>
               ) : (
-                orders.map((order) => (
+                sortedOrders.map((order) => (
                   <tr key={order.id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-6 py-4 font-medium text-indigo-600">
                       {order.orderNumber || order.id.slice(-6).toUpperCase()}

@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2, Edit2, Search, Truck, Mail, Phone, Upload } from "lucide-react";
+import { Loader2, Plus, Trash2, Edit2, Search, Truck, Mail, Phone, Upload, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -254,6 +254,47 @@ export default function ProveedoresPage() {
     return nameVal.includes(search) || emailVal.includes(search);
   });
 
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("name");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedVendors = [...filteredVendors].sort((a, b) => {
+    let aVal = "";
+    let bVal = "";
+
+    if (sortField === "name") {
+      aVal = (a.LegalName || a.name || "");
+      bVal = (b.LegalName || b.name || "");
+    } else if (sortField === "email") {
+      aVal = (a.Email || a.email || "");
+      bVal = (b.Email || b.email || "");
+    }
+
+    return sortDirection === "asc"
+      ? aVal.localeCompare(bVal, "es")
+      : bVal.localeCompare(aVal, "es");
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -433,13 +474,23 @@ export default function ProveedoresPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Contacto</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("name")}>
+                    <div className="flex items-center">
+                      Nombre
+                      {renderSortIcon("name")}
+                    </div>
+                  </TableHead>
+                  <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("email")}>
+                    <div className="flex items-center">
+                      Contacto
+                      {renderSortIcon("email")}
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[100px] text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredVendors.map(v => (
+                {sortedVendors.map(v => (
                   <TableRow key={v.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">

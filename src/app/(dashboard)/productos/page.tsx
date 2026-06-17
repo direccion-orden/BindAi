@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { collection, query, getDocs, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { Plus, Search, MoreHorizontal, Package, Store, Loader2, X, CheckCircle2, AlertTriangle, Download } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Package, Store, Loader2, X, CheckCircle2, AlertTriangle, Download, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShopifyProduct } from "@/types/product";
@@ -224,6 +224,72 @@ export default function ProductosPage() {
            hasSkuOrBarcode;
   });
 
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("title");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  const getProductInventory = (product: ShopifyProduct) => {
+    return product.variants?.reduce((sum, v) => {
+      let total = 0;
+      if ((v as any).inventoryByWarehouse) {
+        total += (Object.values((v as any).inventoryByWarehouse) as number[]).reduce((a: number, b: number) => a + b, 0);
+      }
+      total += ((v as any).inventoryQuantity || 0);
+      return sum + total;
+    }, 0) || ((product as any).bindCurrentInventory || 0);
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "totalInventory" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (sortField === "totalInventory") {
+      const aVal = getProductInventory(a);
+      const bVal = getProductInventory(b);
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    let aVal = "";
+    let bVal = "";
+
+    if (sortField === "title") {
+      aVal = a.title || "";
+      bVal = b.title || "";
+    } else if (sortField === "status") {
+      const aActive = a.status === 'ACTIVE' || (a as any).isActive === true;
+      const bActive = b.status === 'ACTIVE' || (b as any).isActive === true;
+      aVal = aActive ? "activo" : (a.status === 'DRAFT' ? "borrador" : "archivado");
+      bVal = bActive ? "activo" : (b.status === 'DRAFT' ? "borrador" : "archivado");
+    } else if (sortField === "productType") {
+      aVal = a.productType || "";
+      bVal = b.productType || "";
+    } else if (sortField === "vendor") {
+      aVal = a.vendor || "";
+      bVal = b.vendor || "";
+    }
+
+    return sortDirection === "asc"
+      ? aVal.localeCompare(bVal, "es")
+      : bVal.localeCompare(aVal, "es");
+  });
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -287,11 +353,36 @@ export default function ProductosPage() {
                     className="rounded border-gray-300"
                   />
                 </th>
-                <th className="px-6 py-4 font-semibold">Producto</th>
-                <th className="px-6 py-4 font-semibold">Estado</th>
-                <th className="px-6 py-4 font-semibold">Inventario</th>
-                <th className="px-6 py-4 font-semibold">Tipo</th>
-                <th className="px-6 py-4 font-semibold">Proveedor</th>
+                <th className="px-6 py-4 font-semibold cursor-pointer select-none hover:bg-muted/70 hover:text-foreground transition-colors" onClick={() => handleSort("title")}>
+                  <div className="flex items-center">
+                    Producto
+                    {renderSortIcon("title")}
+                  </div>
+                </th>
+                <th className="px-6 py-4 font-semibold cursor-pointer select-none hover:bg-muted/70 hover:text-foreground transition-colors" onClick={() => handleSort("status")}>
+                  <div className="flex items-center">
+                    Estado
+                    {renderSortIcon("status")}
+                  </div>
+                </th>
+                <th className="px-6 py-4 font-semibold cursor-pointer select-none hover:bg-muted/70 hover:text-foreground transition-colors" onClick={() => handleSort("totalInventory")}>
+                  <div className="flex items-center">
+                    Inventario
+                    {renderSortIcon("totalInventory")}
+                  </div>
+                </th>
+                <th className="px-6 py-4 font-semibold cursor-pointer select-none hover:bg-muted/70 hover:text-foreground transition-colors" onClick={() => handleSort("productType")}>
+                  <div className="flex items-center">
+                    Tipo
+                    {renderSortIcon("productType")}
+                  </div>
+                </th>
+                <th className="px-6 py-4 font-semibold cursor-pointer select-none hover:bg-muted/70 hover:text-foreground transition-colors" onClick={() => handleSort("vendor")}>
+                  <div className="flex items-center">
+                    Proveedor
+                    {renderSortIcon("vendor")}
+                  </div>
+                </th>
                 <th className="px-6 py-4 text-right font-semibold">Acciones</th>
               </tr>
             </thead>
@@ -302,7 +393,7 @@ export default function ProductosPage() {
                     Cargando productos...
                   </td>
                 </tr>
-              ) : filteredProducts.length === 0 ? (
+              ) : sortedProducts.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center space-y-3">
@@ -315,15 +406,8 @@ export default function ProductosPage() {
                   </td>
                 </tr>
               ) : (
-                filteredProducts.map((product) => {
-                  const totalInventory = product.variants?.reduce((sum, v) => {
-                    let total = 0;
-                    if ((v as any).inventoryByWarehouse) {
-                      total += (Object.values((v as any).inventoryByWarehouse) as number[]).reduce((a: number, b: number) => a + b, 0);
-                    }
-                    total += ((v as any).inventoryQuantity || 0);
-                    return sum + total;
-                  }, 0) || ((product as any).bindCurrentInventory || 0);
+                sortedProducts.map((product) => {
+                  const totalInventory = getProductInventory(product);
                   const variantsCount = product.variants?.length || 0;
                   const imageSrc = product.images && product.images.length > 0 
                     ? product.images[0].src 
@@ -344,7 +428,7 @@ export default function ProductosPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0 border overflow-hidden">
+                           <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0 border overflow-hidden">
                             {imageSrc ? (
                               <img src={imageSrc} alt={product.title} className="w-full h-full object-cover" />
                             ) : (

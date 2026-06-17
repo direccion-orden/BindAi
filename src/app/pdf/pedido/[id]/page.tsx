@@ -84,6 +84,8 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
     ? order.tax 
     : (displaySubtotal - displayDiscount) * 0.16;
 
+  const hasLineDiscount = order.items?.some((item: any) => (item.discountPercentage || 0) > 0);
+
   return (
     <>
       <style dangerouslySetInnerHTML={{__html: `
@@ -166,7 +168,7 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
                     <th className="py-3 px-2 text-foreground font-black uppercase text-[10px] tracking-widest">Conceptos</th>
                     <th className="py-3 px-2 text-center text-foreground font-black uppercase text-[10px] tracking-widest w-16">Cant.</th>
                     <th className="py-3 px-2 text-right text-foreground font-black uppercase text-[10px] tracking-widest w-28">Precio U.</th>
-                    <th className="py-3 px-2 text-center text-foreground font-black uppercase text-[10px] tracking-widest w-16">Desc.</th>
+                    {hasLineDiscount && <th className="py-3 px-2 text-center text-foreground font-black uppercase text-[10px] tracking-widest w-16">Desc.</th>}
                     <th className="py-3 px-2 text-right text-foreground font-black uppercase text-[10px] tracking-widest w-32">Subtotal</th>
                   </tr>
                 </thead>
@@ -193,7 +195,7 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
                       </td>
                       <td className="py-3 px-2 text-center font-medium text-xs sm:text-sm">{item.quantity}</td>
                       <td className="py-3 px-2 text-right font-mono text-[10px] sm:text-xs">${(item.unitPrice / 1.16).toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
-                      <td className="py-3 px-2 text-center text-emerald-600 font-semibold text-xs sm:text-sm">{item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-'}</td>
+                      {hasLineDiscount && <td className="py-3 px-2 text-center text-emerald-600 font-semibold text-xs sm:text-sm">{item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-'}</td>}
                       <td className="py-3 px-2 text-right font-mono font-black text-[10px] sm:text-xs">
                         ${(item.quantity * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                       </td>

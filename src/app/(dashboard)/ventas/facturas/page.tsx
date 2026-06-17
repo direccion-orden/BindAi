@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Receipt, FileText, Plus, Search } from "lucide-react";
+import { Loader2, Receipt, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,6 +118,52 @@ export default function FacturasPage() {
       if (dateTo && localDate > dateTo) return false;
     }
     return true;
+  });
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "createdAt" || field === "totalAmount" ? "desc" : "asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  const sortedFacturas = [...filteredFacturas].sort((a, b) => {
+    let aVal = a[sortField as keyof typeof a] || "";
+    let bVal = b[sortField as keyof typeof b] || "";
+
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      if (sortField === "invoiceNumber") {
+        const aNum = parseInt(aVal.replace(/\D/g, ""), 10) || 0;
+        const bNum = parseInt(bVal.replace(/\D/g, ""), 10) || 0;
+        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      }
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal, "es") 
+        : bVal.localeCompare(aVal, "es");
+    }
+
+    if (typeof aVal === "number" && typeof bVal === "number") {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
   });
 
   const totalFilteredAmount = filteredFacturas.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
@@ -255,17 +301,65 @@ export default function FacturasPage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 text-slate-500 font-semibold border-b">
                 <tr>
-                  <th className="px-6 py-4">Folio</th>
-                  <th className="px-6 py-4">Fecha</th>
-                  <th className="px-6 py-4">Cliente</th>
-                  <th className="px-6 py-4">Sucursal</th>
-                  <th className="px-6 py-4">Estatus</th>
-                  <th className="px-6 py-4 text-right">Total</th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("invoiceNumber")}
+                  >
+                    <div className="flex items-center">
+                      Folio
+                      {renderSortIcon("invoiceNumber")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("createdAt")}
+                  >
+                    <div className="flex items-center">
+                      Fecha
+                      {renderSortIcon("createdAt")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("clientName")}
+                  >
+                    <div className="flex items-center">
+                      Cliente
+                      {renderSortIcon("clientName")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("locationName")}
+                  >
+                    <div className="flex items-center">
+                      Sucursal
+                      {renderSortIcon("locationName")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("status")}
+                  >
+                    <div className="flex items-center">
+                      Estatus
+                      {renderSortIcon("status")}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    onClick={() => handleSort("totalAmount")}
+                  >
+                    <div className="flex items-center justify-end">
+                      Total
+                      {renderSortIcon("totalAmount")}
+                    </div>
+                  </th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filteredFacturas.map(inv => (
+                {sortedFacturas.map(inv => (
                   <tr key={inv.id} className="hover:bg-slate-50">
                     <td className="px-6 py-4 font-bold text-indigo-700">FAC-{inv.invoiceNumber}</td>
                     <td className="px-6 py-4 text-slate-600">{new Date(inv.createdAt).toLocaleDateString()}</td>

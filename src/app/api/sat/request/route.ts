@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         const parameters = QueryParameters.create(
             period,
             new DownloadType('received'),
-            new RequestType('metadata')
+            new RequestType('xml')
         ).withDocumentStatus(new DocumentStatus('active'));
 
         const queryResult = await service.query(parameters);

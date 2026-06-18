@@ -53,6 +53,8 @@ export default function NuevaFacturaPage() {
 
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<any[]>([]);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
 
   const [productSearch, setProductSearch] = useState("");
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -141,6 +143,8 @@ export default function NuevaFacturaPage() {
     const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";
     setClientSearch(clientName);
     setProjectId("");
+    setIsCreatingProject(false);
+    setNewProjectName("");
   };
 
   const handleAddProduct = (product: ShopifyProduct, variant: any) => {
@@ -276,6 +280,27 @@ export default function NuevaFacturaPage() {
         });
       }
 
+      let finalProjectId = projectId;
+      let finalProjectName = projectId ? (projects.find(p => p.id === projectId)?.name || null) : null;
+
+      if (isCreatingProject) {
+        if (!newProjectName) {
+          alert("El nombre del proyecto es obligatorio.");
+          setSaving(false);
+          return;
+        }
+        finalProjectId = crypto.randomUUID();
+        finalProjectName = newProjectName;
+
+        const projectRef = doc(db, "companies", companyId, "projects", finalProjectId);
+        await setDoc(projectRef, {
+          id: finalProjectId,
+          name: newProjectName,
+          clientId: finalClientId,
+          createdAt: new Date().toISOString()
+        });
+      }
+
       // Build CFDI Payload Defaults based on Client or Generic
       const cfdiPayload = {
         Receiver: {
@@ -349,8 +374,8 @@ export default function NuevaFacturaPage() {
         promoCode: totals.appliedPromo?.code || null,
         tax: totals.tax,
         totalAmount: totals.total,
-        projectId: projectId || null,
-        projectName: projectId ? projects.find(p => p.id === projectId)?.name : null,
+        projectId: finalProjectId || null,
+        projectName: finalProjectName,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || "",
         warehouseId,
@@ -469,7 +494,11 @@ export default function NuevaFacturaPage() {
                   variant="ghost" 
                   size="sm" 
                   className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
-                  onClick={() => setIsNewClient(false)}
+                  onClick={() => {
+                    setIsNewClient(false);
+                    setIsCreatingProject(false);
+                    setNewProjectName("");
+                  }}
                 >
                   Buscar Existente
                 </Button>
@@ -499,7 +528,11 @@ export default function NuevaFacturaPage() {
                   variant="ghost" 
                   size="sm" 
                   className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
-                  onClick={() => setIsNewClient(true)}
+                  onClick={() => {
+                    setIsNewClient(true);
+                    setIsCreatingProject(false);
+                    setNewProjectName("");
+                  }}
                 >
                   + Nuevo Cliente
                 </Button>
@@ -604,23 +637,60 @@ export default function NuevaFacturaPage() {
 
           {/* Column 4: Proyecto */}
           <div className="space-y-2 col-span-1">
-            <div className="flex items-center h-5">
+            <div className="flex justify-between items-center h-5">
               <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
                 <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
                 Proyecto (Opcional)
               </label>
+              {(isNewClient || clientId) && (
+                <Button 
+                  type="button"
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
+                  onClick={() => setIsCreatingProject(true)}
+                >
+                  + Crear Proyecto
+                </Button>
+              )}
             </div>
-            <select 
-              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm disabled:opacity-50"
-              value={projectId}
-              onChange={e => setProjectId(e.target.value)}
-              disabled={isNewClient || !clientId}
-            >
-              <option value="">Ninguno</option>
-              {projects.filter(p => p.clientId === clientId).map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            {isCreatingProject ? (
+              <div className="space-y-2 bg-blue-50/30 p-2.5 rounded-lg border border-blue-100 mt-1">
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[10px] font-bold text-blue-900 uppercase">Nuevo Proyecto</label>
+                  <Button 
+                    type="button"
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-4 px-1 text-[9px] text-blue-600 font-semibold hover:bg-blue-50"
+                    onClick={() => {
+                      setIsCreatingProject(false);
+                      setNewProjectName("");
+                    }}
+                  >
+                    Buscar Existente
+                  </Button>
+                </div>
+                <Input 
+                  placeholder="Nombre del Proyecto *" 
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  className="bg-white border-blue-200 h-8 text-xs font-semibold"
+                />
+              </div>
+            ) : (
+              <select 
+                className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm disabled:opacity-50"
+                value={projectId}
+                onChange={e => setProjectId(e.target.value)}
+                disabled={isNewClient || !clientId}
+              >
+                <option value="">Ninguno</option>
+                {!isNewClient && clientId && projects.filter(p => p.clientId === clientId).map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </div>

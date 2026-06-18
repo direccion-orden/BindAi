@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { FolderOpen } from "lucide-react";
 import { FileText, Package, Trash2, Edit2, Save, Search, Loader2, XCircle, MessageSquare } from "lucide-react";
 import Link from "next/link";
-import { doc, updateDoc, collection, query, getDocs, where } from "firebase/firestore";
+import { doc, updateDoc, collection, query, getDocs, where, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { generateQuoteImage } from "@/actions/generate-image";
@@ -17,6 +17,8 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editData, setEditData] = useState<any>(null);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
   
   const [products, setProducts] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -90,9 +92,25 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
       }
 
 
-      let finalProjectName = null;
-      if (editData.projectId) {
-        finalProjectName = projects.find(p => p.id === editData.projectId)?.name || null;
+      let finalProjectId = editData.projectId;
+      let finalProjectName = editData.projectId ? (projects.find(p => p.id === editData.projectId)?.name || null) : null;
+
+      if (isCreatingProject) {
+        if (!newProjectName) {
+          alert("El nombre del proyecto es obligatorio.");
+          setLoading(false);
+          return;
+        }
+        finalProjectId = crypto.randomUUID();
+        finalProjectName = newProjectName;
+
+        const projectRef = doc(db, "companies", companyId, "projects", finalProjectId);
+        await setDoc(projectRef, {
+          id: finalProjectId,
+          name: newProjectName,
+          clientId: editData.clientId,
+          createdAt: new Date().toISOString()
+        });
       }
 
       let finalLocationName = editData.locationName || null;
@@ -102,6 +120,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
 
       const updatedQuote = {
         ...editData,
+        projectId: finalProjectId || null,
         projectName: finalProjectName,
         locationName: finalLocationName,
         subtotal: calc.subtotal,
@@ -592,19 +611,59 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
               </div>
               
               <div className="space-y-1 mt-4">
-                <label className="text-xs font-semibold text-indigo-900 flex items-center gap-1">
-                  <FolderOpen className="w-3 h-3 text-indigo-500" /> Vincular a Proyecto (Opcional)
-                </label>
-                <select 
-                  className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-sm shadow-sm"
-                  value={editData.projectId || ""}
-                  onChange={e => setEditData({...editData, projectId: e.target.value})}
-                >
-                  <option value="">Ninguno</option>
-                  {projects.filter(p => p.clientId === editData.clientId).map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
+                <div className="flex justify-between items-center h-5">
+                  <label className="text-xs font-semibold text-indigo-900 flex items-center gap-1">
+                    <FolderOpen className="w-3 h-3 text-indigo-500" /> Vincular a Proyecto (Opcional)
+                  </label>
+                  {isEditing && editData.clientId && (
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
+                      onClick={() => setIsCreatingProject(true)}
+                    >
+                      + Crear Proyecto
+                    </Button>
+                  )}
+                </div>
+                {isEditing && isCreatingProject ? (
+                  <div className="space-y-2 bg-blue-50/30 p-2.5 rounded-lg border border-blue-100 mt-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-[10px] font-bold text-blue-900 uppercase">Nuevo Proyecto</label>
+                      <Button 
+                        type="button"
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-4 px-1 text-[9px] text-blue-600 font-semibold hover:bg-blue-50"
+                        onClick={() => {
+                          setIsCreatingProject(false);
+                          setNewProjectName("");
+                        }}
+                      >
+                        Buscar Existente
+                      </Button>
+                    </div>
+                    <Input 
+                      placeholder="Nombre del Proyecto *" 
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      className="bg-white border-blue-200 h-8 text-xs font-semibold"
+                    />
+                  </div>
+                ) : (
+                  <select 
+                    className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-sm shadow-sm"
+                    value={editData.projectId || ""}
+                    onChange={e => setEditData({...editData, projectId: e.target.value})}
+                    disabled={!isEditing}
+                  >
+                    <option value="">Ninguno</option>
+                    {projects.filter(p => p.clientId === editData.clientId).map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {isEditing && (

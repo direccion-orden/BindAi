@@ -31,6 +31,8 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("detalle");
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
   
   const [products, setProducts] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -111,11 +113,25 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         order.globalDiscountValue || 0
       );
 
-      let finalProjectName = order.projectName || null;
-      if (order.projectId) {
-        finalProjectName = projects.find(p => p.id === order.projectId)?.name || null;
-      } else {
-        finalProjectName = null;
+      let finalProjectId = order.projectId;
+      let finalProjectName = order.projectId ? (projects.find(p => p.id === order.projectId)?.name || null) : null;
+
+      if (isCreatingProject) {
+        if (!newProjectName) {
+          alert("El nombre del proyecto es obligatorio.");
+          setSaving(false);
+          return;
+        }
+        finalProjectId = crypto.randomUUID();
+        finalProjectName = newProjectName;
+
+        const projectRef = doc(db, "companies", companyId, "projects", finalProjectId);
+        await setDoc(projectRef, {
+          id: finalProjectId,
+          name: newProjectName,
+          clientId: order.clientId,
+          createdAt: new Date().toISOString()
+        });
       }
 
       let finalLocationName = order.locationName || "";
@@ -130,6 +146,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
 
       const updatedOrder = {
         ...order,
+        projectId: finalProjectId || null,
         projectName: finalProjectName,
         locationName: finalLocationName,
         warehouseName: finalWarehouseName,
@@ -499,18 +516,55 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase">Proyecto Vinculado</label>
+            <div className="flex justify-between items-center h-5">
+              <label className="text-xs font-semibold text-slate-500 uppercase">Proyecto Vinculado</label>
+              {isEditing && order.clientId && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
+                  onClick={() => setIsCreatingProject(true)}
+                >
+                  + Crear Proyecto
+                </Button>
+              )}
+            </div>
             {isEditing ? (
-              <select 
-                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
-                value={order.projectId || ""}
-                onChange={e => setOrder({...order, projectId: e.target.value})}
-              >
-                <option value="">Ninguno</option>
-                {projects.filter(p => p.clientId === order.clientId).map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              isCreatingProject ? (
+                <div className="space-y-2 bg-blue-50/30 p-2.5 rounded-lg border border-blue-100 mt-1">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[10px] font-bold text-blue-900 uppercase">Nuevo Proyecto</label>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-4 px-1 text-[9px] text-blue-600 font-semibold hover:bg-blue-50"
+                      onClick={() => {
+                        setIsCreatingProject(false);
+                        setNewProjectName("");
+                      }}
+                    >
+                      Buscar Existente
+                    </Button>
+                  </div>
+                  <Input 
+                    placeholder="Nombre del Proyecto *" 
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    className="bg-white border-blue-200 h-8 text-xs font-semibold"
+                  />
+                </div>
+              ) : (
+                <select 
+                  className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
+                  value={order.projectId || ""}
+                  onChange={e => setOrder({...order, projectId: e.target.value})}
+                >
+                  <option value="">Ninguno</option>
+                  {projects.filter(p => p.clientId === order.clientId).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )
             ) : (
               <p className="font-bold text-indigo-700 mt-1">{order.projectName || 'Ninguno'}</p>
             )}

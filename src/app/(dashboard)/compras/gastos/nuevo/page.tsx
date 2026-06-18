@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save, Upload, Receipt, X } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save, Upload, Receipt, X, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 
@@ -73,9 +73,9 @@ export default function NuevoGastoPage() {
   const [method, setMethod] = useState("Transferencia");
   const [reference, setReference] = useState("");
 
-  // XML / SAT Linking State
   const [xmlFileName, setXmlFileName] = useState("");
   const [linkedSatInvoiceId, setLinkedSatInvoiceId] = useState("");
+  const [linkedInvoiceHasXml, setLinkedInvoiceHasXml] = useState<boolean | null>(null);
   const [satSearchQuery, setSatSearchQuery] = useState("");
   const [showSatDropdown, setShowSatDropdown] = useState(false);
   const satSelectorRef = useRef<HTMLDivElement>(null);
@@ -192,50 +192,59 @@ export default function NuevoGastoPage() {
         return null;
       }
 
-      // 1. UUID
-      let uuid = "";
-      const timbreNode = xmlDoc.getElementsByTagName("tfd:TimbreFiscalDigital")[0] 
-                     || xmlDoc.getElementsByTagName("TimbreFiscalDigital")[0];
-      if (timbreNode) {
-        uuid = timbreNode.getAttribute("UUID") || "";
-      }
+      // Case-insensitive attribute retriever
+      const getAttr = (el: Element | null, name: string): string => {
+        if (!el || !el.attributes) return "";
+        const lowerName = name.toLowerCase();
+        for (let i = 0; i < el.attributes.length; i++) {
+          const attr = el.attributes[i];
+          if (attr.name.toLowerCase() === lowerName) {
+            return attr.value;
+          }
+        }
+        return "";
+      };
 
-      // 2. Date & Total
-      const comprobanteNode = xmlDoc.getElementsByTagName("cfdi:Comprobante")[0]
-                          || xmlDoc.getElementsByTagName("Comprobante")[0];
-      let total = 0;
-      let dateStr = "";
-      if (comprobanteNode) {
-        total = parseFloat(comprobanteNode.getAttribute("Total") || "0") || 0;
-        dateStr = comprobanteNode.getAttribute("Fecha") || "";
-        if (dateStr) {
-          dateStr = dateStr.split("T")[0]; // YYYY-MM-DD
+      // 1. Traverse all nodes once to extract nodes case-insensitively and prefix-independently
+      const allElements = xmlDoc.getElementsByTagName("*");
+      let timbreNode: Element | null = null;
+      let comprobanteNode: Element | null = null;
+      let emisorNode: Element | null = null;
+      const conceptosNode: Element[] = [];
+
+      for (let i = 0; i < allElements.length; i++) {
+        const el = allElements[i];
+        const localNameLower = el.localName?.toLowerCase();
+        if (localNameLower === "timbrefiscaldigital") {
+          timbreNode = el;
+        } else if (localNameLower === "comprobante") {
+          comprobanteNode = el;
+        } else if (localNameLower === "emisor") {
+          emisorNode = el;
+        } else if (localNameLower === "concepto") {
+          conceptosNode.push(el);
         }
       }
 
-      // 3. Emisor RFC & Name
-      const emisorNode = xmlDoc.getElementsByTagName("cfdi:Emisor")[0]
-                     || xmlDoc.getElementsByTagName("Emisor")[0];
-      let emisorRfc = "";
-      let emisorName = "";
-      if (emisorNode) {
-        emisorRfc = emisorNode.getAttribute("Rfc") || "";
-        emisorName = emisorNode.getAttribute("Nombre") || "";
+      // Extract values
+      const uuid = getAttr(timbreNode, "UUID");
+      const total = parseFloat(getAttr(comprobanteNode, "Total") || "0") || 0;
+      let dateStr = getAttr(comprobanteNode, "Fecha") || "";
+      if (dateStr) {
+        dateStr = dateStr.split("T")[0]; // YYYY-MM-DD
       }
 
-      // 4. Concepts (Items)
-      let conceptosNode = xmlDoc.getElementsByTagName("cfdi:Concepto");
-      if (conceptosNode.length === 0) {
-        conceptosNode = xmlDoc.getElementsByTagName("Concepto");
-      }
+      const emisorRfc = getAttr(emisorNode, "Rfc");
+      const emisorName = getAttr(emisorNode, "Nombre");
 
+      // Extract concepts / items
       const items: OrderItem[] = [];
       for (let i = 0; i < conceptosNode.length; i++) {
         const node = conceptosNode[i];
-        const cantidad = parseFloat(node.getAttribute("Cantidad") || "0") || 1;
-        const noIdentificacion = node.getAttribute("NoIdentificacion") || `SAT-${i+1}`;
-        const descripcion = node.getAttribute("Descripcion") || "Concepto sin descripción";
-        const valorUnitario = parseFloat(node.getAttribute("ValorUnitario") || "0") || 0;
+        const cantidad = parseFloat(getAttr(node, "Cantidad") || "0") || 1;
+        const noIdentificacion = getAttr(node, "NoIdentificacion") || getAttr(node, "ClaveProdServ") || `SAT-${i+1}`;
+        const descripcion = getAttr(node, "Descripcion") || "Concepto sin descripción";
+        const valorUnitario = parseFloat(getAttr(node, "ValorUnitario") || "0") || 0;
         const lineKey = crypto.randomUUID();
 
         items.push({
@@ -308,6 +317,7 @@ export default function NuevoGastoPage() {
       const parsed = parseCFDIXml(xmlText);
       if (parsed) {
         applyParsedData(parsed);
+        setLinkedInvoiceHasXml(true);
       } else {
         alert("El archivo XML no tiene un formato CFDI 3.3/4.0 válido o carece de UUID.");
       }
@@ -356,6 +366,7 @@ export default function NuevoGastoPage() {
         const parsed = parseCFDIXml(xmlText);
         if (parsed) {
           applyParsedData(parsed);
+          setLinkedInvoiceHasXml(true);
           return;
         }
       } catch (err) {
@@ -364,6 +375,7 @@ export default function NuevoGastoPage() {
     }
 
     // 3. Fallback: single global concept if no XML could be found/parsed
+    setLinkedInvoiceHasXml(false);
     const lineKey = crypto.randomUUID();
     applyParsedData({
       date: invoice.date ? invoice.date.split("T")[0] : "",
@@ -385,6 +397,7 @@ export default function NuevoGastoPage() {
     setLinkedSatInvoiceId("");
     setSatSearchQuery("");
     setShowSatDropdown(true);
+    setLinkedInvoiceHasXml(null);
   };
 
   // Vendor selection handlers
@@ -765,6 +778,16 @@ export default function NuevoGastoPage() {
           )}
         </div>
       </div>
+
+      {linkedSatInvoiceId && linkedInvoiceHasXml === false && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-4 text-xs font-semibold flex items-start gap-2 shadow-sm animate-in fade-in duration-200">
+          <AlertCircle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-amber-950">Factura cargada sin archivo XML (Sólo Metadatos)</p>
+            <p className="font-medium text-amber-800 mt-0.5">Esta factura fue sincronizada desde el SAT únicamente con sus datos generales y total. Para desglosar todos sus conceptos individuales y partidas en la tabla, haz clic en <strong>"Seleccionar XML"</strong> en el panel de la izquierda y sube el archivo XML correspondiente.</p>
+          </div>
+        </div>
+      )}
 
       {/* Top Header Card: Datos Generales */}
       <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">

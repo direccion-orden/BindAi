@@ -9,7 +9,7 @@ interface ExpensePaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   document: any; // The document object (orden_compra, gasto, recepcion)
-  documentType: "orden_compra" | "gasto" | "recepcion";
+  documentType: "orden_compra" | "gasto" | "recepcion" | "gasto_manual";
   companyId: string;
 }
 
@@ -76,6 +76,7 @@ export function ExpensePaymentModal({ isOpen, onClose, document, documentType, c
   if (documentType === "orden_compra") collectionName = "purchase_orders";
   else if (documentType === "gasto") collectionName = "expenses_inbox";
   else if (documentType === "recepcion") collectionName = "purchases";
+  else if (documentType === "gasto_manual") collectionName = "expenses";
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,7 +226,7 @@ export function ExpensePaymentModal({ isOpen, onClose, document, documentType, c
 
       // Optional: Update status if fully paid
       if (newPaidAmount >= totalAmount - 0.01) {
-        if (documentType === "gasto") {
+        if (documentType === "gasto" || documentType === "gasto_manual") {
           // Si el gasto no tiene status o es pending, lo pasamos a paid
           if (!document.status || document.status === "pending") {
              updates.status = "paid";

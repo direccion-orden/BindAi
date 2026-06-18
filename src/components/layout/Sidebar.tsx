@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper, Target } from "lucide-react";
+import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper, Target, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolean; onCloseMobile?: () => void }) {
@@ -44,6 +44,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/compras/ordenes", label: "Órdenes de Compra", icon: FileText },
         { href: "/compras/recepciones", label: "Recepción de Mercancía", icon: Truck },
         { href: "/gastos", label: "Gastos (SAT)", icon: Receipt },
+        { href: "/compras/gastos", label: "Crear Gastos", icon: PlusCircle },
       ]
     },
     {

@@ -59,10 +59,20 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
             where("status", "!=", "paid")
           );
           const snap = await getDocs(q);
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          const list = snap.docs.map(d => ({ id: d.id, _type: "gasto", ...d.data() } as any));
           // Filter dynamically in memory for safety
-          const unpaid = list.filter(inv => !inv.paidAmount || inv.paidAmount < inv.total - 0.01);
-          setUnpaidDocs(unpaid);
+          const unpaidInbox = list.filter(inv => !inv.paidAmount || inv.paidAmount < inv.total - 0.01);
+
+          // Manual expenses (expenses)
+          const qManual = query(
+            collection(db, "companies", companyId, "expenses"),
+            where("status", "!=", "paid")
+          );
+          const snapManual = await getDocs(qManual);
+          const listManual = snapManual.docs.map(d => ({ id: d.id, _type: "gasto_manual", ...d.data() } as any));
+          const unpaidManual = listManual.filter(inv => !inv.paidAmount || inv.paidAmount < inv.amount - 0.01);
+
+          setUnpaidDocs([...unpaidInbox, ...unpaidManual]);
         } else {
           // Sales invoices (ventas/facturas)
           const q = query(
@@ -104,6 +114,10 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
 
         // --- Option A: Match with Existing Invoice ---
         if (isCharge) {
+          const isManual = selectedDoc._type === "gasto_manual";
+          const docType = isManual ? "gasto_manual" : "gasto";
+          const docCollection = isManual ? "expenses" : "expenses_inbox";
+
           // 1. Create outflow record
           const outflowData = {
             amount: absAmount,
@@ -111,9 +125,9 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
             method: "Transferencia",
             reference: transaction.reference || "CONCILIACION",
             documentId: selectedDoc.id,
-            documentType: "gasto",
+            documentType: docType,
             documentNumber: selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id,
-            providerName: selectedDoc.emisorName || "Proveedor",
+            providerName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
             bankAccountId: accountId,
             expenseAccountId: selectedDoc.accountId || "",
             createdAt: new Date().toISOString(),
@@ -125,10 +139,11 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
             paidAmount: increment(absAmount)
           };
           const newPaid = (selectedDoc.paidAmount || 0) + absAmount;
-          if (newPaid >= (selectedDoc.total || 0) - 0.01) {
+          const totalAmt = isManual ? (selectedDoc.amount || 0) : (selectedDoc.total || 0);
+          if (newPaid >= totalAmt - 0.01) {
             updates.status = "paid";
           }
-          await updateDoc(doc(db, "companies", companyId, "expenses_inbox", selectedDoc.id), updates);
+          await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
         } else {
           // 1. Create incoming payment record
           const paymentData = {
@@ -402,13 +417,14 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
                   <option value="" disabled>Selecciona el documento...</option>
                   {unpaidDocs.map(doc => {
                     const docNumber = doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
-                    const docTotal = doc.totalAmount || doc.total || 0;
+                    const docTotal = doc._type === "gasto_manual" ? (doc.amount || 0) : (doc.totalAmount || doc.total || 0);
                     const docPaid = doc.paidAmount || 0;
                     const docOutstanding = docTotal - docPaid;
-                    const partnerName = doc.emisorName || doc.clientName || "Proveedor/Cliente";
+                    const partnerName = doc.vendorName || doc.emisorName || doc.clientName || "Proveedor/Cliente";
+                    const isManualLabel = doc._type === "gasto_manual" ? " (Manual)" : "";
                     return (
                       <option key={doc.id} value={doc.id}>
-                        {partnerName} - #{docNumber} (Pendiente: ${docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: ${docTotal.toLocaleString('es-MX')})
+                        {partnerName} - #{docNumber}{isManualLabel} (Pendiente: ${docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: ${docTotal.toLocaleString('es-MX')})
                       </option>
                     );
                   })}

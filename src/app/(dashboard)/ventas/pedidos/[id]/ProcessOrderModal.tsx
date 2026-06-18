@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Receipt, Truck } from "lucide-react";
+import { Loader2, Receipt, Truck, X } from "lucide-react";
 import { createCfdi } from "@/actions/facturama";
 import { doc, updateDoc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
@@ -26,6 +26,21 @@ export function ProcessOrderModal({
   const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
   const [loading, setLoading] = useState(false);
   const [actionType, setActionType] = useState("remision"); // remision, pre-factura, factura
+  const [clients, setClients] = useState<any[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
+  const [clientSearchQuery, setClientSearchQuery] = useState("");
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const clientSelectorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (clientSelectorRef.current && !clientSelectorRef.current.contains(event.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   
   const [appliedDate, setAppliedDate] = useState(() => {
     const today = new Date();
@@ -46,26 +61,94 @@ export function ProcessOrderModal({
   const [paymentMethod, setPaymentMethod] = useState("PUE");
 
   useEffect(() => {
-    if (isOpen && order?.clientId && companyId) {
-      getDoc(doc(db, "companies", companyId)).then(snap => {
-        if (snap.exists() && snap.data().zipCode) setCompanyZipCode(snap.data().zipCode);
-      }).catch(console.error);
-
-      getDoc(doc(db, "companies", companyId, "clients", order.clientId)).then(snap => {
-        if (snap.exists()) {
-          const client = snap.data();
-          if (client.rfc) setRfc(client.rfc);
-          if (client.razonSocial) setRazonSocial(client.razonSocial);
-          else if (client.name) setRazonSocial(client.name);
-          if (client.taxRegime) setTaxRegime(client.taxRegime);
-          if (client.zipCode) setZipCode(client.zipCode);
-          if (client.cfdiUse) setCfdiUse(client.cfdiUse);
+    const fetchClient = async () => {
+      if (!isOpen || !companyId || !order) return;
+      
+      let clientId = order.clientId;
+      
+      try {
+        const companySnap = await getDoc(doc(db, "companies", companyId));
+        if (companySnap.exists() && companySnap.data().zipCode) {
+          setCompanyZipCode(companySnap.data().zipCode);
         }
-      }).catch(console.error);
-    }
-  }, [isOpen, order?.clientId, companyId]);
+      } catch(e) { console.error(e); }
+
+      // Fetch all clients catalog
+      try {
+        const clientsSnap = await getDocs(collection(db, "companies", companyId, "clients"));
+        const clientsList = clientsSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as any));
+        clientsList.sort((a, b) => {
+          const nameA = (a.name || a.LegalName || a.CommercialName || "").toLowerCase();
+          const nameB = (b.name || b.LegalName || b.CommercialName || "").toLowerCase();
+          return nameA.localeCompare(nameB, "es");
+        });
+        setClients(clientsList);
+      } catch(e) { console.error("Error loading clients list:", e); }
+
+      if (clientId) {
+        setSelectedClientId(clientId);
+        try {
+          const clientSnap = await getDoc(doc(db, "companies", companyId, "clients", clientId));
+          if (clientSnap.exists()) {
+            const client = clientSnap.data();
+            if (client.rfc || client.RFC) setRfc(client.rfc || client.RFC);
+            
+            let name = "";
+            if (client.razonSocial) name = client.razonSocial;
+            else if (client.LegalName) name = client.LegalName;
+            else if (client.name) name = client.name;
+            setRazonSocial(name);
+            setClientSearchQuery(name);
+            
+            if (client.taxRegime) setTaxRegime(client.taxRegime);
+            if (client.zipCode || client.ZipCode) setZipCode(client.zipCode || client.ZipCode);
+            if (client.cfdiUse) setCfdiUse(client.cfdiUse);
+          }
+        } catch(e) { console.error(e); }
+      } else {
+        if (order?.clientName) {
+          setClientSearchQuery(order.clientName);
+        }
+      }
+    };
+
+    fetchClient();
+  }, [isOpen, order, companyId]);
+
+  const handleClientSelect = (client: any) => {
+    setSelectedClientId(client.id);
+    const name = client.razonSocial || client.LegalName || client.name || "";
+    setClientSearchQuery(name);
+    setRfc(client.rfc || client.RFC || "XAXX010101000");
+    setRazonSocial(name);
+    setTaxRegime(client.taxRegime || "616");
+    setZipCode(client.zipCode || client.ZipCode || "00000");
+    setCfdiUse(client.cfdiUse || "S01");
+    setShowClientDropdown(false);
+  };
+
+  const handleClearClient = () => {
+    setClientSearchQuery("");
+    setSelectedClientId("");
+    setRfc("XAXX010101000");
+    setRazonSocial("");
+    setTaxRegime("616");
+    setZipCode("00000");
+    setCfdiUse("S01");
+    setShowClientDropdown(true);
+  };
 
   if (!order) return null;
+
+  const filteredClients = clients.filter(c => {
+    const queryText = clientSearchQuery.toLowerCase();
+    const name = (c.name || c.LegalName || c.CommercialName || "").toLowerCase();
+    const rfc = (c.rfc || c.RFC || "").toLowerCase();
+    return name.includes(queryText) || rfc.includes(queryText);
+  });
 
   const handleProcess = async () => {
     setLoading(true);
@@ -250,8 +333,8 @@ export function ProcessOrderModal({
       invoiceNumber: invNumber,
       orderId: order.id,
       orderNumber: order.orderNumber,
-      clientId: order.clientId || null,
-      clientName: order.clientName,
+      clientId: selectedClientId || order.clientId || null,
+      clientName: razonSocial || order.clientName,
       items: order.items,
       subtotal: round2(order.subtotal || 0),
       tax: round2(order.tax || 0),
@@ -287,8 +370,8 @@ export function ProcessOrderModal({
         invoiceNumber: invNumber,
         orderId: order.id,
         orderNumber: order.orderNumber,
-        clientId: order.clientId || null,
-        clientName: order.clientName,
+        clientId: selectedClientId || order.clientId || null,
+        clientName: razonSocial || order.clientName,
         items: order.items,
         subtotal: round2(order.subtotal || 0),
         tax: round2(order.tax || 0),
@@ -359,6 +442,56 @@ export function ProcessOrderModal({
           {(actionType === "pre-factura" || actionType === "factura") && (
             <>
               <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                <div className="space-y-2 col-span-2 relative" ref={clientSelectorRef}>
+                  <label className="text-sm font-semibold text-slate-700">Seleccionar Cliente</label>
+                  <div className="relative">
+                    <Input 
+                      placeholder="Escribe para buscar cliente..." 
+                      value={clientSearchQuery}
+                      onChange={e => {
+                        setClientSearchQuery(e.target.value);
+                        setShowClientDropdown(true);
+                      }}
+                      onFocus={() => setShowClientDropdown(true)}
+                      className="pr-10"
+                    />
+                    {clientSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={handleClearClient}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  
+                  {showClientDropdown && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {filteredClients.length === 0 ? (
+                        <div className="p-3 text-sm text-slate-500 text-center">
+                          No se encontraron clientes
+                        </div>
+                      ) : (
+                        filteredClients.map(c => (
+                          <div 
+                            key={c.id}
+                            className={`p-2.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer transition-colors text-sm ${selectedClientId === c.id ? 'bg-indigo-50/50 font-medium' : ''}`}
+                            onClick={() => handleClientSelect(c)}
+                          >
+                            <div className="font-semibold text-slate-800">
+                              {c.LegalName || c.name || c.CommercialName || "Sin nombre"}
+                            </div>
+                            <div className="text-xs text-slate-500 flex justify-between mt-0.5">
+                              <span>RFC: {c.rfc || c.RFC || "Sin RFC"}</span>
+                              {c.email && <span className="text-slate-400">{c.email}</span>}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">RFC Receptor *</label>
                   <Input value={rfc} onChange={e => setRfc(e.target.value.toUpperCase())} maxLength={13} />

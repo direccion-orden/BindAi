@@ -7,8 +7,8 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock } from "lucide-react";
-import { NewExpenseModal } from "./components/NewExpenseModal";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
+import Link from "next/link";
 
 export default function GastosManualesPage() {
   const { companyId } = useAuth();
@@ -188,10 +188,12 @@ export default function GastosManualesPage() {
           <p className="text-muted-foreground mt-1">Registra y administra todos los gastos operativos manuales de la empresa.</p>
         </div>
 
-        <Button onClick={() => setIsNewModalOpen(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
-          <PlusCircle className="w-4 h-4" />
-          Registrar Gasto
-        </Button>
+        <Link href="/compras/gastos/nuevo" target="_blank">
+          <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
+            <PlusCircle className="w-4 h-4" />
+            Registrar Gasto
+          </Button>
+        </Link>
       </div>
 
       {/* Summary Metrics Banner */}
@@ -403,12 +405,7 @@ export default function GastosManualesPage() {
         </div>
       </div>
 
-      {/* Register New Expense Modal */}
-      <NewExpenseModal
-        isOpen={isNewModalOpen}
-        onClose={() => setIsNewModalOpen(false)}
-        companyId={companyId || ""}
-      />
+      {/* Register New Expense Page Link */}
 
       {/* Pay Pending Expense Modal */}
       {selectedExpense && (

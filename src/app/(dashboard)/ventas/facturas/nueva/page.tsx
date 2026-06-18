@@ -637,47 +637,6 @@ export default function NuevaFacturaPage() {
               <span className="text-sm text-slate-500 font-medium">{items.length} partidas</span>
             </div>
             
-            <div className="p-5 border-b bg-muted/30 relative">
-               <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Buscar producto (SKU, nombre, código)..." 
-                    className="pl-9 bg-background"
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
-                  />
-                </div>
-                {productSearch && (
-                  <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y absolute z-50 left-5 right-5 shadow-xl">
-                    {getFilteredProducts().map(product => (
-                      product.variants.map(variant => (
-                        <div 
-                          key={variant.id} 
-                          className="p-3 hover:bg-muted/50 flex justify-between items-center text-sm cursor-pointer"
-                          onClick={() => {
-                            const isService = !!product.isService || variant.sku?.startsWith("SER-");
-                            if (isService || !items.some(i => i.variantId === variant.id)) {
-                              handleAddProduct(product, variant);
-                            }
-                          }}
-                        >
-                          <div>
-                            <div className="font-medium text-slate-900">{product.title} {variant.title !== "Default Title" ? `(${variant.title})` : ''}</div>
-                            <div className="text-xs text-slate-500">SKU: {variant.sku} | Stock Actual: {variant.stock || 0}</div>
-                          </div>
-                          {items.some(i => i.variantId === variant.id) && !variant.sku?.startsWith("SER-") && !product.isService && (
-                            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Agregado</span>
-                          )}
-                        </div>
-                      ))
-                    ))}
-                    {getFilteredProducts().length === 0 && (
-                      <div className="p-3 text-sm text-muted-foreground text-center">No se encontraron productos</div>
-                    )}
-                  </div>
-                )}
-            </div>
-
             <div className="flex-1 p-5 overflow-y-auto space-y-3">
               {items.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
@@ -781,6 +740,47 @@ export default function NuevaFacturaPage() {
                   </div>
                 ))
               )}
+            </div>
+
+            <div className="p-5 border-t bg-muted/30 relative">
+               <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Buscar producto (SKU, nombre, código)..." 
+                    className="pl-9 bg-background"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                  />
+                </div>
+                {productSearch && (
+                  <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y absolute z-50 left-5 right-5 shadow-xl">
+                    {getFilteredProducts().map(product => (
+                      product.variants.map(variant => (
+                        <div 
+                          key={variant.id} 
+                          className="p-3 hover:bg-muted/50 flex justify-between items-center text-sm cursor-pointer"
+                          onClick={() => {
+                            const isService = !!product.isService || variant.sku?.startsWith("SER-");
+                            if (isService || !items.some(i => i.variantId === variant.id)) {
+                              handleAddProduct(product, variant);
+                            }
+                          }}
+                        >
+                          <div>
+                            <div className="font-medium text-slate-900">{product.title} {variant.title !== "Default Title" ? `(${variant.title})` : ''}</div>
+                            <div className="text-xs text-slate-500">SKU: {variant.sku} | Stock Actual: {variant.stock || 0}</div>
+                          </div>
+                          {items.some(i => i.variantId === variant.id) && !variant.sku?.startsWith("SER-") && !product.isService && (
+                            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Agregado</span>
+                          )}
+                        </div>
+                      ))
+                    ))}
+                    {getFilteredProducts().length === 0 && (
+                      <div className="p-3 text-sm text-muted-foreground text-center">No se encontraron productos</div>
+                    )}
+                  </div>
+                )}
             </div>
           </div>
         

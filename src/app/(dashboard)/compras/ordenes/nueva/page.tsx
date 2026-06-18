@@ -126,6 +126,21 @@ export default function NuevaOrdenCompraPage() {
     setSearchTerm("");
   };
 
+  const handleAddBlankItem = () => {
+    const lineKey = crypto.randomUUID();
+    setSelectedItems(prev => [...prev, {
+      lineKey,
+      productId: "custom",
+      variantId: lineKey,
+      productName: "",
+      variantTitle: "",
+      quantity: 1,
+      unitCost: 0,
+      isService: false,
+      description: ""
+    }]);
+  };
+
   const updateItem = (lineKeyOrVariantId: string, field: keyof OrderItem, value: any) => {
     setSelectedItems(prev => prev.map(i => {
       const matchKey = i.lineKey || i.variantId;
@@ -314,8 +329,8 @@ export default function NuevaOrdenCompraPage() {
               <span className="text-sm text-blue-700 font-medium">{selectedItems.length} artículos</span>
             </div>
             
-            <div className="p-5 border-b bg-muted/30 relative">
-               <div className="relative">
+            <div className="p-5 border-b bg-muted/30 relative flex gap-2">
+               <div className="relative flex-1">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input 
                     placeholder="Buscar producto (SKU, nombre, código)..." 
@@ -324,6 +339,14 @@ export default function NuevaOrdenCompraPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleAddBlankItem}
+                  className="shrink-0 bg-background border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold"
+                >
+                  + Partida en blanco
+                </Button>
                 {searchTerm && (
                   <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y absolute z-50 left-5 right-5 shadow-xl">
                     {filteredProducts.map(product => (
@@ -365,7 +388,28 @@ export default function NuevaOrdenCompraPage() {
                 selectedItems.map(item => (
                   <div key={item.lineKey || item.variantId} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-background gap-4 shadow-sm">
                     <div className="flex-1">
-                      {item.isService ? (
+                      {item.productId === "custom" ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mr-4">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Código / SKU</label>
+                            <Input
+                              placeholder="Ej. MAT-XYZ"
+                              value={item.variantTitle}
+                              onChange={(e) => updateItem(item.lineKey || item.variantId, 'variantTitle', e.target.value)}
+                              className="h-8 text-xs font-semibold bg-background"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Descripción / Nombre</label>
+                            <Input
+                              placeholder="Descripción del artículo..."
+                              value={item.productName}
+                              onChange={(e) => updateItem(item.lineKey || item.variantId, 'productName', e.target.value)}
+                              className="h-8 text-xs font-bold bg-background"
+                            />
+                          </div>
+                        </div>
+                      ) : item.isService ? (
                         <textarea
                           value={item.description || ""}
                           onChange={(e) => updateItem(item.lineKey || item.variantId, 'description', e.target.value)}

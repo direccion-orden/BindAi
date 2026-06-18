@@ -186,6 +186,9 @@ service cloud.firestore {
       match /expenses_inbox/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /expenses/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
       match /sat_requests/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }

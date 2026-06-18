@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { collection, query, onSnapshot, doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save, X } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 
@@ -32,10 +32,14 @@ export default function NuevaOrdenCompraPage() {
   const { companyId, user } = useAuth();
   const router = useRouter();
 
-  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendors, setVendors] = useState<any[]>([]);
   const [products, setProducts] = useState<ShopifyProduct[]>([]);
   
   const [vendorId, setVendorId] = useState("");
+  const [vendorSearchQuery, setVendorSearchQuery] = useState("");
+  const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+  const vendorSelectorRef = useRef<HTMLDivElement>(null);
+
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   
@@ -52,10 +56,46 @@ export default function NuevaOrdenCompraPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (vendorSelectorRef.current && !vendorSelectorRef.current.contains(event.target as Node)) {
+        setShowVendorDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleVendorSelect = (vendor: any) => {
+    setVendorId(vendor.id);
+    setVendorSearchQuery(vendor.name);
+    setShowVendorDropdown(false);
+  };
+
+  const handleClearVendor = () => {
+    setVendorId("");
+    setVendorSearchQuery("");
+    setShowVendorDropdown(true);
+  };
+
+  const filteredVendors = vendors.filter(v => {
+    const queryText = vendorSearchQuery.toLowerCase();
+    const name = (v.name || "").toLowerCase();
+    const rfc = (v.rfc || "").toLowerCase();
+    return name.includes(queryText) || rfc.includes(queryText);
+  });
+
+  useEffect(() => {
     if (!companyId) return;
 
     const unsubV = onSnapshot(query(collection(db, "companies", companyId, "vendors")), (snap) => {
-      setVendors(snap.docs.map(d => ({ id: d.id, name: d.data().name })));
+      setVendors(snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.LegalName || data.name || data.CommercialName || "Proveedor sin nombre",
+          rfc: data.rfc || data.RFC || ""
+        };
+      }));
     });
 
     const unsubP = onSnapshot(query(collection(db, "companies", companyId, "products")), (snap) => {
@@ -244,18 +284,56 @@ export default function NuevaOrdenCompraPage() {
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
           {/* Column 1: Proveedor */}
-          <div className="space-y-2 col-span-1">
+          <div className="space-y-2 col-span-1 relative" ref={vendorSelectorRef}>
             <label className="text-xs font-medium text-slate-500 uppercase">Proveedor *</label>
-            <select 
-              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
-              value={vendorId}
-              onChange={e => setVendorId(e.target.value)}
-            >
-              <option value="" disabled>Selecciona un proveedor...</option>
-              {vendors.map(v => (
-                <option key={v.id} value={v.id}>{v.name}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <Input 
+                placeholder="Buscar proveedor..." 
+                value={vendorSearchQuery}
+                onChange={e => {
+                  setVendorSearchQuery(e.target.value);
+                  setShowVendorDropdown(true);
+                }}
+                onFocus={() => setShowVendorDropdown(true)}
+                className="h-8 text-xs font-semibold bg-background pr-8"
+              />
+              {vendorSearchQuery && (
+                <button
+                  type="button"
+                  onClick={handleClearVendor}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            
+            {showVendorDropdown && (
+              <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {filteredVendors.length === 0 ? (
+                  <div className="p-3 text-xs text-slate-500 text-center">
+                    No se encontraron proveedores
+                  </div>
+                ) : (
+                  filteredVendors.map(v => (
+                    <div 
+                      key={v.id}
+                      className={`p-2 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer transition-colors text-xs ${vendorId === v.id ? 'bg-indigo-50/50 font-medium' : ''}`}
+                      onClick={() => handleVendorSelect(v)}
+                    >
+                      <div className="font-semibold text-slate-800">
+                        {v.name}
+                      </div>
+                      {v.rfc && (
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          RFC: {v.rfc}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           {/* Column 2: Sucursal Destino */}

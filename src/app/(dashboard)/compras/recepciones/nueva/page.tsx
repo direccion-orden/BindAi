@@ -90,7 +90,13 @@ export default function NuevaRecepcionPage() {
     });
 
     const unsubV = onSnapshot(query(collection(db, "companies", companyId, "vendors")), (snap) => {
-      setVendors(snap.docs.map(d => ({ id: d.id, name: d.data().name })));
+      setVendors(snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.LegalName || data.name || data.CommercialName || "Proveedor sin nombre"
+        };
+      }));
     });
 
     const unsubP = onSnapshot(query(collection(db, "companies", companyId, "products")), (snap) => {

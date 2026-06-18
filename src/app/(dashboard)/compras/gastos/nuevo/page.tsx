@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { collection, query, onSnapshot, doc, setDoc, addDoc, getDocs, updateDoc, increment } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, setDoc, addDoc, getDocs, updateDoc, increment, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
@@ -143,7 +143,18 @@ export default function NuevoGastoPage() {
     const unsubSat = onSnapshot(query(collection(db, "companies", companyId, "expenses_inbox")), (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as SatInvoice));
       // filter out paid ones in memory
-      setSatInvoices(list.filter(inv => !inv.paidAmount || inv.paidAmount < inv.total - 0.01));
+      const unpaid = list.filter(inv => !inv.paidAmount || inv.paidAmount < inv.total - 0.01);
+      
+      // Deduplicate by UUID case-insensitive, prioritizing the version that has xmlBase64
+      const dedupMap = new Map<string, SatInvoice>();
+      for (const inv of unpaid) {
+        const key = (inv.uuid || inv.id).toLowerCase();
+        const existing = dedupMap.get(key);
+        if (!existing || (!existing.xmlBase64 && inv.xmlBase64)) {
+          dedupMap.set(key, inv);
+        }
+      }
+      setSatInvoices(Array.from(dedupMap.values()));
     });
 
     return () => {
@@ -310,39 +321,64 @@ export default function NuevoGastoPage() {
 
   // Link SAT Invoice from search selection
   const handleSelectSatInvoice = async (invoice: SatInvoice) => {
+    if (!companyId) return;
     setLinkedSatInvoiceId(invoice.id);
     setSatSearchQuery(`${invoice.emisorName} - $${invoice.total.toLocaleString()}`);
     setShowSatDropdown(false);
 
-    // If it has XML, parse concepts
-    if (invoice.xmlBase64) {
+    let xmlBase64 = invoice.xmlBase64;
+    let finalInvoiceId = invoice.id;
+
+    // 1. If xmlBase64 is not present in the selected invoice object, attempt to load it from Firestore
+    // by checking the document ID variations (original, lowercase, uppercase).
+    if (!xmlBase64) {
       try {
-        const xmlText = decodeBase64Utf8(invoice.xmlBase64);
+        const idToCheck = [invoice.id, invoice.id.toLowerCase(), invoice.id.toUpperCase()];
+        for (const testId of idToCheck) {
+          const docRef = doc(db, "companies", companyId, "expenses_inbox", testId);
+          const snap = await getDoc(docRef);
+          if (snap.exists() && snap.data().xmlBase64) {
+            xmlBase64 = snap.data().xmlBase64;
+            finalInvoiceId = testId;
+            setLinkedSatInvoiceId(testId);
+            break;
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching full SAT invoice to check for xmlBase64:", err);
+      }
+    }
+
+    // 2. If we found or have xmlBase64, parse and apply the items
+    if (xmlBase64) {
+      try {
+        const xmlText = decodeBase64Utf8(xmlBase64);
         const parsed = parseCFDIXml(xmlText);
         if (parsed) {
           applyParsedData(parsed);
+          return;
         }
       } catch (err) {
-        console.error(err);
+        console.error("Error parsing CFDI XML:", err);
       }
-    } else {
-      // Fallback single line item if metadata only
-      const lineKey = crypto.randomUUID();
-      applyParsedData({
-        date: invoice.date ? invoice.date.split("T")[0] : "",
-        emisorName: invoice.emisorName,
-        emisorRfc: invoice.emisorRfc,
-        items: [{
-          lineKey,
-          productId: "custom",
-          variantId: lineKey,
-          productName: `Gasto SAT: ${invoice.emisorName} (${invoice.uuid.substring(0,8)})`,
-          variantTitle: "SAT-XML",
-          quantity: 1,
-          unitCost: invoice.total / 1.16 // Subtotal estimativo
-        }]
-      });
     }
+
+    // 3. Fallback: single global concept if no XML could be found/parsed
+    const lineKey = crypto.randomUUID();
+    applyParsedData({
+      date: invoice.date ? invoice.date.split("T")[0] : "",
+      emisorName: invoice.emisorName,
+      emisorRfc: invoice.emisorRfc,
+      items: [{
+        lineKey,
+        productId: "custom",
+        variantId: lineKey,
+        productName: `Gasto SAT: ${invoice.emisorName} (${invoice.uuid.substring(0,8)})`,
+        variantTitle: "SAT-XML",
+        quantity: 1,
+        unitCost: invoice.total / 1.16 // Subtotal estimativo
+      }]
+    });
   };
 
   const handleClearSatInvoice = () => {
@@ -496,11 +532,21 @@ export default function NuevoGastoPage() {
 
       // If linked to a SAT Invoice, update it to fully paid/reconciled so it gets processed
       if (linkedSatInvoiceId) {
-        const satRef = doc(db, "companies", companyId, "expenses_inbox", linkedSatInvoiceId);
-        await updateDoc(satRef, {
-          status: "paid",
-          paidAmount: totalCost
-        });
+        const idToCheck = [linkedSatInvoiceId, linkedSatInvoiceId.toLowerCase(), linkedSatInvoiceId.toUpperCase()];
+        for (const testId of idToCheck) {
+          try {
+            const satRef = doc(db, "companies", companyId, "expenses_inbox", testId);
+            const snap = await getDoc(satRef);
+            if (snap.exists()) {
+              await updateDoc(satRef, {
+                status: "paid",
+                paidAmount: totalCost
+              });
+            }
+          } catch (e) {
+            console.error(`Error updating SAT invoice ${testId}:`, e);
+          }
+        }
       }
 
       if (isPaidImmediately) {

@@ -130,7 +130,7 @@ export function ExpensePaymentModal({ isOpen, onClose, document, documentType, c
       const bankAccountingAccount = bankAccountingId ? accountingAccounts.find(a => a.id === bankAccountingId) : null;
 
       if (!bankAccountingAccount) {
-         alert(`La cuenta/caja "${physicalBankAccount?.name || 'seleccionada'}" no está enlazada a una cuenta contable. Por favor, elimínala y vuélvela a crear en Configuración > Cuentas.`);
+         alert(`La cuenta/caja "${physicalBankAccount?.Name || physicalBankAccount?.name || 'seleccionada'}" no está enlazada a una cuenta contable. Por favor, elimínala y vuélvela a crear en Configuración > Cuentas.`);
          setLoading(false);
          return;
       }
@@ -335,7 +335,9 @@ export function ExpensePaymentModal({ isOpen, onClose, document, documentType, c
             >
               <option value="" disabled>Selecciona la cuenta origen...</option>
               {bankAccounts.map(a => (
-                <option key={a.id} value={a.id}>{a.name} ({a.currency || 'MXN'})</option>
+                <option key={a.id} value={a.id}>
+                  {(a.Name || a.name || 'Cuenta sin nombre')} ({(a.CurrencyCode || a.currency || 'MXN')})
+                </option>
               ))}
             </select>
           </div>

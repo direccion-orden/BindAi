@@ -223,7 +223,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       const bankAccountingAccount = bankAccountingId ? accountingAccounts.find((a) => a.id === bankAccountingId) : null;
 
       if (!bankAccountingAccount) {
-        alert(`La cuenta/caja "${physicalBankAccount?.name || "seleccionada"}" no está enlazada a una cuenta contable. Por favor configúrala.`);
+        alert(`La cuenta/caja "${physicalBankAccount?.Name || physicalBankAccount?.name || "seleccionada"}" no está enlazada a una cuenta contable. Por favor configúrala.`);
         setSaving(false);
         return;
       }
@@ -454,7 +454,9 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                 >
                   <option value="" disabled>Selecciona la cuenta origen...</option>
                   {bankAccounts.map(a => (
-                    <option key={a.id} value={a.id}>{a.name} ({a.currency || "MXN"})</option>
+                    <option key={a.id} value={a.id}>
+                      {(a.Name || a.name || 'Cuenta sin nombre')} ({(a.CurrencyCode || a.currency || 'MXN')})
+                    </option>
                   ))}
                 </select>
               </div>

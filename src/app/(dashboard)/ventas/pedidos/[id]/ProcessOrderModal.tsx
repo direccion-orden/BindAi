@@ -196,29 +196,35 @@ export function ProcessOrderModal({
       ExpeditionPlace: companyZipCode,
       Items: order.items.map((item: any) => {
         const itemUnitPriceExVAT = item.unitPrice / 1.16;
-        const discountAmt = item.quantity * itemUnitPriceExVAT * (item.discountPercentage / 100);
-        const subtotalItem = (item.quantity * itemUnitPriceExVAT) - discountAmt;
+        const discountAmt = item.quantity * itemUnitPriceExVAT * ((item.discountPercentage || 0) / 100);
+        const unitPriceRounded = Number(itemUnitPriceExVAT.toFixed(4));
+        const subtotalVal = Number((item.quantity * unitPriceRounded).toFixed(4));
+        const discountVal = Number(discountAmt.toFixed(4));
+        const baseVal = Number((subtotalVal - discountVal).toFixed(4));
+        const taxTotalVal = Number((baseVal * 0.16).toFixed(4));
+        const totalVal = Number((subtotalVal - discountVal + taxTotalVal).toFixed(4));
+
         return {
           ProductCode: item.satProductCode || "01010101",
           IdentificationNumber: item.variantId || item.id || "SKU",
           Description: item.isService && item.description ? item.description : item.productName,
           Unit: item.satUnitName || "PIEZA",
           UnitCode: item.satUnitCode || "H87",
-          UnitPrice: Number(itemUnitPriceExVAT.toFixed(4)),
+          UnitPrice: unitPriceRounded,
           Quantity: item.quantity,
-          Subtotal: Number((item.quantity * itemUnitPriceExVAT).toFixed(4)),
-          Discount: Number(discountAmt.toFixed(4)),
+          Subtotal: subtotalVal,
+          Discount: discountVal,
           TaxObject: "02",
           Taxes: [
             {
-              Total: Number((subtotalItem * 0.16).toFixed(4)),
+              Total: taxTotalVal,
               Name: "IVA",
-              Base: Number(subtotalItem.toFixed(4)),
+              Base: baseVal,
               Rate: 0.16,
               IsRetention: false
             }
           ],
-          Total: Number((subtotalItem * 1.16).toFixed(4))
+          Total: totalVal
         };
       })
     };

@@ -241,17 +241,6 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
               </div>
             )}
 
-            {/* Signature Deliver */}
-            <div className="flex justify-between mt-16 pb-6" style={{ breakInside: 'avoid' }}>
-              <div className="border-t border-slate-300 w-64 pt-2">
-                <p className="text-xs font-bold text-slate-800 text-center">Firma de Entrega / Surtido</p>
-              </div>
-              <div className="border-t border-slate-300 w-64 pt-2">
-                <p className="text-xs font-bold text-slate-800 text-center">Firma de Recibido de Conformidad</p>
-                <p className="text-[10px] text-slate-400 text-center mt-1">{order.clientName}</p>
-              </div>
-            </div>
-
             {/* Footer Slogan */}
             <footer className="text-center border-t border-muted/10 pt-6">
               <p className="text-[10px] uppercase tracking-[0.5em] font-black text-muted-foreground/20">

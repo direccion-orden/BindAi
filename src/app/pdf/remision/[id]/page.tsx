@@ -69,8 +69,21 @@ export default function RemisionPDFPage({ params }: { params: Promise<{ id: stri
   const handlePrint = () => {
     window.print();
   };
+  const formattedDate = remission.createdAt ? new Date(remission.createdAt).toLocaleDateString('es-MX') : "";
 
-  const formattedDate = remission.createdAt ? new Date(remission.createdAt).toLocaleDateString('es-MX') : "";
+  const displaySubtotal = remission.subtotal !== undefined 
+    ? remission.subtotal 
+    : (remission.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16)), 0) || 0);
+
+  const displayDiscount = remission.totalDiscount !== undefined 
+    ? remission.totalDiscount 
+    : (remission.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16) * ((item.discountPercentage || 0) / 100)), 0) || 0);
+
+  const displayTax = remission.tax !== undefined 
+    ? remission.tax 
+    : (displaySubtotal - displayDiscount) * 0.16;
+
+  const hasLineDiscount = remission.items?.some((item: any) => (item.discountPercentage || 0) > 0);
 
   return (
     <>
@@ -118,7 +131,7 @@ export default function RemisionPDFPage({ params }: { params: Promise<{ id: stri
                 </h1>
               )}
               <div className="text-right">
-                <h2 className="text-xl sm:text-2xl font-black text-foreground uppercase tracking-tight mb-1">REMISIÓN DE ENTREGA</h2>
+                <h2 className="text-xl sm:text-2xl font-black text-foreground uppercase tracking-tight mb-1">REMISIÓN</h2>
                 <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em]">{remission.remissionNumber}</p>
               </div>
             </div>
@@ -136,15 +149,6 @@ export default function RemisionPDFPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
 
-            {/* Slogan */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-6 w-1.5 bg-primary rounded-full" />
-              <h3 className="text-[11px] font-black text-foreground uppercase tracking-[0.25em]">
-                {companyId === "0cb93750-138e-4b7d-832e-3a37b95c5093" 
-                  ? "ENTREGA DE MERCANCÍA" 
-                  : (ticketConfig?.customCompanyName || companyName || "REMISIÓN DE ENTREGA")}
-              </h3>
-            </div>
 
             {/* Table */}
             <div className="mb-8">
@@ -152,7 +156,10 @@ export default function RemisionPDFPage({ params }: { params: Promise<{ id: stri
                 <thead>
                   <tr className="bg-muted/30 border-none">
                     <th className="py-3 px-2 text-foreground font-black uppercase text-[10px] tracking-widest">Conceptos</th>
-                    <th className="py-3 px-2 text-center text-foreground font-black uppercase text-[10px] tracking-widest w-40">Cant. Entregada</th>
+                    <th className="py-3 px-2 text-center text-foreground font-black uppercase text-[10px] tracking-widest w-16">Cant.</th>
+                    <th className="py-3 px-2 text-right text-foreground font-black uppercase text-[10px] tracking-widest w-28">Precio U.</th>
+                    {hasLineDiscount && <th className="py-3 px-2 text-center text-foreground font-black uppercase text-[10px] tracking-widest w-16">Desc.</th>}
+                    <th className="py-3 px-2 text-right text-foreground font-black uppercase text-[10px] tracking-widest w-32">Subtotal</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-muted/30">
@@ -176,35 +183,47 @@ export default function RemisionPDFPage({ params }: { params: Promise<{ id: stri
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-center font-bold text-lg text-foreground">{item.quantity}</td>
+                      <td className="py-3 px-2 text-center font-medium text-xs sm:text-sm">{item.quantity}</td>
+                      <td className="py-3 px-2 text-right font-mono text-[10px] sm:text-xs">${(item.unitPrice / 1.16).toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+                      {hasLineDiscount && <td className="py-3 px-2 text-center text-emerald-600 font-semibold text-xs sm:text-sm">{item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-'}</td>}
+                      <td className="py-3 px-2 text-right font-mono font-black text-[10px] sm:text-xs">
+                        ${(item.quantity * (item.unitPrice / 1.16) * (1 - (item.discountPercentage || 0) / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Terms and Conformity statement */}
-            <div className="text-[10px] text-muted-foreground border-t-2 border-muted/30 pt-6 mt-10" style={{ breakInside: 'avoid' }}>
-              <div className="space-y-3 max-w-md">
-                <h4 className="font-black uppercase text-foreground tracking-widest border-b border-primary/20 pb-2">Declaratoria de Conformidad</h4>
-                <p className="opacity-90 leading-relaxed text-justify">
-                  Este documento ampara la entrega física de la mercancía descrita en el presente, la cual fue recibida a entera satisfacción por el cliente o su representante de conformidad.
-                </p>
+            {/* Totals */}
+            <div className="flex justify-end mb-8" style={{ breakInside: 'avoid' }}>
+              <div className="w-full max-w-full sm:max-w-[320px] bg-muted/5 py-3 px-6 rounded-2xl border-2 border-primary/20">
+                <div className="flex justify-between items-center text-xs mb-1">
+                  <span className="font-black text-muted-foreground uppercase tracking-widest text-[9px]">Subtotal</span>
+                  <span className="font-semibold text-foreground font-mono">${displaySubtotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+                {displayDiscount > 0 && (
+                  <div className="flex justify-between items-center text-xs mb-1">
+                    <span className="font-black text-emerald-600 uppercase tracking-widest text-[9px]">Descuento</span>
+                    <span className="font-semibold text-emerald-600 font-mono">-${displayDiscount.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-xs mb-2 pb-2 border-b border-muted">
+                  <span className="font-black text-muted-foreground uppercase tracking-widest text-[9px]">IVA (16%)</span>
+                  <span className="font-semibold text-foreground font-mono">${displayTax.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-black text-foreground uppercase text-[9px] sm:text-[11px] tracking-[0.25em]">Total</span>
+                  <span className="font-black text-lg sm:text-xl text-primary font-mono tracking-tighter">${remission.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                </div>
               </div>
             </div>
+
+
           </div>
 
           <div>
-            {/* Signature Deliver */}
-            <div className="flex justify-between mt-16 pb-6" style={{ breakInside: 'avoid' }}>
-              <div className="border-t border-slate-300 w-64 pt-2">
-                <p className="text-xs font-bold text-slate-800 text-center">Firma de Entrega</p>
-              </div>
-              <div className="border-t border-slate-300 w-64 pt-2">
-                <p className="text-xs font-bold text-slate-800 text-center">Firma de Recibido de Conformidad</p>
-                <p className="text-[10px] text-slate-400 text-center mt-1">{remission.clientName}</p>
-              </div>
-            </div>
+
 
             {/* Footer Slogan */}
             <footer className="text-center border-t border-muted/10 pt-6">

@@ -257,14 +257,6 @@ export default function CotizacionPDFPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
-            {/* Signature Accept */}
-            <div className="mt-16 pb-6" style={{ breakInside: 'avoid' }}>
-              <div className="border-t border-slate-300 w-64 pt-2">
-                <p className="text-xs font-bold text-slate-800">Firma de Aceptación</p>
-                <p className="text-[10px] text-slate-400 mt-1">{quote.clientName}</p>
-              </div>
-            </div>
-
             {/* Footer Slogan */}
             <footer className="text-center border-t border-muted/10 pt-6">
               <p className="text-[10px] uppercase tracking-[0.5em] font-black text-muted-foreground/20">

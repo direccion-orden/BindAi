@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { collection, query, onSnapshot, doc, getDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowLeft, Search, Plus, Trash2, Truck, DollarSign, Building2, BookOpen, User, Save } from "lucide-react";
@@ -28,6 +28,8 @@ interface PendingOrder {
   vendorName: string;
   status: string;
   createdAt: string;
+  locationId?: string;
+  locationName?: string;
   items: {
     lineKey?: string;
     productId: string;
@@ -55,9 +57,11 @@ interface ReceivingItem {
   description?: string;
 }
 
-export default function NuevaRecepcionPage() {
+function NuevaRecepcionContent() {
   const { companyId, user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const orderIdParam = searchParams.get("orderId");
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -146,6 +150,9 @@ export default function NuevaRecepcionPage() {
     const order = pendingOrders.find(o => o.id === orderId);
     if (order) {
       setVendorId(order.vendorId);
+      if (order.locationId) {
+        setLocationId(order.locationId);
+      }
       
       const itemsToReceive = order.items.map(item => {
         const received = item.receivedQuantity || 0;
@@ -176,6 +183,15 @@ export default function NuevaRecepcionPage() {
       setSelectedItems(itemsToReceive);
     }
   };
+
+  useEffect(() => {
+    if (orderIdParam && pendingOrders.length > 0) {
+      const exists = pendingOrders.some(o => o.id === orderIdParam);
+      if (exists && selectedOrderId !== orderIdParam) {
+        handleOrderChange(orderIdParam);
+      }
+    }
+  }, [orderIdParam, pendingOrders, selectedOrderId]);
 
   const handleAddItem = (product: ShopifyProduct, variant: any) => {
     const isService = !!product.isService || variant.sku?.startsWith("SER-");
@@ -687,5 +703,13 @@ export default function NuevaRecepcionPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function NuevaRecepcionPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>}>
+      <NuevaRecepcionContent />
+    </Suspense>
   );
 }

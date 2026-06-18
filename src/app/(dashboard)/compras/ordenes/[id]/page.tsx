@@ -5,7 +5,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useParams } from "next/navigation";
-import { Loader2, ArrowLeft, Download, FileText, CheckCircle2, Clock, DollarSign } from "lucide-react";
+import { Loader2, ArrowLeft, Download, FileText, CheckCircle2, Clock, DollarSign, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PurchaseOrder } from "../page";
@@ -21,6 +21,23 @@ export default function DetalleOrdenCompraPage() {
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "DRAFT":
+        return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><Clock className="w-3.5 h-3.5"/> Borrador</span>;
+      case "SENT":
+        return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"><FileText className="w-3.5 h-3.5"/> Enviada</span>;
+      case "PARTIAL":
+        return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"><Truck className="w-3.5 h-3.5"/> Surtida Parcial</span>;
+      case "COMPLETED":
+        return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800"><CheckCircle2 className="w-3.5 h-3.5"/> Surtida</span>;
+      case "CANCELLED":
+        return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800"><CheckCircle2 className="w-3.5 h-3.5"/> Cancelada</span>;
+      default:
+        return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{status}</span>;
+    }
+  };
 
   useEffect(() => {
     if (!companyId || !orderId) return;
@@ -220,14 +237,19 @@ export default function DetalleOrdenCompraPage() {
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Orden {order.orderNumber}</h1>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-              {order.status === "SENT" ? <FileText className="w-3.5 h-3.5"/> : <CheckCircle2 className="w-3.5 h-3.5" />}
-              {order.status}
-            </span>
+            {getStatusBadge(order.status)}
           </div>
           <p className="text-muted-foreground">Requisición para {order.vendorName}</p>
         </div>
         
+        {(order.status === "SENT" || order.status === "PARTIAL") && (
+          <Link href={`/compras/recepciones/nueva?orderId=${order.id}`}>
+            <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+              <Truck className="w-4 h-4" /> Surtir Orden
+            </Button>
+          </Link>
+        )}
+
         {(!order.paidAmount || order.paidAmount < order.totalAmount - 0.01) && (
           <Button onClick={() => setIsPaymentModalOpen(true)} className="gap-2 bg-rose-600 hover:bg-rose-700 text-white">
             <DollarSign className="w-4 h-4" /> Registrar Pago

@@ -5,11 +5,12 @@ import { collection, query, onSnapshot, orderBy, doc, getDoc, getDocs } from "fi
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText } from "lucide-react";
+import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw } from "lucide-react";
 import { BankTransaction } from "@/types/bank";
 import { CSVUploadModal } from "./components/CSVUploadModal";
 import { TransferModal } from "./components/TransferModal";
 import { AdjustmentModal } from "./components/AdjustmentModal";
+import { BankSyncModal } from "./components/BankSyncModal";
 import { Input } from "@/components/ui/input";
 
 interface BankAccount {
@@ -35,6 +36,7 @@ export default function BancosPage() {
   const [isCSVModalOpen, setIsCSVModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -107,6 +109,9 @@ export default function BancosPage() {
         </div>
         
         <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setIsSyncModalOpen(true)} disabled={!selectedAccountId}>
+                <RefreshCw className="w-4 h-4 text-indigo-600" /> Sincronizar Banco
+            </Button>
             <Button variant="outline" className="gap-2" onClick={() => setIsAdjustmentModalOpen(true)} disabled={!selectedAccountId}>
                 <Settings2 className="w-4 h-4" /> Ajuste Manual
             </Button>
@@ -228,6 +233,13 @@ export default function BancosPage() {
           <AdjustmentModal 
               accountId={selectedAccount.id}
               onClose={() => setIsAdjustmentModalOpen(false)} 
+          />
+      )}
+
+      {isSyncModalOpen && selectedAccount && (
+          <BankSyncModal 
+              accountId={selectedAccount.id}
+              onClose={() => setIsSyncModalOpen(false)} 
           />
       )}
     </div>

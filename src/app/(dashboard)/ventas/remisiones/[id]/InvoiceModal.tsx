@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Receipt } from "lucide-react";
 import { createCfdi } from "@/actions/facturama";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 
@@ -22,6 +22,8 @@ export function InvoiceModal({
   companyId: string 
 }) {
   const [loading, setLoading] = useState(false);
+  const [clients, setClients] = useState<any[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
   
   // Facturama Required Fields
   const [rfc, setRfc] = useState("XAXX010101000"); // Generic default
@@ -34,9 +36,6 @@ export function InvoiceModal({
   const [paymentMethod, setPaymentMethod] = useState("PUE"); // Pago en una sola exhibición
 
   useEffect(() => {
-    // We try to find the client. If remission has an orderId, maybe we need the order's clientId.
-    // If we only have clientName on remission, we try to query the client by name.
-    // But let's assume we can add clientId to remissions or we fetch from order if possible.
     const fetchClient = async () => {
       if (!isOpen || !companyId || !remission) return;
       
@@ -48,6 +47,21 @@ export function InvoiceModal({
           setCompanyZipCode(companySnap.data().zipCode);
         }
       } catch(e) { console.error(e); }
+
+      // Fetch all clients catalog
+      try {
+        const clientsSnap = await getDocs(collection(db, "companies", companyId, "clients"));
+        const clientsList = clientsSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as any));
+        clientsList.sort((a, b) => {
+          const nameA = (a.name || a.LegalName || a.CommercialName || "").toLowerCase();
+          const nameB = (b.name || b.LegalName || b.CommercialName || "").toLowerCase();
+          return nameA.localeCompare(nameB, "es");
+        });
+        setClients(clientsList);
+      } catch(e) { console.error("Error loading clients list:", e); }
       
       // If remission doesn't have clientId, but has orderId, fetch order first
       if (!clientId && remission.orderId) {
@@ -60,15 +74,17 @@ export function InvoiceModal({
       }
 
       if (clientId) {
+        setSelectedClientId(clientId);
         try {
           const clientSnap = await getDoc(doc(db, "companies", companyId, "clients", clientId));
           if (clientSnap.exists()) {
             const client = clientSnap.data();
-            if (client.rfc) setRfc(client.rfc);
+            if (client.rfc || client.RFC) setRfc(client.rfc || client.RFC);
             if (client.razonSocial) setRazonSocial(client.razonSocial);
+            else if (client.LegalName) setRazonSocial(client.LegalName);
             else if (client.name) setRazonSocial(client.name);
             if (client.taxRegime) setTaxRegime(client.taxRegime);
-            if (client.zipCode) setZipCode(client.zipCode);
+            if (client.zipCode || client.ZipCode) setZipCode(client.zipCode || client.ZipCode);
             if (client.cfdiUse) setCfdiUse(client.cfdiUse);
           }
         } catch(e) { console.error(e); }
@@ -77,6 +93,26 @@ export function InvoiceModal({
     
     fetchClient();
   }, [isOpen, remission, companyId]);
+
+  const handleClientChange = (clientId: string) => {
+    setSelectedClientId(clientId);
+    if (!clientId) {
+      setRfc("XAXX010101000");
+      setRazonSocial("");
+      setTaxRegime("616");
+      setZipCode("00000");
+      setCfdiUse("S01");
+      return;
+    }
+    const client = clients.find(c => c.id === clientId);
+    if (client) {
+      setRfc(client.rfc || client.RFC || "XAXX010101000");
+      setRazonSocial(client.razonSocial || client.LegalName || client.name || "");
+      setTaxRegime(client.taxRegime || "616");
+      setZipCode(client.zipCode || client.ZipCode || "00000");
+      setCfdiUse(client.cfdiUse || "S01");
+    }
+  };
 
   if (!remission) return null;
 
@@ -189,6 +225,21 @@ export function InvoiceModal({
 
         <div className="space-y-4 py-4">
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2 col-span-2">
+              <label className="text-sm font-semibold text-slate-700">Seleccionar Cliente</label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                value={selectedClientId}
+                onChange={e => handleClientChange(e.target.value)}
+              >
+                <option value="">-- Seleccionar un Cliente --</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.LegalName || c.name || c.CommercialName || "Sin nombre"} ({c.rfc || c.RFC || "Sin RFC"})
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">RFC Receptor *</label>
               <Input value={rfc} onChange={e => setRfc(e.target.value.toUpperCase())} maxLength={13} />

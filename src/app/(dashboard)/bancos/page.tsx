@@ -136,36 +136,42 @@ export default function BancosPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="md:col-span-1 space-y-4">
-              <div className="bg-card border rounded-xl p-4 shadow-sm">
-                  <h3 className="font-semibold text-sm mb-3 text-muted-foreground uppercase">Cuenta Seleccionada</h3>
-                  <select 
-                      value={selectedAccountId}
-                      onChange={(e) => setSelectedAccountId(e.target.value)}
-                      className="w-full h-10 px-3 rounded-md border bg-background text-sm font-medium focus:ring-2 focus:ring-primary outline-none"
-                  >
-                      {accounts.length === 0 && <option value="">Sin cuentas...</option>}
-                      {accounts.map(acc => (
-                          <option key={acc.id} value={acc.id}>{(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})</option>
-                      ))}
-                  </select>
-              </div>
+      {/* Horizontal Account Banner */}
+      <div className="bg-card border rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cuenta Seleccionada</label>
+          <select 
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              className="h-10 w-64 px-3 rounded-md border bg-background text-sm font-semibold focus:ring-2 focus:ring-primary outline-none"
+          >
+              {accounts.length === 0 && <option value="">Sin cuentas...</option>}
+              {accounts.map(acc => (
+                  <option key={acc.id} value={acc.id}>{(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})</option>
+              ))}
+          </select>
+        </div>
 
-              {selectedAccount && (
-                  <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 shadow-sm flex flex-col items-center text-center">
-                      <p className="text-sm font-semibold text-primary uppercase tracking-wider mb-2">Saldo Actual Calculado</p>
-                      <p className={`text-4xl font-black ${currentBalance < 0 ? 'text-red-600' : 'text-foreground'}`}>
-                          {formatMoney(currentBalance, selectedAccount.currency)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-4">
-                          Incluye Saldo Inicial: {formatMoney(selectedAccount.initialBalance || 0, selectedAccount.currency)}
-                      </p>
-                  </div>
-              )}
+        {selectedAccount && (
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Saldo Inicial</p>
+              <p className="text-sm font-bold text-slate-700">
+                {formatMoney(selectedAccount.initialBalance || 0, selectedAccount.currency)}
+              </p>
+            </div>
+            <div className="h-8 w-px bg-slate-200"></div>
+            <div className="text-right">
+              <p className="text-xs font-bold text-primary uppercase tracking-wider mb-0.5">Saldo Actual Calculado</p>
+              <p className={`text-2xl font-black ${currentBalance < 0 ? 'text-red-600' : 'text-foreground'}`}>
+                {formatMoney(currentBalance, selectedAccount.currency)}
+              </p>
+            </div>
           </div>
+        )}
+      </div>
 
-          <div className="md:col-span-3 bg-card border rounded-xl shadow-sm flex flex-col h-[600px]">
+      <div className="w-full bg-card border rounded-xl shadow-sm flex flex-col h-[600px]">
               <div className="p-2 border-b flex items-center justify-between gap-4 bg-slate-50/50 rounded-t-xl shrink-0">
                   <div className="flex gap-2">
                       <button
@@ -265,7 +271,6 @@ export default function BancosPage() {
                   )}
               </div>
           </div>
-      </div>
 
       {isCSVModalOpen && selectedAccount && (
           <CSVUploadModal 

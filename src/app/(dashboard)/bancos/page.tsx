@@ -11,6 +11,7 @@ import { CSVUploadModal } from "./components/CSVUploadModal";
 import { TransferModal } from "./components/TransferModal";
 import { AdjustmentModal } from "./components/AdjustmentModal";
 import { BankSyncModal } from "./components/BankSyncModal";
+import { QuickReconcileModal } from "./components/QuickReconcileModal";
 import { Input } from "@/components/ui/input";
 
 interface BankAccount {
@@ -37,6 +38,10 @@ export default function BancosPage() {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<"history" | "reconcile">("history");
+  const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -88,6 +93,13 @@ export default function BancosPage() {
       (t.reference && t.reference.toLowerCase().includes(lowerQ))
     );
   }, [transactions, searchQuery]);
+
+  const displayedTransactions = useMemo(() => {
+    if (activeTab === "reconcile") {
+      return filteredTransactions.filter(t => !t.reconciled);
+    }
+    return filteredTransactions;
+  }, [filteredTransactions, activeTab]);
 
   const formatMoney = (amount: number, currency: string = "MXN") => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency }).format(amount);
@@ -154,11 +166,26 @@ export default function BancosPage() {
           </div>
 
           <div className="md:col-span-3 bg-card border rounded-xl shadow-sm flex flex-col h-[600px]">
-              <div className="p-4 border-b flex items-center justify-between gap-4 bg-muted/20 rounded-t-xl shrink-0">
-                  <h3 className="font-bold flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-muted-foreground" />
-                      Historial de Movimientos
-                  </h3>
+              <div className="p-2 border-b flex items-center justify-between gap-4 bg-slate-50/50 rounded-t-xl shrink-0">
+                  <div className="flex gap-2">
+                      <button
+                          onClick={() => setActiveTab("history")}
+                          className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'history' ? 'bg-white border shadow text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-800'}`}
+                      >
+                          Historial de Movimientos
+                      </button>
+                      <button
+                          onClick={() => setActiveTab("reconcile")}
+                          className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'reconcile' ? 'bg-white border shadow text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-800'}`}
+                      >
+                          Conciliación Pendiente
+                          {filteredTransactions.filter(t => !t.reconciled).length > 0 && (
+                            <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-700 animate-pulse">
+                              {filteredTransactions.filter(t => !t.reconciled).length}
+                            </span>
+                          )}
+                      </button>
+                  </div>
                   <div className="relative w-64">
                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                       <Input 
@@ -174,10 +201,10 @@ export default function BancosPage() {
               <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
                   {loadingTransactions ? (
                       <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
-                  ) : filteredTransactions.length === 0 ? (
+                  ) : displayedTransactions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground opacity-60">
                           <FileText className="w-12 h-12 mb-3 opacity-20" />
-                          <p>No hay movimientos registrados.</p>
+                          <p>No hay movimientos registrados {activeTab === "reconcile" ? "pendientes de conciliar" : ""}.</p>
                           <p className="text-sm">Realiza una carga masiva o añade un ajuste manual.</p>
                       </div>
                   ) : (
@@ -188,14 +215,26 @@ export default function BancosPage() {
                                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Concepto / Referencia</th>
                                   <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Cargo (-)</th>
                                   <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Abono (+)</th>
+                                  {activeTab === "reconcile" && <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Acción</th>}
                               </tr>
                           </thead>
                           <tbody className="divide-y">
-                              {filteredTransactions.map((tx) => (
+                              {displayedTransactions.map((tx) => (
                                   <tr key={tx.id} className="hover:bg-muted/30 transition-colors">
                                       <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{tx.date}</td>
                                       <td className="px-4 py-3">
-                                          <p className="font-medium">{tx.concept}</p>
+                                          <p className="font-medium flex items-center gap-2">
+                                            {tx.concept}
+                                            {tx.reconciled ? (
+                                              <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                Conciliado
+                                              </span>
+                                            ) : (
+                                              <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                                Pendiente
+                                              </span>
+                                            )}
+                                          </p>
                                           {tx.reference && <p className="text-xs text-muted-foreground">Ref: {tx.reference}</p>}
                                       </td>
                                       <td className="px-4 py-3 text-right text-red-600 font-medium">
@@ -204,6 +243,21 @@ export default function BancosPage() {
                                       <td className="px-4 py-3 text-right text-green-600 font-medium">
                                           {tx.amount > 0 ? formatMoney(tx.amount, selectedAccount?.currency) : ''}
                                       </td>
+                                      {activeTab === "reconcile" && (
+                                        <td className="px-4 py-3 text-center">
+                                          <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={() => {
+                                              setSelectedTransaction(tx);
+                                              setIsReconcileModalOpen(true);
+                                            }}
+                                            className="h-8 text-xs font-bold text-indigo-600 hover:text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+                                          >
+                                            Conciliar
+                                          </Button>
+                                        </td>
+                                      )}
                                   </tr>
                               ))}
                           </tbody>
@@ -240,6 +294,20 @@ export default function BancosPage() {
           <BankSyncModal 
               accountId={selectedAccount.id}
               onClose={() => setIsSyncModalOpen(false)} 
+          />
+      )}
+
+      {isReconcileModalOpen && selectedTransaction && selectedAccount && (
+          <QuickReconcileModal 
+              transaction={selectedTransaction}
+              accountId={selectedAccount.id}
+              onClose={() => {
+                setIsReconcileModalOpen(false);
+                setSelectedTransaction(null);
+              }}
+              onSuccess={() => {
+                // Success callback
+              }}
           />
       )}
     </div>

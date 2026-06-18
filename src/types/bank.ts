@@ -7,4 +7,8 @@ export interface BankTransaction {
   type: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'ADJUSTMENT';
   balanceAfter?: number; // optional tracking, calculated client-side mostly
   createdAt: number;
+  reconciled?: boolean;
+  reconcileType?: 'match' | 'direct';
+  matchedDocumentId?: string;
+  matchedAt?: string;
 }

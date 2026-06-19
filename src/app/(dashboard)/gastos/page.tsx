@@ -438,13 +438,28 @@ export default function GastosPage() {
                                       <div className="flex items-center justify-center gap-2">
                                         {(!inv.paidAmount || inv.paidAmount < inv.total - 0.01) ? (
                                           <>
-                                            <Button variant="outline" size="sm" onClick={() => {
-                                              setSelectedInvoice(inv);
-                                              setIsPaymentModalOpen(true);
-                                            }}>
-                                              <DollarSign className="w-3 h-3 mr-1" />
-                                              Registrar Pago
+                                            <Button 
+                                              variant="outline" 
+                                              size="icon" 
+                                              className="h-8 w-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 shrink-0"
+                                              onClick={() => {
+                                                setSelectedInvoice(inv);
+                                                setIsPaymentModalOpen(true);
+                                              }}
+                                              title="Registrar Pago"
+                                            >
+                                              <DollarSign className="w-4 h-4" />
                                             </Button>
+                                            <Link href={`/compras/gastos/nuevo?satId=${inv.id}`}>
+                                              <Button 
+                                                variant="outline" 
+                                                size="icon" 
+                                                className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 shrink-0"
+                                                title="Registrar Gasto"
+                                              >
+                                                <Receipt className="w-4 h-4" />
+                                              </Button>
+                                            </Link>
                                             <Link href={`/gastos/${inv.id}`} target="_blank">
                                               <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0" title="Ver Detalles">
                                                 <Eye className="w-4 h-4 text-indigo-600" />

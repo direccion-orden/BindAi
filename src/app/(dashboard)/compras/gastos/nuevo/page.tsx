@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { collection, query, onSnapshot, doc, setDoc, addDoc, getDocs, updateDoc, increment, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save, Upload, Receipt, X, AlertCircle } from "lucide-react";
@@ -39,12 +39,15 @@ interface SatInvoice {
   paidAmount?: number;
 }
 
-export default function NuevoGastoPage() {
+function NuevoGastoForm() {
   const { companyId, user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const satId = searchParams.get("satId");
 
   // Catalogs
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorsLoaded, setVendorsLoaded] = useState(false);
   const [products, setProducts] = useState<ShopifyProduct[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -111,6 +114,7 @@ export default function NuevoGastoPage() {
           rfc: data.rfc || data.RFC || ""
         };
       }));
+      setVendorsLoaded(true);
     });
 
     // Load products
@@ -399,6 +403,28 @@ export default function NuevoGastoPage() {
     setShowSatDropdown(true);
     setLinkedInvoiceHasXml(null);
   };
+
+  // Load initial SAT invoice if satId is provided in URL
+  useEffect(() => {
+    if (!companyId || !satId || !vendorsLoaded) return;
+
+    const loadInitialSatInvoice = async () => {
+      try {
+        const docRef = doc(db, "companies", companyId, "expenses_inbox", satId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const invData = { id: snap.id, ...snap.data() } as SatInvoice;
+          await handleSelectSatInvoice(invData);
+        } else {
+          console.error("SAT Invoice not found:", satId);
+        }
+      } catch (err) {
+        console.error("Error loading initial SAT invoice:", err);
+      }
+    };
+
+    loadInitialSatInvoice();
+  }, [companyId, satId, vendorsLoaded]);
 
   // Vendor selection handlers
   const filteredVendors = vendors.filter(v => {
@@ -1151,5 +1177,13 @@ export default function NuevoGastoPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function NuevoGastoPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>}>
+      <NuevoGastoForm />
+    </Suspense>
   );
 }

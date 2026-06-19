@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper, Target, PlusCircle } from "lucide-react";
+import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper, Target, PlusCircle, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolean; onCloseMobile?: () => void }) {
@@ -74,9 +74,16 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/bancos", label: "Cuentas Bancarias", icon: Building2 },
         { href: "/caja", label: "Control de Caja", icon: Banknote },
         { href: "/tesoreria", label: "Tesorería", icon: Vault },
+        { href: "/flujo-efectivo", label: "Flujo de Efectivo", icon: LineChart },
+      ]
+    },
+    {
+      title: "Contabilidad",
+      icon: BookOpen,
+      items: [
         { href: "/contabilidad/catalogo", label: "Catálogo de Cuentas", icon: BookOpen },
         { href: "/contabilidad/polizas", label: "Pólizas", icon: FileText },
-        { href: "/flujo-efectivo", label: "Flujo de Efectivo", icon: LineChart },
+        { href: "/contabilidad/centros-costos", label: "Centros de Costos", icon: Layers },
       ]
     },
     {

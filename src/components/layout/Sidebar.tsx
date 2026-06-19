@@ -172,22 +172,29 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
           <div className="space-y-1">
             <Link href="/dashboard" onClick={onCloseMobile}>
               <div className={`flex items-center px-3 py-2 rounded-md text-sm transition-colors ${
-                pathname === "/dashboard"
-                  ? "bg-accent/15 text-accent font-semibold shadow-sm"
+                (pathname === "/dashboard" || pathname === "/")
+                  ? "bg-accent/15 text-accent font-medium shadow-sm"
                   : "text-foreground hover:bg-muted"
               } ${isCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={isCollapsed ? "Noticias" : undefined}>
-                <Newspaper className={`h-5 w-5 ${pathname === "/dashboard" ? 'text-accent' : 'text-muted-foreground'}`} />
-                {!isCollapsed && <span className="font-semibold">Noticias</span>}
+                <Newspaper className={`h-5 w-5 ${(pathname === "/dashboard" || pathname === "/") ? 'text-accent' : 'text-muted-foreground'}`} />
+                {!isCollapsed && <span>Noticias</span>}
               </div>
             </Link>
           </div>
 
           {categories.map((cat, idx) => {
           const isOpen = openCategories.includes(cat.title);
+          const isCategoryActive = cat.items.some((item: any) => 
+            item.exact ? pathname === item.href : pathname === item.href || pathname?.startsWith(item.href + "/")
+          );
           return (
             <div key={idx} className="space-y-3">
               <div 
-                className={`flex items-center gap-2 px-2 text-xs font-bold uppercase tracking-wider text-foreground cursor-pointer hover:text-foreground/80 transition-colors ${isCollapsed ? 'justify-center' : 'justify-between'}`}
+                className={`flex items-center gap-2 py-2 px-3 text-xs font-bold uppercase tracking-wider cursor-pointer transition-colors rounded-md ${
+                  isCategoryActive
+                    ? "bg-accent/15 text-accent shadow-sm font-bold"
+                    : "text-foreground hover:bg-muted/50"
+                } ${isCollapsed ? 'justify-center px-0' : 'justify-between'}`}
                 onClick={() => toggleCategory(cat.title)}
                 title={isCollapsed ? cat.title : undefined}
               >

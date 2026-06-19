@@ -21,6 +21,8 @@ interface OrderItem {
   unitCost: number;
   description?: string;
   costCenterId?: string;
+  accountId?: string;
+  locationId?: string;
 }
 
 interface Vendor {
@@ -63,8 +65,6 @@ function NuevoGastoForm() {
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
   const vendorSelectorRef = useRef<HTMLDivElement>(null);
 
-  const [locationId, setLocationId] = useState("");
-  const [accountId, setAccountId] = useState("");
   const [notes, setNotes] = useState("");
   const [concept, setConcept] = useState("");
 
@@ -72,11 +72,19 @@ function NuevoGastoForm() {
   const [searchTerm, setSearchTerm] = useState("");
   const [vatRate, setVatRate] = useState<number>(0.16); // Default 16%
 
+  // Bulk Actions Fields
+  const [selectedItemKeys, setSelectedItemKeys] = useState<string[]>([]);
+  const [bulkAccountId, setBulkAccountId] = useState("");
+  const [bulkCostCenterId, setBulkCostCenterId] = useState("");
+  const [bulkLocationId, setBulkLocationId] = useState("");
+
   // Immediate Payment Fields
   const [isPaidImmediately, setIsPaidImmediately] = useState(false);
   const [bankAccountId, setBankAccountId] = useState("");
   const [method, setMethod] = useState("Transferencia");
   const [reference, setReference] = useState("");
+  const [unreconciledTransactions, setUnreconciledTransactions] = useState<any[]>([]);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string>("manual");
 
   const [xmlFileName, setXmlFileName] = useState("");
   const [linkedSatInvoiceId, setLinkedSatInvoiceId] = useState("");
@@ -87,6 +95,44 @@ function NuevoGastoForm() {
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Load unreconciled transactions for the selected bank account
+  useEffect(() => {
+    setSelectedTransactionId("manual"); // Reset when account changes
+    if (!companyId || !bankAccountId) {
+      setUnreconciledTransactions([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions"),
+      orderBy("date", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const filtered = txs.filter(t => t.amount < 0 && !t.reconciled);
+      setUnreconciledTransactions(filtered);
+    }, (error) => {
+      console.error("Error loading transactions:", error);
+    });
+
+    return () => unsubscribe();
+  }, [companyId, bankAccountId]);
+
+  // Auto-fill when a transaction is selected
+  useEffect(() => {
+    if (selectedTransactionId && selectedTransactionId !== "manual") {
+      const matchedTx = unreconciledTransactions.find(t => t.id === selectedTransactionId);
+      if (matchedTx) {
+        if (matchedTx.reference) setReference(matchedTx.reference);
+        if (matchedTx.date) setDate(matchedTx.date);
+        if (matchedTx.concept && !notes) {
+          setNotes(matchedTx.concept);
+        }
+      }
+    }
+  }, [selectedTransactionId, unreconciledTransactions]);
 
   // Click outside handlers
   useEffect(() => {
@@ -137,12 +183,16 @@ function NuevoGastoForm() {
     const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
       const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setAccounts(allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2));
-      setBankAccounts(allAcc.filter((a: any) => a.type === "ACTIVO" && a.level >= 2));
     });
 
     // Load bankAccounts (physical)
     const unsubBank = onSnapshot(query(collection(db, "companies", companyId, "bankAccounts")), (snap) => {
-      // Keep it here for immediate payments physical accounts list
+      setBankAccounts(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || d.data().Name || "Cuenta sin nombre",
+        type: d.data().type || "bank",
+        accountId: d.data().accountId || ""
+      })));
     });
 
     // Load SAT invoices (unpaid only)
@@ -271,7 +321,10 @@ function NuevoGastoForm() {
           productName: descripcion,
           variantTitle: noIdentificacion,
           quantity: cantidad,
-          unitCost: valorUnitario
+          unitCost: valorUnitario,
+          accountId: "",
+          costCenterId: "",
+          locationId: ""
         });
       }
 
@@ -405,7 +458,10 @@ function NuevoGastoForm() {
         productName: `Gasto SAT: ${invoice.emisorName} (${invoice.uuid.substring(0,8)})`,
         variantTitle: "SAT-XML",
         quantity: 1,
-        unitCost: invoice.total / 1.16 // Subtotal estimativo
+        unitCost: invoice.total / 1.16, // Subtotal estimativo
+        accountId: "",
+        costCenterId: "",
+        locationId: ""
       }]
     });
   };
@@ -479,7 +535,10 @@ function NuevoGastoForm() {
         productName: product.title,
         variantTitle: variant.title !== "Default Title" ? variant.title : (variant.sku || ""),
         quantity: 1,
-        unitCost: variant.price || 0
+        unitCost: variant.price || 0,
+        accountId: "",
+        costCenterId: "",
+        locationId: ""
       }]);
     } else {
       setSelectedItems(prev => prev.map(item => 
@@ -499,7 +558,10 @@ function NuevoGastoForm() {
       productName: "",
       variantTitle: "",
       quantity: 1,
-      unitCost: 0
+      unitCost: 0,
+      accountId: "",
+      costCenterId: "",
+      locationId: ""
     }]);
   };
 
@@ -515,6 +577,32 @@ function NuevoGastoForm() {
 
   const removeItem = (key: string) => {
     setSelectedItems(prev => prev.filter(i => (i.lineKey || i.variantId) !== key));
+  };
+
+  const handleApplyBulk = () => {
+    if (!bulkAccountId && !bulkCostCenterId && !bulkLocationId) {
+      alert("Selecciona al menos un valor para aplicar en lote.");
+      return;
+    }
+    
+    setSelectedItems(prev => prev.map(item => {
+      const key = item.lineKey || item.variantId;
+      if (selectedItemKeys.includes(key)) {
+        return {
+          ...item,
+          ...(bulkAccountId ? { accountId: bulkAccountId } : {}),
+          ...(bulkCostCenterId ? { costCenterId: bulkCostCenterId } : {}),
+          ...(bulkLocationId ? { locationId: bulkLocationId } : {})
+        };
+      }
+      return item;
+    }));
+    
+    // Reset inputs
+    setBulkAccountId("");
+    setBulkCostCenterId("");
+    setBulkLocationId("");
+    setSelectedItemKeys([]);
   };
 
   // Sums
@@ -533,8 +621,10 @@ function NuevoGastoForm() {
       alert("Debes agregar al menos una partida al gasto.");
       return;
     }
-    if (!locationId || !accountId) {
-      alert("Debes seleccionar una sucursal y una clasificación contable.");
+    // Check if every item has an accountId and locationId
+    const missingFields = selectedItems.some(i => !i.accountId || !i.locationId);
+    if (missingFields) {
+      alert("Todas las partidas deben tener una cuenta contable y una sucursal asignadas.");
       return;
     }
 
@@ -547,8 +637,12 @@ function NuevoGastoForm() {
     try {
       const expenseId = crypto.randomUUID();
       const vendorName = vendors.find(v => v.id === vendorId)?.name || "Proveedor General";
-      const locationName = locations.find(l => l.id === locationId)?.name || "";
-      const expenseAccount = accounts.find(a => a.id === accountId);
+      
+      const firstItem = selectedItems[0];
+      const mainAccountId = firstItem.accountId || "";
+      const mainExpenseAccount = accounts.find(a => a.id === mainAccountId);
+      const mainLocationId = firstItem.locationId || "";
+      const mainLocationName = locations.find(l => l.id === mainLocationId)?.name || "";
 
       // Create Expense Record
       const expenseDoc = {
@@ -559,11 +653,11 @@ function NuevoGastoForm() {
         concept: concept || selectedItems.map(i => i.productName).join(", ").substring(0, 150),
         amount: totalCost,
         vatRate,
-        locationId,
-        locationName,
-        accountId,
-        accountCode: expenseAccount?.code || "",
-        accountName: expenseAccount?.name || "",
+        locationId: mainLocationId,
+        locationName: mainLocationName,
+        accountId: mainAccountId,
+        accountCode: mainExpenseAccount?.code || "",
+        accountName: mainExpenseAccount?.name || "",
         paidAmount: isPaidImmediately ? totalCost : 0,
         status: isPaidImmediately ? "paid" : "pending",
         satInvoiceId: linkedSatInvoiceId || null,
@@ -575,7 +669,9 @@ function NuevoGastoForm() {
           quantity: i.quantity,
           unitCost: i.unitCost,
           lineKey: i.lineKey || "",
-          costCenterId: i.costCenterId || null
+          costCenterId: i.costCenterId || null,
+          accountId: i.accountId || null,
+          locationId: i.locationId || null
         })),
         createdAt: new Date().toISOString(),
         createdBy: user?.email || "Unknown"
@@ -603,6 +699,35 @@ function NuevoGastoForm() {
       }
 
       if (isPaidImmediately) {
+        let finalBankTransactionId = null;
+
+        if (selectedTransactionId === "manual") {
+          // Create new transaction in bank account transactions subcollection
+          const txData = {
+            amount: -totalCost,
+            date,
+            concept: `${vendorName} - ${concept || notes || "Gasto manual"}`,
+            reference: reference || "",
+            reconciled: true,
+            matchedAt: new Date().toISOString(),
+            reconcileType: "direct",
+            matchedDocumentId: expenseId,
+            createdAt: new Date().toISOString(),
+            createdBy: user?.email || "Unknown"
+          };
+          const txRef = await addDoc(collection(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions"), txData);
+          finalBankTransactionId = txRef.id;
+        } else {
+          finalBankTransactionId = selectedTransactionId;
+          // Update existing transaction to reconciled
+          await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", selectedTransactionId), {
+            reconciled: true,
+            matchedAt: new Date().toISOString(),
+            reconcileType: "match",
+            matchedDocumentId: expenseId
+          });
+        }
+
         // Create outflow record
         const paymentData = {
           amount: totalCost,
@@ -614,8 +739,9 @@ function NuevoGastoForm() {
           documentNumber: `GM-${expenseId.substring(0, 8)}`,
           providerName: vendorName,
           bankAccountId,
-          expenseAccountId: accountId,
-          createdAt: new Date().toISOString()
+          expenseAccountId: mainAccountId,
+          createdAt: new Date().toISOString(),
+          bankTransactionId: finalBankTransactionId
         };
 
         const paymentRef = await addDoc(collection(db, "companies", companyId, "outflows"), paymentData);
@@ -634,33 +760,58 @@ function NuevoGastoForm() {
         const vatAccounts = allAccs.filter(a => a.code.startsWith("118") && a.level >= 2);
 
         if (bankAccountingAccount) {
-          let subtotalAmount = totalCost;
           let vatAmount = 0;
           let vatAccount = null;
 
           if (vatRate > 0) {
-            subtotalAmount = totalCost / (1 + vatRate);
+            const subtotalAmount = totalCost / (1 + vatRate);
             vatAmount = totalCost - subtotalAmount;
             vatAccount = vatAccounts.length > 0 ? vatAccounts[0] : null;
           }
 
-          const entries = [
-            {
-              accountId: accountId,
-              accountCode: expenseAccount?.code || "",
-              accountName: expenseAccount?.name || "",
-              debit: subtotalAmount,
-              credit: 0
-            },
-            {
-              accountId: bankAccountingId,
-              accountCode: bankAccountingAccount.code,
-              accountName: bankAccountingAccount.name,
-              debit: 0,
-              credit: totalCost
+          // Group item debits by accountId
+          const accountGroups: { [accId: string]: { debit: number; code: string; name: string } } = {};
+          
+          for (const item of selectedItems) {
+            const itemAccId = item.accountId;
+            if (!itemAccId) continue;
+            const itemAcc = allAccs.find((a: any) => a.id === itemAccId) || mainExpenseAccount;
+            if (!itemAcc) continue;
+            
+            const itemSubtotal = item.quantity * item.unitCost;
+            if (!accountGroups[itemAcc.id]) {
+              accountGroups[itemAcc.id] = {
+                debit: 0,
+                code: itemAcc.code || "",
+                name: itemAcc.name || ""
+              };
             }
-          ];
+            accountGroups[itemAcc.id].debit += itemSubtotal;
+          }
 
+          const entries: any[] = [];
+          
+          // Add debits for each account group
+          for (const accId of Object.keys(accountGroups)) {
+            entries.push({
+              accountId: accId,
+              accountCode: accountGroups[accId].code,
+              accountName: accountGroups[accId].name,
+              debit: accountGroups[accId].debit,
+              credit: 0
+            });
+          }
+
+          // Add bank credit entry
+          entries.push({
+            accountId: bankAccountingId,
+            accountCode: bankAccountingAccount.code,
+            accountName: bankAccountingAccount.name,
+            debit: 0,
+            credit: totalCost
+          });
+
+          // Add VAT entry if exists
           if (vatAmount > 0 && vatAccount) {
             entries.push({
               accountId: vatAccount.id,
@@ -682,16 +833,20 @@ function NuevoGastoForm() {
             entries
           });
 
-          // Update Balances
-          await updateDoc(doc(db, "companies", companyId, "accounts", accountId), {
-            balance: increment(subtotalAmount)
-          });
+          // Update Balances for each used account
+          for (const accId of Object.keys(accountGroups)) {
+            await updateDoc(doc(db, "companies", companyId, "accounts", accId), {
+              balance: increment(accountGroups[accId].debit)
+            });
+          }
           await updateDoc(doc(db, "companies", companyId, "accounts", bankAccountingId), {
             balance: increment(-totalCost)
           });
-          await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
-            balance: increment(-totalCost)
-          });
+          if (selectedTransactionId === "manual") {
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
+              balance: increment(-totalCost)
+            });
+          }
           if (vatAmount > 0 && vatAccount) {
             await updateDoc(doc(db, "companies", companyId, "accounts", vatAccount.id), {
               balance: increment(vatAmount)
@@ -717,7 +872,7 @@ function NuevoGastoForm() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto p-4 md:p-6">
+    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6">
       
       {/* Header */}
       <div className="flex items-center gap-4">
@@ -836,7 +991,7 @@ function NuevoGastoForm() {
           Datos Generales del Gasto
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
           {/* Column 1: Proveedor */}
           <div className="space-y-2 col-span-1 relative" ref={vendorSelectorRef}>
             <label className="text-xs font-medium text-slate-500 uppercase">Proveedor *</label>
@@ -890,62 +1045,27 @@ function NuevoGastoForm() {
             )}
           </div>
 
-          {/* Column 2: Sucursal Destino */}
+          {/* Column 2: Fecha */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Sucursal (Destino) *</label>
-            <select 
-              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
-              value={locationId}
-              onChange={e => setLocationId(e.target.value)}
+            <label className="text-xs font-medium text-slate-500 uppercase">Fecha *</label>
+            <Input 
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="h-8 text-xs font-semibold"
               required
-            >
-              <option value="" disabled>Selecciona sucursal...</option>
-              {locations.map(l => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
+            />
           </div>
 
-          {/* Column 3: Cuenta Contable Gasto */}
+          {/* Column 3: Concepto / Notas */}
           <div className="space-y-2 col-span-1">
-            <label className="text-xs font-medium text-slate-500 uppercase flex items-center gap-1">
-              <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
-              Clasificación de Gasto *
-            </label>
-            <select 
-              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm font-semibold"
-              value={accountId}
-              onChange={e => setAccountId(e.target.value)}
-              required
-            >
-              <option value="" disabled>Selecciona cuenta...</option>
-              {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Column 4: Date and Notes */}
-          <div className="space-y-2 col-span-1">
-            <div>
-              <label className="text-xs font-medium text-slate-500 uppercase">Fecha *</label>
-              <Input 
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="h-8 text-xs font-semibold"
-                required
-              />
-            </div>
-            <div className="mt-1">
-              <label className="text-xs font-medium text-slate-500 uppercase">Concepto / Notas</label>
-              <Input 
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Ej. Gastos de viaje, comida..."
-                className="h-8 text-xs"
-              />
-            </div>
+            <label className="text-xs font-medium text-slate-500 uppercase">Concepto / Notas</label>
+            <Input 
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Ej. Gastos de viaje, comida..."
+              className="h-8 text-xs"
+            />
           </div>
         </div>
       </div>
@@ -960,92 +1080,228 @@ function NuevoGastoForm() {
             </h3>
             <span className="text-sm text-blue-700 font-medium">{selectedItems.length} partidas</span>
           </div>
+
+          {/* Bulk Actions Panel */}
+          {selectedItemKeys.length > 0 && (
+            <div className="p-3 bg-indigo-50 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-top duration-200">
+              <div className="flex items-center gap-2 font-bold text-indigo-950">
+                <span>{selectedItemKeys.length} partidas seleccionadas</span>
+                <button 
+                  type="button" 
+                  onClick={() => setSelectedItemKeys([])}
+                  className="text-[10px] text-indigo-600 hover:underline"
+                >
+                  (Limpiar selección)
+                </button>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Bulk Account selector */}
+                <select
+                  value={bulkAccountId}
+                  onChange={(e) => setBulkAccountId(e.target.value)}
+                  className="h-8 rounded border border-indigo-200 text-xs px-2 bg-white font-semibold"
+                >
+                  <option value="">-- Cuenta Contable --</option>
+                  {accounts.map(a => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                  ))}
+                </select>
+
+                {/* Bulk Cost Center selector */}
+                <select
+                  value={bulkCostCenterId}
+                  onChange={(e) => setBulkCostCenterId(e.target.value)}
+                  className="h-8 rounded border border-indigo-200 text-xs px-2 bg-white font-semibold"
+                >
+                  <option value="">-- Centro de Costos --</option>
+                  {costCenters.filter(c => c.isActive).map(c => (
+                    <option key={c.id} value={c.id}>[{c.code}] {c.name}</option>
+                  ))}
+                </select>
+
+                {/* Bulk Location selector */}
+                <select
+                  value={bulkLocationId}
+                  onChange={(e) => setBulkLocationId(e.target.value)}
+                  className="h-8 rounded border border-indigo-200 text-xs px-2 bg-white font-semibold"
+                >
+                  <option value="">-- Sucursal --</option>
+                  {locations.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleApplyBulk}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold h-8"
+                >
+                  Aplicar en lote
+                </Button>
+              </div>
+            </div>
+          )}
           
-          <div className="flex-1 p-5 overflow-y-auto space-y-3">
+          <div className="flex-1 p-5 overflow-y-auto space-y-3 lg:space-y-0">
+            {selectedItems.length > 0 && (
+              <div className="hidden lg:grid lg:grid-cols-[auto_1.5fr_1.2fr_1.2fr_2fr_0.5fr_1.2fr_0.8fr_auto] gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-t-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider items-center">
+                <div className="flex items-center">
+                  <input 
+                    type="checkbox"
+                    checked={selectedItems.length > 0 && selectedItemKeys.length === selectedItems.length}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedItemKeys(selectedItems.map(item => item.lineKey || item.variantId));
+                      } else {
+                        setSelectedItemKeys([]);
+                      }
+                    }}
+                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer"
+                  />
+                </div>
+                <div>Cuenta Contable *</div>
+                <div>Centro Costos</div>
+                <div>Sucursal *</div>
+                <div>Descripción / Nombre</div>
+                <div className="text-center">Cant.</div>
+                <div className="text-right">Costo Unitario</div>
+                <div className="text-right">Subtotal</div>
+                <div className="w-8"></div>
+              </div>
+            )}
             {selectedItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-10">
                 <FileText className="w-12 h-12 mb-3 opacity-20" />
                 <p>Añade los artículos, servicios o conceptos de este gasto.</p>
               </div>
             ) : (
-              selectedItems.map(item => {
+              selectedItems.map((item, idx) => {
                 const key = item.lineKey || item.variantId;
                 return (
-                  <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-background gap-4 shadow-sm animate-in fade-in duration-150">
-                    <div className="flex-1">
-                      {item.productId === "custom" ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mr-4">
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Código / SKU</label>
-                            <Input
-                              placeholder="Ej. GASTO-01"
-                              value={item.variantTitle}
-                              onChange={(e) => updateItem(key, 'variantTitle', e.target.value)}
-                              className="h-8 text-xs font-semibold bg-background"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Descripción / Nombre</label>
-                            <Input
-                              placeholder="Descripción del concepto..."
-                              value={item.productName}
-                              onChange={(e) => updateItem(key, 'productName', e.target.value)}
-                              className="h-8 text-xs font-bold bg-background"
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="font-bold text-slate-800">{item.productName}</p>
-                          {item.variantTitle && <p className="text-xs text-muted-foreground">SKU: {item.variantTitle}</p>}
-                        </>
-                      )}
+                  <div 
+                    key={key} 
+                    className="grid grid-cols-1 lg:grid-cols-[auto_1.5fr_1.2fr_1.2fr_2fr_0.5fr_1.2fr_0.8fr_auto] gap-2 p-4 lg:px-4 lg:py-2 bg-background border lg:border-t-0 lg:border-x lg:border-b border-slate-200 rounded-lg lg:rounded-none last:lg:rounded-b-lg shadow-sm lg:shadow-none items-center hover:bg-slate-50/50 transition-colors"
+                  >
+                    {/* Checkbox */}
+                    <div className="flex items-center lg:h-8">
+                      <input 
+                        type="checkbox"
+                        checked={selectedItemKeys.includes(key)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedItemKeys(prev => [...prev, key]);
+                          } else {
+                            setSelectedItemKeys(prev => prev.filter(k => k !== key));
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer"
+                      />
                     </div>
-                    <div className="flex flex-wrap items-center gap-4">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Costo U. (Estimado)</label>
-                        <div className="relative">
-                          <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                          <Input 
-                            type="number" 
-                            min={0}
-                            step="0.01"
-                            value={item.unitCost}
-                            onChange={(e) => updateItem(key, 'unitCost', parseFloat(e.target.value) || 0)}
-                            className="w-24 pl-6 text-right font-medium"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cant.</label>
+
+                    {/* 1. Cuenta Contable */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider lg:hidden">Cuenta Contable *</label>
+                      <select
+                        value={item.accountId || ""}
+                        onChange={(e) => updateItem(key, 'accountId', e.target.value || "")}
+                        className="h-8 rounded border border-input text-xs px-2 bg-white font-semibold w-full"
+                        required
+                      >
+                        <option value="" disabled>-- Selecciona cuenta --</option>
+                        {accounts.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.code} - {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 2. Centro de Costos */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider lg:hidden">Centro Costos</label>
+                      <select
+                        value={item.costCenterId || ""}
+                        onChange={(e) => updateItem(key, 'costCenterId', e.target.value || null)}
+                        className="h-8 rounded border border-input text-xs px-2 bg-white font-semibold w-full"
+                      >
+                        <option value="">-- Sin asignar --</option>
+                        {costCenters.filter(c => c.isActive).map(c => (
+                          <option key={c.id} value={c.id}>
+                            [{c.code}] {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 2b. Sucursal */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider lg:hidden">Sucursal *</label>
+                      <select
+                        value={item.locationId || ""}
+                        onChange={(e) => updateItem(key, 'locationId', e.target.value || "")}
+                        className="h-8 rounded border border-input text-xs px-2 bg-white font-semibold w-full"
+                        required
+                      >
+                        <option value="" disabled>-- Selecciona sucursal --</option>
+                        {locations.map(l => (
+                          <option key={l.id} value={l.id}>
+                            {l.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 4. Descripción / Nombre */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider lg:hidden">Descripción / Nombre</label>
+                      <Input
+                        placeholder="Descripción..."
+                        value={item.productName}
+                        onChange={(e) => updateItem(key, 'productName', e.target.value)}
+                        disabled={item.productId !== "custom"}
+                        className="h-8 text-xs font-bold bg-background"
+                      />
+                    </div>
+
+                    {/* 5. Cantidad */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider lg:hidden">Cant.</label>
+                      <Input 
+                        type="number" 
+                        min={1} 
+                        value={item.quantity}
+                        onChange={(e) => updateItem(key, 'quantity', parseInt(e.target.value) || 1)}
+                        className="h-8 text-xs text-center font-bold"
+                      />
+                    </div>
+
+                    {/* 6. Costo Unitario */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider lg:hidden">Costo Unitario</label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
                         <Input 
                           type="number" 
-                          min={1} 
-                          value={item.quantity}
-                          onChange={(e) => updateItem(key, 'quantity', parseInt(e.target.value) || 1)}
-                          className="w-16 text-center font-bold"
+                          min={0}
+                          step="0.01"
+                          value={item.unitCost}
+                          onChange={(e) => updateItem(key, 'unitCost', parseFloat(e.target.value) || 0)}
+                          className="h-8 w-full pl-6 text-right text-xs font-semibold"
                         />
                       </div>
-                      <div className="flex flex-col gap-1 min-w-[140px]">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Centro Costos</label>
-                        <select
-                          value={item.costCenterId || ""}
-                          onChange={(e) => updateItem(key, 'costCenterId', e.target.value || null)}
-                          className="h-8 rounded border text-xs px-2 bg-white font-semibold min-w-[140px] w-full"
-                        >
-                          <option value="">-- Sin asignar --</option>
-                          {costCenters.filter(c => c.isActive).map(c => (
-                            <option key={c.id} value={c.id}>
-                              [{c.code}] {c.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex flex-col gap-1 min-w-[70px] text-right">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Subtotal</label>
-                        <p className="font-bold text-indigo-700">${(item.quantity * item.unitCost).toLocaleString('es-MX', {minimumFractionDigits:2})}</p>
-                      </div>
-                      <Button variant="ghost" size="icon" className="text-destructive mt-4 sm:mt-0" onClick={() => removeItem(key)}>
+                    </div>
+
+                    {/* 7. Subtotal */}
+                    <div className="flex flex-col gap-1 text-right lg:pr-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider lg:hidden">Subtotal</label>
+                      <p className="font-bold text-indigo-700 text-xs py-1.5">${(item.quantity * item.unitCost).toLocaleString('es-MX', {minimumFractionDigits:2})}</p>
+                    </div>
+
+                    {/* 8. Acciones */}
+                    <div className="flex justify-end pt-2 lg:pt-0">
+                      <Button variant="ghost" size="icon" className="text-destructive h-8 w-8" onClick={() => removeItem(key)}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -1129,10 +1385,30 @@ function NuevoGastoForm() {
                   >
                     <option value="" disabled>Selecciona la cuenta origen...</option>
                     {bankAccounts.map(a => (
-                      <option key={a.id} value={a.id}>{a.code} - {a.name || a.Name}</option>
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.type === "cash" ? "Efectivo" : a.type === "terminal" ? "Terminal" : "Banco"})
+                      </option>
                     ))}
                   </select>
                 </div>
+
+                {bankAccountId && (
+                  <div className="space-y-1.5 col-span-2 animate-in fade-in duration-200">
+                    <label className="text-xs font-semibold text-slate-700 uppercase">Vincular a Egreso Bancario Existente</label>
+                    <select
+                      value={selectedTransactionId}
+                      onChange={e => setSelectedTransactionId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background font-semibold"
+                    >
+                      <option value="manual">-- Registrar nuevo egreso manualmente --</option>
+                      {unreconciledTransactions.map(tx => (
+                        <option key={tx.id} value={tx.id}>
+                          {tx.date} - {tx.concept} (${Math.abs(tx.amount).toLocaleString('es-MX', {minimumFractionDigits:2})} {tx.reference ? `| Ref: ${tx.reference}` : ''})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700 uppercase">Método de Pago *</label>
@@ -1195,7 +1471,7 @@ function NuevoGastoForm() {
               <Button 
                 size="lg" 
                 onClick={handleSave} 
-                disabled={saving || selectedItems.length === 0 || !vendorId || !locationId || !accountId}
+                disabled={saving || selectedItems.length === 0 || !vendorId}
                 className="w-full gap-2 bg-indigo-600 hover:bg-indigo-700 mt-6 text-white font-bold"
               >
                 {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}

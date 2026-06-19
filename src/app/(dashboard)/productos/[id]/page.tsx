@@ -17,7 +17,7 @@ import { SatCatalogSelect } from "@/components/pos/SatCatalogSelect";
 export default function EditarProductoPage() {
   const router = useRouter();
   const params = useParams();
-  const productId = params.id as string;
+  const productId = decodeURIComponent(params.id as string);
   const { companyId } = useAuth();
 
   const [loading, setLoading] = useState(true);

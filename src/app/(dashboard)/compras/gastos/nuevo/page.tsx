@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
-import { collection, query, onSnapshot, doc, setDoc, addDoc, getDocs, updateDoc, increment, getDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, setDoc, addDoc, getDocs, updateDoc, increment, getDoc, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +20,7 @@ interface OrderItem {
   quantity: number;
   unitCost: number;
   description?: string;
+  costCenterId?: string;
 }
 
 interface Vendor {
@@ -53,6 +54,7 @@ function NuevoGastoForm() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [satInvoices, setSatInvoices] = useState<SatInvoice[]>([]);
+  const [costCenters, setCostCenters] = useState<any[]>([]);
 
   // Form Fields
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -161,6 +163,16 @@ function NuevoGastoForm() {
       setSatInvoices(Array.from(dedupMap.values()));
     });
 
+    // Load cost centers
+    const unsubCC = onSnapshot(query(collection(db, "companies", companyId, "cost_centers"), orderBy("code", "asc")), (snap) => {
+      setCostCenters(snap.docs.map(d => ({
+        id: d.id,
+        code: d.data().code || "",
+        name: d.data().name || "",
+        isActive: d.data().isActive ?? true
+      })));
+    });
+
     return () => {
       unsubV();
       unsubP();
@@ -168,6 +180,7 @@ function NuevoGastoForm() {
       unsubAcc();
       unsubBank();
       unsubSat();
+      unsubCC();
     };
   }, [companyId]);
 
@@ -561,7 +574,8 @@ function NuevoGastoForm() {
           variantTitle: i.variantTitle,
           quantity: i.quantity,
           unitCost: i.unitCost,
-          lineKey: i.lineKey || ""
+          lineKey: i.lineKey || "",
+          costCenterId: i.costCenterId || null
         })),
         createdAt: new Date().toISOString(),
         createdBy: user?.email || "Unknown"
@@ -1011,6 +1025,21 @@ function NuevoGastoForm() {
                           onChange={(e) => updateItem(key, 'quantity', parseInt(e.target.value) || 1)}
                           className="w-16 text-center font-bold"
                         />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-[140px]">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Centro Costos</label>
+                        <select
+                          value={item.costCenterId || ""}
+                          onChange={(e) => updateItem(key, 'costCenterId', e.target.value || null)}
+                          className="h-8 rounded border text-xs px-2 bg-white font-semibold min-w-[140px] w-full"
+                        >
+                          <option value="">-- Sin asignar --</option>
+                          {costCenters.filter(c => c.isActive).map(c => (
+                            <option key={c.id} value={c.id}>
+                              [{c.code}] {c.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="flex flex-col gap-1 min-w-[70px] text-right">
                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Subtotal</label>

@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Receipt, CloudDownload, RefreshCw, Loader2, AlertCircle, FileText, DollarSign, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Eye } from "lucide-react";
+import { Receipt, CloudDownload, RefreshCw, Loader2, AlertCircle, FileText, DollarSign, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Search } from "lucide-react";
 import Link from "next/link";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 
@@ -22,6 +22,8 @@ export default function GastosPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("todos");
 
   // Sorting state
   const [sortField, setSortField] = useState<string>("date");
@@ -47,7 +49,24 @@ export default function GastosPage() {
     );
   };
 
-  const sortedInvoices = [...invoices].sort((a, b) => {
+  const filteredInvoices = invoices.filter(inv => {
+    const matchesSearch = 
+      (inv.emisorName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (inv.emisorRfc || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (inv.uuid || "").toLowerCase().includes(searchTerm.toLowerCase());
+      
+    const isPaid = (inv.paidAmount || 0) >= (inv.total || 0) - 0.01;
+    let matchesStatus = true;
+    if (statusFilter === "pendientes") {
+      matchesStatus = !isPaid;
+    } else if (statusFilter === "pagados") {
+      matchesStatus = isPaid;
+    }
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const sortedInvoices = [...filteredInvoices].sort((a, b) => {
     let aVal = a[sortField] || "";
     let bVal = b[sortField] || "";
 
@@ -354,8 +373,37 @@ export default function GastosPage() {
           <div className="p-4 border-b flex items-center justify-between gap-4 bg-muted/20 rounded-t-xl shrink-0">
               <h3 className="font-bold flex items-center gap-2">
                   <FileText className="w-5 h-5 text-muted-foreground" />
-                  Facturas Pendientes de Registro
+                  Facturas SAT (Bandeja de Entrada)
               </h3>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-b bg-slate-50/50 shrink-0">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Buscar por emisor, RFC o UUID..." 
+                className="pl-9 bg-background h-9 text-sm"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado:</span>
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-medium"
+              >
+                <option value="todos">Todos</option>
+                <option value="pendientes">Pendientes</option>
+                <option value="pagados">Pagados / Registrados</option>
+              </select>
+              
+              <span className="text-xs font-semibold text-slate-500 bg-white border px-3 py-1.5 rounded-full shadow-sm ml-2">
+                {filteredInvoices.length} facturas
+              </span>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
@@ -364,6 +412,12 @@ export default function GastosPage() {
                       <FileText className="w-12 h-12 mb-3 opacity-20" />
                       <p>No hay facturas pendientes.</p>
                       <p className="text-sm">Haz clic en Sincronizar con SAT para descargar tus gastos recientes.</p>
+                  </div>
+              ) : filteredInvoices.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-[300px] text-center text-muted-foreground opacity-60">
+                      <Search className="w-12 h-12 mb-3 opacity-20" />
+                      <p className="font-bold text-slate-800">No se encontraron facturas</p>
+                      <p className="text-sm">Intenta buscando con otro término o cambiando el filtro de estado.</p>
                   </div>
               ) : (
                   <table className="w-full text-sm">

@@ -6,12 +6,24 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Receipt, CloudDownload, RefreshCw, Loader2, AlertCircle, FileText, DollarSign, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Search } from "lucide-react";
+import { Receipt, CloudDownload, RefreshCw, Loader2, AlertCircle, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Search, Truck } from "lucide-react";
 import Link from "next/link";
-import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 
 import { SatRequestsModal } from "@/components/features/sat/SatRequestsModal";
 import { UploadSatFilesModal } from "@/components/features/sat/UploadSatFilesModal";
+
+const decodeBase64Utf8 = (str: string) => {
+  try {
+    return decodeURIComponent(
+      atob(str)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+  } catch (e) {
+    return atob(str);
+  }
+};
 
 export default function GastosPage() {
   const { companyId } = useAuth();
@@ -20,10 +32,60 @@ export default function GastosPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [invoices, setInvoices] = useState<any[]>([]);
-  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
+
+  // Date Filters State
+  const [dateFilterOption, setDateFilterOption] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const handleDateFilterChange = (option: string) => {
+    setDateFilterOption(option);
+    
+    const getLocalDateString = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    
+    if (option === "all") {
+      setDateFrom("");
+      setDateTo("");
+    } else if (option === "today") {
+      const todayStr = getLocalDateString(now);
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (option === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+      setDateFrom(yesterdayStr);
+      setDateTo(yesterdayStr);
+    } else if (option === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(getLocalDateString(startOfMonth));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "last_month") {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateFrom(getLocalDateString(startOfLastMonth));
+      setDateTo(getLocalDateString(endOfLastMonth));
+    } else if (option === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      setDateFrom(getLocalDateString(thirtyDaysAgo));
+      setDateTo(getLocalDateString(now));
+    } else if (option === "this_year") {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      setDateFrom(getLocalDateString(startOfYear));
+      setDateTo(getLocalDateString(now));
+    }
+  };
 
   // Sorting state
   const [sortField, setSortField] = useState<string>("date");
@@ -48,12 +110,12 @@ export default function GastosPage() {
       <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
     );
   };
-
   const filteredInvoices = invoices.filter(inv => {
     const matchesSearch = 
       (inv.emisorName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (inv.emisorRfc || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (inv.uuid || "").toLowerCase().includes(searchTerm.toLowerCase());
+      (inv.uuid || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (inv.folio || "").toLowerCase().includes(searchTerm.toLowerCase());
       
     const isPaid = (inv.paidAmount || 0) >= (inv.total || 0) - 0.01;
     let matchesStatus = true;
@@ -61,6 +123,12 @@ export default function GastosPage() {
       matchesStatus = !isPaid;
     } else if (statusFilter === "pagados") {
       matchesStatus = isPaid;
+    }
+    
+    // Date range filter
+    if (dateFrom || dateTo) {
+      if (dateFrom && inv.date < dateFrom) return false;
+      if (dateTo && inv.date > dateTo) return false;
     }
     
     return matchesSearch && matchesStatus;
@@ -103,7 +171,26 @@ export default function GastosPage() {
       orderBy("date", "desc")
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data = snapshot.docs.map(doc => {
+        const inv = { id: doc.id, ...doc.data() } as any;
+        let computedFolio = inv.folio || inv.invoiceNumber || "";
+        if (!computedFolio && inv.xmlBase64) {
+          try {
+            const xmlText = decodeBase64Utf8(inv.xmlBase64);
+            const folioMatch = xmlText.match(/Folio="([^"]+)"/i);
+            const serieMatch = xmlText.match(/Serie="([^"]+)"/i);
+            const folioVal = folioMatch ? folioMatch[1] : "";
+            const serieVal = serieMatch ? serieMatch[1] : "";
+            computedFolio = serieVal ? `${serieVal}-${folioVal}` : folioVal;
+          } catch (e) {
+            console.error("Error parsing folio in onSnapshot:", e);
+          }
+        }
+        return {
+          ...inv,
+          folio: computedFolio
+        };
+      });
       setInvoices(data);
       setLoading(false);
     });
@@ -352,7 +439,7 @@ export default function GastosPage() {
                     <RefreshCw className="w-4 h-4" />
                     Revisar Pendientes
                   </Button>
-                  <Button onClick={handleSyncSAT} disabled={syncing} className="gap-2 h-9">
+                  <Button onClick={handleSyncSAT} disabled={syncing} className="gap-2 h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
                     <CloudDownload className="w-4 h-4" />
                     Sincronizar con SAT
                   </Button>
@@ -369,7 +456,7 @@ export default function GastosPage() {
         </div>
       )}
 
-      <div className="bg-card border rounded-xl shadow-sm flex flex-col h-[600px]">
+      <div className="bg-white border rounded-xl shadow-sm flex flex-col h-[600px]">
           <div className="p-4 border-b flex items-center justify-between gap-4 bg-muted/20 rounded-t-xl shrink-0">
               <h3 className="font-bold flex items-center gap-2">
                   <FileText className="w-5 h-5 text-muted-foreground" />
@@ -377,30 +464,83 @@ export default function GastosPage() {
               </h3>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-b bg-slate-50/50 shrink-0">
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Buscar por emisor, RFC o UUID..." 
-                className="pl-9 bg-background h-9 text-sm"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
-            </div>
-            
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado:</span>
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-medium"
-              >
-                <option value="todos">Todos</option>
-                <option value="pendientes">Pendientes</option>
-                <option value="pagados">Pagados / Registrados</option>
-              </select>
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 p-4 border-b bg-slate-50/50 shrink-0">
+            <div className="flex flex-col sm:flex-row flex-wrap items-end gap-3 flex-1 w-full">
+              {/* Búsqueda */}
+              <div className="flex flex-col gap-1 w-full sm:w-64">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Buscar</span>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Buscar por emisor, RFC o UUID..." 
+                    className="pl-9 bg-background h-9 text-sm"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
               
-              <span className="text-xs font-semibold text-slate-500 bg-white border px-3 py-1.5 rounded-full shadow-sm ml-2">
+              {/* Estado */}
+              <div className="flex flex-col gap-1 w-full sm:w-40">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado</span>
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none font-medium"
+                >
+                  <option value="todos">Todos</option>
+                  <option value="pendientes">Pendientes</option>
+                  <option value="pagados">Pagados / Registrados</option>
+                </select>
+              </div>
+
+              {/* Fecha */}
+              <div className="flex flex-col gap-1 w-full sm:w-44">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Rango de Fecha</span>
+                <select
+                  value={dateFilterOption}
+                  onChange={e => handleDateFilterChange(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none font-medium"
+                >
+                  <option value="all">Cualquier fecha</option>
+                  <option value="today">Hoy</option>
+                  <option value="yesterday">Ayer</option>
+                  <option value="this_month">Este Mes</option>
+                  <option value="last_month">Mes Anterior</option>
+                  <option value="last_30_days">Últimos 30 Días</option>
+                  <option value="this_year">Este Año</option>
+                  <option value="custom">Rango Personalizado</option>
+                </select>
+              </div>
+
+              {/* Rango Personalizado */}
+              {dateFilterOption === "custom" && (
+                <>
+                  <div className="flex flex-col gap-1 w-full sm:w-36 animate-in fade-in slide-in-from-left-2 duration-200">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Desde</span>
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={e => setDateFrom(e.target.value)}
+                      className="h-9 bg-background text-sm"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 w-full sm:w-36 animate-in fade-in slide-in-from-left-2 duration-200">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Hasta</span>
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={e => setDateTo(e.target.value)}
+                      className="h-9 bg-background text-sm"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Contador de facturas */}
+            <div className="shrink-0 flex items-center md:pb-1">
+              <span className="text-xs font-semibold text-slate-500 bg-white border px-3 py-1.5 rounded-full shadow-sm">
                 {filteredInvoices.length} facturas
               </span>
             </div>
@@ -421,7 +561,7 @@ export default function GastosPage() {
                   </div>
               ) : (
                   <table className="w-full text-sm">
-                      <thead className="bg-muted/50 sticky top-0 z-10 backdrop-blur-sm">
+                      <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold sticky top-0 z-10 backdrop-blur-sm">
                           <tr>
                               <th 
                                 className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
@@ -452,11 +592,11 @@ export default function GastosPage() {
                               </th>
                               <th 
                                 className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
-                                onClick={() => handleSort("uuid")}
+                                onClick={() => handleSort("folio")}
                               >
                                 <div className="flex items-center">
-                                  UUID
-                                  {renderSortIcon("uuid")}
+                                  Folio
+                                  {renderSortIcon("folio")}
                                 </div>
                               </th>
                               <th 
@@ -468,19 +608,24 @@ export default function GastosPage() {
                                   {renderSortIcon("total")}
                                 </div>
                               </th>
+                              <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Estado</th>
                               <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Acción</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y">
                           {sortedInvoices.map((inv) => (
                               <tr key={inv.id} className="hover:bg-muted/30 transition-colors">
-                                  <td className="px-4 py-3 whitespace-nowrap">{inv.date}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap">{inv.date ? inv.date.substring(0, 10) : ""}</td>
                                   <td className="px-4 py-3 font-medium">{inv.emisorName}</td>
                                   <td className="px-4 py-3">{inv.emisorRfc}</td>
                                   <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
-                                    <Link href={`/gastos/${inv.id}`} target="_blank" className="text-indigo-600 hover:text-indigo-800 hover:underline">
-                                      {inv.uuid}
-                                    </Link>
+                                    {inv.folio ? (
+                                      <Link href={`/gastos/${inv.id}`} target="_blank" className="text-indigo-600 hover:text-indigo-800 hover:underline">
+                                        {inv.folio}
+                                      </Link>
+                                    ) : (
+                                      ""
+                                    )}
                                   </td>
                                   <td className="px-4 py-3 text-right">
                                       <div className="font-bold">{formatMoney(inv.total)}</div>
@@ -488,50 +633,62 @@ export default function GastosPage() {
                                         <div className="text-xs text-rose-600 font-medium">Pagado: {formatMoney(inv.paidAmount || 0)}</div>
                                       )}
                                   </td>
+                                  <td className="px-4 py-3 text-center whitespace-nowrap">
+                                      {(() => {
+                                        const total = inv.total || 0;
+                                        const paid = inv.paidAmount || 0;
+                                        if (paid >= total - 0.01) {
+                                          return (
+                                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
+                                              Pagado
+                                            </span>
+                                          );
+                                        } else if (paid > 0.01) {
+                                          return (
+                                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-800 bg-indigo-100 px-2.5 py-1 rounded-full border border-indigo-200">
+                                              Pago Parcial
+                                            </span>
+                                          );
+                                        } else {
+                                          return (
+                                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-200">
+                                              Pendiente
+                                            </span>
+                                          );
+                                        }
+                                      })()}
+                                  </td>
                                   <td className="px-4 py-3 text-center">
                                       <div className="flex items-center justify-center gap-2">
-                                        {(!inv.paidAmount || inv.paidAmount < inv.total - 0.01) ? (
+                                        {(!inv.paidAmount || inv.paidAmount < inv.total - 0.01) && (
                                           <>
                                             <Button 
+                                              asChild
                                               variant="outline" 
                                               size="icon" 
-                                              className="h-8 w-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 shrink-0"
-                                              onClick={() => {
-                                                setSelectedInvoice(inv);
-                                                setIsPaymentModalOpen(true);
-                                              }}
-                                              title="Registrar Pago"
+                                              className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 shrink-0"
                                             >
-                                              <DollarSign className="w-4 h-4" />
-                                            </Button>
-                                            <Link href={`/compras/gastos/nuevo?satId=${inv.id}`}>
-                                              <Button 
-                                                variant="outline" 
-                                                size="icon" 
-                                                className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 shrink-0"
-                                                title="Registrar Gasto"
-                                              >
+                                              <Link href={`/compras/gastos/nuevo?satId=${inv.id}`} target="_blank" title="Registrar Gasto">
                                                 <Receipt className="w-4 h-4" />
-                                              </Button>
-                                            </Link>
-                                            <Link href={`/gastos/${inv.id}`} target="_blank">
-                                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0" title="Ver Detalles">
-                                                <Eye className="w-4 h-4 text-indigo-600" />
-                                              </Button>
-                                            </Link>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">
-                                              <CheckCircle2 className="w-3 h-3" /> Pagado
-                                            </span>
-                                            <Link href={`/gastos/${inv.id}`} target="_blank">
-                                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0" title="Ver Detalles">
-                                                <Eye className="w-4 h-4 text-indigo-600" />
-                                              </Button>
-                                            </Link>
+                                              </Link>
+                                            </Button>
+                                            <Button 
+                                              asChild
+                                              variant="outline" 
+                                              size="icon" 
+                                              className="h-8 w-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 shrink-0"
+                                            >
+                                              <Link href={`/compras/recepciones/nueva?satId=${inv.id}`} target="_blank" title="Registrar Recepción">
+                                                <Truck className="w-4 h-4" />
+                                              </Link>
+                                            </Button>
                                           </>
                                         )}
+                                        <Button asChild variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0">
+                                          <Link href={`/gastos/${inv.id}`} target="_blank" title="Ver Detalles">
+                                            <Eye className="w-4 h-4 text-indigo-600" />
+                                          </Link>
+                                        </Button>
                                       </div>
                                   </td>
                               </tr>
@@ -542,18 +699,7 @@ export default function GastosPage() {
           </div>
       </div>
 
-      {selectedInvoice && (
-        <ExpensePaymentModal
-          isOpen={isPaymentModalOpen}
-          onClose={() => {
-            setIsPaymentModalOpen(false);
-            setSelectedInvoice(null);
-          }}
-          document={selectedInvoice}
-          documentType="gasto"
-          companyId={companyId || ""}
-        />
-      )}
+
 
       <SatRequestsModal
         isOpen={isRequestsModalOpen}

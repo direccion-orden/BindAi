@@ -50,15 +50,24 @@ const parseXmlInvoice = (xmlText: string): any => {
                         || xmlDoc.getElementsByTagName("Comprobante")[0];
     let total = 0;
     let date = "";
+    let folio = "";
+    let serie = "";
     if (comprobanteNode) {
       total = parseFloat(comprobanteNode.getAttribute("Total") || "0") || 0;
       date = comprobanteNode.getAttribute("Fecha") || "";
+      folio = comprobanteNode.getAttribute("Folio") || "";
+      serie = comprobanteNode.getAttribute("Serie") || "";
     } else {
       const totalMatch = xmlText.match(/Total="([^"]+)"/i);
       const fechaMatch = xmlText.match(/Fecha="([^"]+)"/i);
+      const folioMatch = xmlText.match(/Folio="([^"]+)"/i);
+      const serieMatch = xmlText.match(/Serie="([^"]+)"/i);
       if (totalMatch) total = parseFloat(totalMatch[1]) || 0;
       if (fechaMatch) date = fechaMatch[1];
+      if (folioMatch) folio = folioMatch[1];
+      if (serieMatch) serie = serieMatch[1];
     }
+    const combinedFolio = (serie ? `${serie}-${folio}` : folio) || "";
 
     // 3. Emisor (Rfc, Nombre)
     const emisorNode = xmlDoc.getElementsByTagName("cfdi:Emisor")[0]
@@ -85,6 +94,7 @@ const parseXmlInvoice = (xmlText: string): any => {
       date,
       emisorRfc,
       emisorName,
+      folio: combinedFolio,
       xmlBase64,
       status: "pending_review",
       createdAt: new Date().toISOString()

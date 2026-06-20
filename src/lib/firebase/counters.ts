@@ -1,7 +1,7 @@
 import { doc, runTransaction } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 
-export async function getNextSequence(companyId: string, type: 'cotizaciones' | 'pedidos' | 'remisiones' | 'facturas'): Promise<string> {
+export async function getNextSequence(companyId: string, type: 'cotizaciones' | 'pedidos' | 'remisiones' | 'facturas' | 'gastos'): Promise<string> {
   const counterRef = doc(db, "companies", companyId, "counters", "sequences");
   
   return await runTransaction(db, async (transaction) => {
@@ -23,6 +23,7 @@ export async function getNextSequence(companyId: string, type: 'cotizaciones' | 
     if (type === 'pedidos') prefix = 'PED';
     if (type === 'remisiones') prefix = 'REM';
     if (type === 'facturas') prefix = 'FAC';
+    if (type === 'gastos') prefix = 'GAS';
     
     return `${prefix}-${nextVal.toString().padStart(5, '0')}`;
   });

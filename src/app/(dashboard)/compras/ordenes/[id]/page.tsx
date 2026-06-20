@@ -244,25 +244,34 @@ export default function DetalleOrdenCompraPage() {
         
         {(order.status === "SENT" || order.status === "PARTIAL") && (
           <Link href={`/compras/recepciones/nueva?orderId=${order.id}`}>
-            <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+            <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
               <Truck className="w-4 h-4" /> Surtir Orden
             </Button>
           </Link>
         )}
 
         {(!order.paidAmount || order.paidAmount < order.totalAmount - 0.01) && (
-          <Button onClick={() => setIsPaymentModalOpen(true)} className="gap-2 bg-rose-600 hover:bg-rose-700 text-white">
+          <Button 
+            onClick={() => setIsPaymentModalOpen(true)} 
+            variant="outline"
+            className="gap-2 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 font-bold"
+          >
             <DollarSign className="w-4 h-4" /> Registrar Pago
           </Button>
         )}
 
-        <Button onClick={handleDownloadPDF} disabled={generatingPdf} className="gap-2 bg-[hsl(38,6%,22%)] text-white hover:bg-[hsl(38,6%,30%)]">
+        <Button 
+          onClick={handleDownloadPDF} 
+          disabled={generatingPdf} 
+          variant="outline"
+          className="gap-2 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold"
+        >
           {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           Descargar PDF
         </Button>
       </div>
 
-      <div className="bg-card border rounded-xl shadow-sm overflow-hidden p-6">
+      <div className="bg-white border rounded-xl shadow-sm overflow-hidden p-6">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mb-8">
           <div>
             <p className="text-sm text-muted-foreground mb-1">Proveedor</p>
@@ -296,7 +305,7 @@ export default function DetalleOrdenCompraPage() {
         <h3 className="font-semibold text-lg mb-4">Artículos Solicitados</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground font-medium border-b">
+            <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
                 <th className="px-4 py-3">Producto</th>
                 <th className="px-4 py-3 text-right">Cant. Requerida</th>

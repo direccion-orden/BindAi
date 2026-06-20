@@ -30,6 +30,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [conceptos, setConceptos] = useState<ConceptItem[]>([]);
+  const [isManual, setIsManual] = useState(false);
 
   // Configurator / Payment States
   const [amount, setAmount] = useState<number>(0);
@@ -112,29 +113,65 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
 
     const fetchInvoice = async () => {
       try {
-        const docRef = doc(db, "companies", companyId, "expenses_inbox", params.id);
-        const snap = await getDoc(docRef);
+        let docRef = doc(db, "companies", companyId, "expenses_inbox", params.id);
+        let snap = await getDoc(docRef);
+        let manual = false;
+
+        if (!snap.exists()) {
+          docRef = doc(db, "companies", companyId, "expenses", params.id);
+          snap = await getDoc(docRef);
+          manual = true;
+        }
+
         if (snap.exists()) {
+          setIsManual(manual);
           const invData = snap.data();
-          setInvoice({ id: snap.id, ...invData });
+
+          const normalizedInvoice = {
+            id: snap.id,
+            emisorName: invData.emisorName || invData.vendorName || "Proveedor",
+            emisorRfc: invData.emisorRfc || "",
+            uuid: invData.uuid || invData.satInvoiceId || "Sin UUID",
+            date: invData.date || "",
+            total: invData.total !== undefined ? invData.total : invData.amount || 0,
+            paidAmount: invData.paidAmount || 0,
+            status: invData.status || "pending",
+            invoiceNumber: invData.invoiceNumber || invData.documentNumber || "",
+            xmlBase64: invData.xmlBase64 || null,
+            accountId: invData.accountId || "",
+          };
+
+          setInvoice(normalizedInvoice);
 
           // Initialize payment configuration
-          const totalVal = invData.total || 0;
-          const paidVal = invData.paidAmount || 0;
+          const totalVal = normalizedInvoice.total;
+          const paidVal = normalizedInvoice.paidAmount;
           const outstanding = Math.max(0, totalVal - paidVal);
           setAmount(Number(outstanding.toFixed(2)));
           setDate(new Date().toISOString().split("T")[0]);
-          setExpenseAccountId(invData.accountId || "");
+          setExpenseAccountId(normalizedInvoice.accountId || "");
 
-          // Parse XML base64 if present
+          // Parse XML base64 if present, else map manual items
           if (invData.xmlBase64) {
             const xmlText = decodeBase64Utf8(invData.xmlBase64);
             const parsedItems = parseCFDIXml(xmlText);
             setConceptos(parsedItems);
+          } else if (invData.items && invData.items.length > 0) {
+            const mappedConceptos = invData.items.map((item: any) => ({
+              claveProdServ: item.accountId || "",
+              noIdentificacion: item.variantTitle || "",
+              cantidad: item.quantity || 1,
+              claveUnidad: "",
+              unidad: "PZA",
+              descripcion: item.productName || "Gasto",
+              valorUnitario: item.unitCost || item.amount || 0,
+              importe: (item.quantity || 1) * (item.unitCost || item.amount || 0),
+            }));
+            setConceptos(mappedConceptos);
           }
         }
       } catch (err) {
-        console.error("Error fetching SAT invoice:", err);
+        console.error("Error fetching invoice:", err);
       } finally {
         setLoading(false);
       }
@@ -312,10 +349,10 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         }
       }
 
-      await updateDoc(doc(db, "companies", companyId, "expenses_inbox", invoice.id), docUpdates);
+      await updateDoc(doc(db, "companies", companyId, isManual ? "expenses" : "expenses_inbox", invoice.id), docUpdates);
 
       alert("Egreso registrado exitosamente.");
-      router.push("/gastos");
+      router.push(isManual ? "/compras/gastos" : "/gastos");
     } catch (err) {
       console.error("Error registering payment:", err);
       alert("Hubo un error al registrar el pago.");
@@ -332,7 +369,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       {/* Header back link */}
       <div className="flex justify-between items-start">
         <div className="flex items-center gap-3">
-          <Link href="/gastos">
+          <Link href={isManual ? "/compras/gastos" : "/gastos"}>
             <Button variant="ghost" size="icon" className="rounded-full">
               <ArrowLeft className="w-5 h-5" />
             </Button>

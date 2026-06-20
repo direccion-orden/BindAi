@@ -63,18 +63,24 @@ export async function POST(req: Request) {
                 const reader = await CfdiPackageReader.createFromContents(zipBuffer as any);
                 for await (const map of reader.cfdis()) {
                     for (const [uuid, content] of map) {
-                        const uuidMatch = content.match(/UUID="([^"]+)"/);
-                        const totalMatch = content.match(/Total="([^"]+)"/);
-                        const fechaMatch = content.match(/Fecha="([^"]+)"/);
+                        const uuidMatch = content.match(/UUID="([^"]+)"/i);
+                        const totalMatch = content.match(/Total="([^"]+)"/i);
+                        const fechaMatch = content.match(/Fecha="([^"]+)"/i);
                         const emisorMatch = content.match(/<cfdi:Emisor[^>]+Rfc="([^"]+)"[^>]+Nombre="([^"]+)"/i);
+                        const folioMatch = content.match(/Folio="([^"]+)"/i);
+                        const serieMatch = content.match(/Serie="([^"]+)"/i);
                         
                         if (uuidMatch) {
+                            const folio = folioMatch ? folioMatch[1] : "";
+                            const serie = serieMatch ? serieMatch[1] : "";
+                            const combinedFolio = serie ? `${serie}-${folio}` : folio;
                             invoices.push({
                                 uuid: uuidMatch[1],
                                 total: totalMatch ? parseFloat(totalMatch[1]) : 0,
                                 date: fechaMatch ? fechaMatch[1] : "",
                                 emisorRfc: emisorMatch ? emisorMatch[1] : "Desconocido",
                                 emisorName: emisorMatch ? emisorMatch[2] : "Desconocido",
+                                folio: combinedFolio,
                                 xmlBase64: Buffer.from(content).toString('base64'),
                                 status: "pending_review",
                                 createdAt: new Date().toISOString()

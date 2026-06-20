@@ -312,27 +312,26 @@ export default function ProveedoresPage() {
         </div>
         {!isEditing && (
           
-            <div className="flex gap-2">
-              <input type="file" id="csv-upload" className="hidden" accept=".csv" onChange={handleImportCSV} />
-              <Button variant="outline" className="gap-2" onClick={() => document.getElementById('csv-upload')?.click()} disabled={importing}>
-                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                {importing ? "Importando..." : "Importar CSV"}
-              </Button>
-              
-              <Button variant="outline" className="gap-2 text-orange-600 border-orange-200 hover:bg-orange-50" onClick={handleCleanup} disabled={importing}>
-                Limpiar Duplicados
-              </Button>
-              <Button onClick={() => handleOpenForm()} className="gap-2">
-
-                <Plus className="w-4 h-4" /> Nuevo Proveedor
-              </Button>
-            </div>
+             <div className="flex gap-2">
+               <input type="file" id="csv-upload" className="hidden" accept=".csv" onChange={handleImportCSV} />
+               <Button variant="outline" className="gap-2 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold" onClick={() => document.getElementById('csv-upload')?.click()} disabled={importing}>
+                 {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                 {importing ? "Importando..." : "Importar CSV"}
+               </Button>
+               
+               <Button variant="outline" className="gap-2 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold" onClick={handleCleanup} disabled={importing}>
+                 Limpiar Duplicados
+               </Button>
+               <Button onClick={() => handleOpenForm()} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
+                 <Plus className="w-4 h-4" /> Nuevo Proveedor
+               </Button>
+             </div>
 
         )}
       </div>
 
       {isEditing ? (
-        <div className="bg-card border rounded-lg p-6 max-w-4xl animate-in fade-in zoom-in duration-300">
+        <div className="bg-white border rounded-xl shadow-sm p-6 max-w-4xl animate-in fade-in zoom-in duration-300">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold">{currentId ? "Editar Proveedor" : "Nuevo Proveedor"}</h2>
             <Button variant="ghost" size="sm" onClick={handleCloseForm}>Cerrar</Button>
@@ -446,7 +445,7 @@ export default function ProveedoresPage() {
 
             <div className="flex justify-end pt-6 border-t gap-4">
               <Button type="button" variant="ghost" onClick={handleCloseForm}>Cancelar</Button>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
                 {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Guardar Proveedor
               </Button>
@@ -454,7 +453,7 @@ export default function ProveedoresPage() {
           </form>
         </div>
       ) : (
-        <div className="bg-card border rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
           <div className="p-4 border-b">
              <div className="relative max-w-sm">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -472,21 +471,21 @@ export default function ProveedoresPage() {
             </div>
           ) : (
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-slate-50 border-b">
                 <TableRow>
-                  <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("name")}>
+                  <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors text-slate-500 uppercase text-xs font-semibold" onClick={() => handleSort("name")}>
                     <div className="flex items-center">
                       Nombre
                       {renderSortIcon("name")}
                     </div>
                   </TableHead>
-                  <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("email")}>
+                  <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors text-slate-500 uppercase text-xs font-semibold" onClick={() => handleSort("email")}>
                     <div className="flex items-center">
                       Contacto
                       {renderSortIcon("email")}
                     </div>
                   </TableHead>
-                  <TableHead className="w-[100px] text-right">Acciones</TableHead>
+                  <TableHead className="w-[100px] text-right text-slate-500 uppercase text-xs font-semibold">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

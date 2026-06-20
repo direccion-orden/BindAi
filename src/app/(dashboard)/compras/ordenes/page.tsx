@@ -135,16 +135,16 @@ export default function OrdenesCompraPage() {
           </p>
         </div>
         <Link href="/compras/ordenes/nueva" target="_blank">
-          <Button className="gap-2">
+          <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
             <Plus className="w-4 h-4" /> Nueva Orden
           </Button>
         </Link>
       </div>
 
-      <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground font-medium border-b">
+            <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
                 <th 
                   className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"

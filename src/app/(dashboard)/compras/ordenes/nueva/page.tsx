@@ -399,12 +399,12 @@ export default function NuevaOrdenCompraPage() {
         {/* Left Column: Items list & Product search */}
         
           <div className="bg-card border rounded-xl shadow-sm flex flex-col min-h-[500px]">
-            <div className="p-5 border-b flex justify-between items-center bg-blue-50/30">
-              <h3 className="font-semibold text-lg flex items-center gap-2 text-blue-900">
-                <FileText className="w-5 h-5 text-blue-600" />
+            <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-slate-800">
+                <FileText className="w-5 h-5 text-indigo-600" />
                 Requisición de Artículos
               </h3>
-              <span className="text-sm text-blue-700 font-medium">{selectedItems.length} artículos</span>
+              <span className="text-sm text-slate-500 font-medium">{selectedItems.length} artículos</span>
             </div>
             
             <div className="flex-1 p-5 overflow-y-auto space-y-3">
@@ -561,7 +561,7 @@ export default function NuevaOrdenCompraPage() {
                 size="lg" 
                 onClick={handleSave} 
                 disabled={saving || selectedItems.length === 0 || !vendorId || !locationId || !accountId}
-                className="w-full gap-2 bg-blue-600 hover:bg-blue-700 mt-6 text-white"
+                className="w-full gap-2 bg-indigo-600 hover:bg-indigo-700 mt-6 text-white font-semibold shadow-md"
               >
                 {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                 Generar Orden de Compra

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import { collection, query, onSnapshot, doc, setDoc, addDoc, getDocs, updateDoc, increment, getDoc, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -636,6 +637,8 @@ function NuevoGastoForm() {
     setSaving(true);
     try {
       const expenseId = crypto.randomUUID();
+      const sequenceNum = await getNextSequence(companyId, 'gastos');
+      const numericVal = parseInt(sequenceNum.split("-")[1]) || 0;
       const vendorName = vendors.find(v => v.id === vendorId)?.name || "Proveedor General";
       
       const firstItem = selectedItems[0];
@@ -647,6 +650,8 @@ function NuevoGastoForm() {
       // Create Expense Record
       const expenseDoc = {
         id: expenseId,
+        number: numericVal,
+        documentNumber: sequenceNum,
         date,
         vendorId,
         vendorName,
@@ -736,7 +741,7 @@ function NuevoGastoForm() {
           reference,
           documentId: expenseId,
           documentType: "gasto_manual",
-          documentNumber: `GM-${expenseId.substring(0, 8)}`,
+          documentNumber: sequenceNum,
           providerName: vendorName,
           bankAccountId,
           expenseAccountId: mainAccountId,
@@ -825,7 +830,7 @@ function NuevoGastoForm() {
           await addDoc(collection(db, "companies", companyId, "journal_entries"), {
             type: "egreso",
             date,
-            description: `Pago de gasto manual GM-${expenseId.substring(0, 8)}`,
+            description: `Pago de gasto manual ${sequenceNum}`,
             referenceId: paymentRef.id,
             referenceType: "payment_outflow",
             createdAt: new Date().toISOString(),

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { doc, collection, addDoc, updateDoc, setDoc, increment, query, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, DollarSign, Calendar, CreditCard, FileText, BookOpen, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -163,6 +164,8 @@ export function NewExpenseModal({ isOpen, onClose, companyId }: NewExpenseModalP
     setLoading(true);
     try {
       const expenseId = crypto.randomUUID();
+      const sequenceNum = await getNextSequence(companyId, 'gastos');
+      const numericVal = parseInt(sequenceNum.split("-")[1]) || 0;
       const vendorName = vendors.find(v => v.id === vendorId)?.name || "Proveedor General";
       const locationName = locations.find(l => l.id === locationId)?.name || "";
       const expenseAccount = expenseAccounts.find(a => a.id === accountId);
@@ -170,6 +173,8 @@ export function NewExpenseModal({ isOpen, onClose, companyId }: NewExpenseModalP
       // Create Expense Record
       const expenseDoc = {
         id: expenseId,
+        number: numericVal,
+        documentNumber: sequenceNum,
         date,
         vendorId,
         vendorName,
@@ -198,7 +203,7 @@ export function NewExpenseModal({ isOpen, onClose, companyId }: NewExpenseModalP
           reference,
           documentId: expenseId,
           documentType: "gasto_manual",
-          documentNumber: `GM-${expenseId.substring(0, 8)}`,
+          documentNumber: sequenceNum,
           providerName: vendorName,
           bankAccountId,
           expenseAccountId: accountId,
@@ -253,7 +258,7 @@ export function NewExpenseModal({ isOpen, onClose, companyId }: NewExpenseModalP
           await addDoc(collection(db, "companies", companyId, "journal_entries"), {
             type: "egreso",
             date,
-            description: `Pago de gasto manual GM-${expenseId.substring(0, 8)}`,
+            description: `Pago de gasto manual ${sequenceNum}`,
             referenceId: paymentRef.id,
             referenceType: "payment_outflow",
             createdAt: new Date().toISOString(),

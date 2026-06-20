@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock } from "lucide-react";
+import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye } from "lucide-react";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 import Link from "next/link";
 
@@ -120,12 +120,13 @@ export default function GastosManualesPage() {
 
   // Filter logic
   const filteredExpenses = expenses.filter(exp => {
-    // 1. Search term (provider or concept)
+    // 1. Search term (provider, concept or folio)
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       const matchProvider = (exp.vendorName || "").toLowerCase().includes(term);
       const matchConcept = (exp.concept || "").toLowerCase().includes(term);
-      if (!matchProvider && !matchConcept) return false;
+      const matchFolio = (exp.documentNumber || "").toLowerCase().includes(term);
+      if (!matchProvider && !matchConcept && !matchFolio) return false;
     }
     // 2. Status filter
     if (statusFilter !== "all") {
@@ -309,32 +310,35 @@ export default function GastosManualesPage() {
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 border-b">
+            <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
-                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("date")}>
+                <th className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
                   <div className="flex items-center">Fecha {renderSortIcon("date")}</div>
                 </th>
-                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("vendorName")}>
+                <th className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
+                  <div className="flex items-center">Folio {renderSortIcon("documentNumber")}</div>
+                </th>
+                <th className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
                   <div className="flex items-center">Proveedor {renderSortIcon("vendorName")}</div>
                 </th>
-                <th className="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("concept")}>
+                <th className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("concept")}>
                   <div className="flex items-center">Concepto {renderSortIcon("concept")}</div>
                 </th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Cuenta Gasto</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Sucursal</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Estatus</th>
-                <th className="px-4 py-3 font-semibold text-slate-600 text-right cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleSort("amount")}>
+                <th className="px-4 py-3">Cuenta Gasto</th>
+                <th className="px-4 py-3">Sucursal</th>
+                <th className="px-4 py-3">Estatus</th>
+                <th className="px-4 py-3 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
                   <div className="flex items-center justify-end">Monto {renderSortIcon("amount")}</div>
                 </th>
-                <th className="px-4 py-3 font-semibold text-slate-600 text-right">Pagado</th>
-                <th className="px-4 py-3 font-semibold text-slate-600 text-right">Pendiente</th>
-                <th className="px-4 py-3 font-semibold text-slate-600 text-center">Acciones</th>
+                <th className="px-4 py-3 text-right">Pagado</th>
+                <th className="px-4 py-3 text-right">Pendiente</th>
+                <th className="px-4 py-3 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {sortedExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
                     No se encontraron gastos operativos registrados.
                   </td>
                 </tr>
@@ -345,6 +349,9 @@ export default function GastosManualesPage() {
                     <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap">
                         {exp.date}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-700">
+                        {exp.documentNumber || "-"}
                       </td>
                       <td className="px-4 py-3 font-medium text-slate-900">
                         {exp.vendorName}
@@ -379,22 +386,32 @@ export default function GastosManualesPage() {
                         {formatMoney(saldo)}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {saldo > 0.01 ? (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => {
-                              setSelectedExpense(exp);
-                              setIsPaymentModalOpen(true);
-                            }}
-                            className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 font-bold"
-                          >
-                            <DollarSign className="w-3 h-3 mr-1" />
-                            Registrar Pago
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-slate-400 font-medium">-</span>
-                        )}
+                        <div className="flex items-center justify-center gap-2">
+                          <Link href={`/gastos/${exp.id}`} target="_blank">
+                            <Button 
+                              variant="outline" 
+                              size="icon"
+                              className="h-8 w-8 bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-800 shrink-0"
+                              title="Ver Detalle"
+                            >
+                              <Eye className="w-4 h-4 text-indigo-600" />
+                            </Button>
+                          </Link>
+                          {saldo > 0.01 && (
+                            <Button 
+                              variant="outline" 
+                              size="icon" 
+                              onClick={() => {
+                                  setSelectedExpense(exp);
+                                  setIsPaymentModalOpen(true);
+                              }}
+                              className="h-8 w-8 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 shrink-0"
+                              title="Registrar Pago"
+                            >
+                              <DollarSign className="w-4 h-4 font-bold" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

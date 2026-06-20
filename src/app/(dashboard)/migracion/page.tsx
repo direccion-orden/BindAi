@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { collection, writeBatch, doc, getDocs, query } from "firebase/firestore";
+import { collection, writeBatch, doc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Loader2, Database, Building, Landmark, CheckCircle2, Trash2, Package, Users, Filter, ChevronDown, ChevronUp, Play, Sparkles } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Papa from "papaparse";
 
 type SyncTask = {
   id: string;
@@ -24,6 +26,562 @@ export default function MigrationPage() {
   const [isDeletingProducts, setIsDeletingProducts] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [overallProgress, setOverallProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Local files state
+  const [xmlFile, setXmlFile] = useState<File | null>(null);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+
+  const handleXmlFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setXmlFile(e.target.files[0]);
+    }
+  };
+
+  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setCsvFile(e.target.files[0]);
+    }
+  };
+
+  const loadCatalogsForImport = async () => {
+    if (!companyId) return null;
+    addLog("Cargando catálogos de base de datos para mapeo...");
+    
+    const [locsSnap, ccSnap, vendSnap, accsSnap] = await Promise.all([
+      getDocs(collection(db, "companies", companyId, "locations")),
+      getDocs(collection(db, "companies", companyId, "cost_centers")),
+      getDocs(collection(db, "companies", companyId, "vendors")),
+      getDocs(collection(db, "companies", companyId, "accounts"))
+    ]);
+
+    const locs = locsSnap.docs.map(d => ({ id: d.id, name: d.data().name || d.data().Name || "" }));
+    const ccs = ccSnap.docs.map(d => ({ id: d.id, name: d.data().name || d.data().Name || "" }));
+    const vends = vendSnap.docs.map(d => ({ 
+      id: d.id, 
+      name: d.data().LegalName || d.data().name || d.data().CommercialName || "", 
+      rfc: d.data().rfc || d.data().RFC || "" 
+    }));
+    const accs = accsSnap.docs.map(d => ({ id: d.id, code: d.data().code, name: d.data().name }));
+
+    addLog(`Catálogos cargados: ${locs.length} sucursales, ${ccs.length} centros de costos, ${vends.length} proveedores, ${accs.length} cuentas.`);
+    return { locs, ccs, vends, accs };
+  };
+
+  const handleImportXml = async () => {
+    if (!companyId || !xmlFile) return;
+    setLoadingTask("import_xml");
+    addLog(`Iniciando homologación de catálogo desde XML: ${xmlFile.name}...`);
+
+    try {
+      const xmlText = await xmlFile.text();
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+      
+      const parserError = xmlDoc.getElementsByTagName("parsererror");
+      if (parserError.length > 0) {
+        throw new Error("El archivo XML no tiene un formato válido");
+      }
+
+      const ctasNodes = xmlDoc.getElementsByTagNameNS("*", "Ctas");
+      if (ctasNodes.length === 0) {
+        throw new Error("No se encontraron elementos <catalogocuentas:Ctas> o <Ctas> en el archivo");
+      }
+
+      addLog(`Encontradas ${ctasNodes.length} cuentas de detalle en el XML.`);
+
+      const accountsMap = new Map<string, any>();
+
+      const SAT_STANDARD_NAMES: Record<string, string> = {
+        "100": "Activo",
+        "101": "Caja",
+        "102": "Bancos",
+        "103": "Inversiones",
+        "104": "Otros instrumentos financieros",
+        "105": "Clientes",
+        "106": "Cuentas y documentos por cobrar a corto plazo",
+        "107": "Deudores diversos",
+        "108": "Estimación de cuentas incobrables",
+        "109": "Pagos anticipados",
+        "110": "Subsidio al empleo por aplicar",
+        "111": "Crédito al salario por aplicar",
+        "112": "Impuestos a favor",
+        "113": "Pagos provisionales",
+        "114": "Impuestos retenidos",
+        "115": "Inventario",
+        "118": "Impuestos acreditables pagados",
+        "119": "Impuestos acreditables por pagar",
+        "120": "Anticipo a proveedores",
+        "153": "Maquinaria y equipo",
+        "200": "Pasivo",
+        "201": "Proveedores",
+        "202": "Cuentas por pagar a corto plazo",
+        "203": "Cobros anticipados a corto plazo",
+        "204": "Instrumentos financieros a corto plazo",
+        "205": "Acreedores diversos a corto plazo",
+        "206": "Anticipo de clientes",
+        "207": "Impuestos trasladados",
+        "208": "Impuestos trasladados cobrados",
+        "209": "Impuestos trasladados no cobrados",
+        "210": "Provisión de sueldos y salarios por pagar",
+        "211": "Provisión de contribuciones de seguridad social por pagar",
+        "212": "Provisión de impuesto estatal sobre nómina por pagar",
+        "213": "Impuestos y derechos por pagar",
+        "214": "Provisiones por pagar a corto plazo",
+        "215": "Impuestos retenidos",
+        "300": "Capital Contable",
+        "301": "Capital social",
+        "302": "Patrimonio",
+        "303": "Reserva legal",
+        "304": "Resultados de ejercicios anteriores",
+        "305": "Resultado del ejercicio",
+        "306": "Otras cuentas de capital",
+        "400": "Ingresos",
+        "401": "Ingresos netos por ventas y/o servicios",
+        "402": "Ingresos por ventas de bienes y servicios (Sector Financiero)",
+        "403": "Otros ingresos",
+        "500": "Costos",
+        "501": "Costo de venta y/o de servicios",
+        "502": "Compras",
+        "503": "Devoluciones, descuentos o rebajas sobre compras",
+        "504": "Gastos de compra",
+        "600": "Gastos",
+        "601": "Gastos generales",
+        "602": "Gastos de venta",
+        "603": "Gastos de administración",
+        "604": "Gastos de fabricación",
+        "605": "Mano de obra directa",
+        "606": "Facilidades administrativas",
+        "700": "Resultado Integral de Financiamiento",
+        "701": "Gastos financieros",
+        "702": "Productos financieros",
+        "703": "Otros gastos",
+        "704": "Otros productos"
+      };
+
+      const getTypeName = (c: string) => {
+        const first = c.charAt(0);
+        if (first === "1") return "ACTIVO";
+        if (first === "2") return "PASIVO";
+        if (first === "3") return "CAPITAL";
+        if (first === "4") return "INGRESOS";
+        if (first === "5") return "COSTOS";
+        return "GASTOS";
+      };
+
+      const getNatureByCode = (c: string) => {
+        const first = c.charAt(0);
+        return (first === "2" || first === "3" || first === "4") ? "ACREEDORA" : "DEUDORA";
+      };
+
+      const detailAccounts: any[] = [];
+      const parent2NamesMap: Record<string, string> = {};
+
+      for (let i = 0; i < ctasNodes.length; i++) {
+        const node = ctasNodes[i];
+        const numCta = node.getAttribute("NumCta") || "";
+        const desc = node.getAttribute("Desc") || "";
+        const codAgrup = node.getAttribute("CodAgrup") || "";
+        const natur = node.getAttribute("Natur") || "D";
+        const nature = natur === "A" ? "ACREEDORA" : "DEUDORA";
+        const parts = numCta.split("-");
+
+        detailAccounts.push({
+          code: numCta,
+          name: desc,
+          codAgrup,
+          nature,
+          parts
+        });
+
+        if (parts.length === 3) {
+          const subparentCode = `${parts[0]}-${parts[1]}`;
+          if (parts[2] === "001") {
+            parent2NamesMap[subparentCode] = desc;
+          }
+        }
+      }
+
+      detailAccounts.forEach(acc => {
+        const { code, name, nature, parts } = acc;
+        
+        let subparentCode = null;
+        if (parts.length === 3) {
+          subparentCode = `${parts[0]}-${parts[1]}`;
+          const parentCode = parts[0];
+          const rootCode = `${parentCode.charAt(0)}00`;
+
+          accountsMap.set(code, {
+            code,
+            name,
+            type: getTypeName(code),
+            nature,
+            level: 3,
+            parentCode: subparentCode,
+            balance: 0
+          });
+
+          if (!accountsMap.has(subparentCode)) {
+            const subparentName = parent2NamesMap[subparentCode] || SAT_STANDARD_NAMES[subparentCode] || `${subparentCode} (Grupo)`;
+            accountsMap.set(subparentCode, {
+              code: subparentCode,
+              name: subparentName,
+              type: getTypeName(subparentCode),
+              nature: getNatureByCode(subparentCode),
+              level: 2,
+              parentCode: parentCode,
+              balance: 0
+            });
+          }
+
+          if (!accountsMap.has(parentCode)) {
+            let parentName = SAT_STANDARD_NAMES[parentCode];
+            if (!parentName) {
+              if (parentCode === "10053") parentName = "Maquinaria y equipo (Bind)";
+              else if (parentCode === "20001") parentName = "Proveedores (Bind)";
+              else if (parentCode === "60001") parentName = "Gastos generales (Bind)";
+              else if (parentCode === "60002") parentName = "Gastos de venta (Bind)";
+              else if (parentCode === "70001") parentName = "Gastos financieros (Bind)";
+              else parentName = `${parentCode} (Grupo)`;
+            }
+            accountsMap.set(parentCode, {
+              code: parentCode,
+              name: parentName,
+              type: getTypeName(parentCode),
+              nature: getNatureByCode(parentCode),
+              level: 1,
+              parentCode: rootCode,
+              balance: 0
+            });
+          }
+
+          if (!accountsMap.has(rootCode)) {
+            const rootName = SAT_STANDARD_NAMES[rootCode] || `${rootCode} (Raíz)`;
+            accountsMap.set(rootCode, {
+              code: rootCode,
+              name: rootName,
+              type: getTypeName(rootCode),
+              nature: getNatureByCode(rootCode),
+              level: 0,
+              parentCode: null,
+              balance: 0
+            });
+          }
+        } else {
+          accountsMap.set(code, {
+            code,
+            name,
+            type: getTypeName(code),
+            nature,
+            level: 1,
+            parentCode: null,
+            balance: 0
+          });
+        }
+      });
+
+      addLog(`Árbol jerárquico reconstruido. Total cuentas (incluyendo padres): ${accountsMap.size}`);
+
+      const accountsList = Array.from(accountsMap.values());
+      const BATCH_LIMIT = 400;
+      let totalSaved = 0;
+
+      for (let i = 0; i < accountsList.length; i += BATCH_LIMIT) {
+        const chunk = accountsList.slice(i, i + BATCH_LIMIT);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(acc => {
+          const docRef = doc(db, "companies", companyId, "accounts", acc.code);
+          batch.set(docRef, {
+            ...acc,
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+        });
+
+        await batch.commit();
+        totalSaved += chunk.length;
+        addLog(`  -> Guardadas ${totalSaved} de ${accountsList.length} cuentas...`);
+      }
+
+      addLog(`✅ Catálogo contable homologado exitosamente: ${totalSaved} cuentas importadas.`);
+      alert("Catálogo de cuentas homologado exitosamente.");
+    } catch (e: any) {
+      console.error(e);
+      addLog(`❌ Error al homologar catálogo: ${e.message}`);
+      alert(`Error al homologar catálogo: ${e.message}`);
+    } finally {
+      setLoadingTask(null);
+    }
+  };
+
+  const handleImportCsv = async () => {
+    if (!companyId || !csvFile) return;
+    setLoadingTask("import_csv");
+    addLog(`Iniciando importación de gastos desde CSV: ${csvFile.name}...`);
+
+    try {
+      const catalogs = await loadCatalogsForImport();
+      if (!catalogs) throw new Error("No se pudieron cargar los catálogos");
+      
+      const { locs, ccs, vends, accs } = catalogs;
+
+      const normalize = (str: string) => {
+        if (!str) return "";
+        return str
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .trim();
+      };
+
+      const locationLookup: Record<string, any> = {};
+      locs.forEach(l => { locationLookup[normalize(l.name)] = l; });
+
+      const costCenterLookup: Record<string, any> = {};
+      ccs.forEach(c => { costCenterLookup[normalize(c.name)] = c; });
+
+      const vendorLookup: Record<string, any> = {};
+      vends.forEach(v => {
+        vendorLookup[normalize(v.name)] = v;
+      });
+
+      const accountLookup: Record<string, any> = {};
+      accs.forEach(a => { accountLookup[a.code] = a; });
+
+      const localVendorCache: Record<string, string> = {};
+
+      const parseCsvDate = (dateStr: string): string => {
+        if (!dateStr) return new Date().toISOString().split("T")[0];
+        const parts = dateStr.split("/");
+        if (parts.length === 3) {
+          const day = parts[0].padStart(2, '0');
+          const month = parts[1].padStart(2, '0');
+          const year = parts[2];
+          return `${year}-${month}-${day}`;
+        }
+        return dateStr;
+      };
+
+      const parseAmount = (val: string) => parseFloat((val || "").replace(/,/g, "")) || 0;
+
+      Papa.parse(csvFile, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => header.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+        complete: async (results) => {
+          try {
+            const rows = results.data as any[];
+            addLog(`CSV parsed con éxito. Encontradas ${rows.length} filas.`);
+
+            addLog("Buscando gastos históricos previos en la base de datos para limpiar...");
+            const prevQuery = query(
+              collection(db, "companies", companyId, "expenses"),
+              where("createdBy", "==", "Importador Histórico Bind")
+            );
+            const prevSnap = await getDocs(prevQuery);
+            if (!prevSnap.empty) {
+              addLog(`Eliminando ${prevSnap.size} gastos históricos previos para evitar duplicados...`);
+              let delBatch = writeBatch(db);
+              let delCount = 0;
+              for (const docSnap of prevSnap.docs) {
+                delBatch.delete(docSnap.ref);
+                delCount++;
+                if (delCount >= 250) {
+                  await delBatch.commit();
+                  delBatch = writeBatch(db);
+                  delCount = 0;
+                }
+              }
+              if (delCount > 0) {
+                await delBatch.commit();
+              }
+              addLog("Limpieza completada.");
+            }
+
+            const groups: Record<string, any[]> = {};
+            rows.forEach((row, idx) => {
+              const num = (row.Numero || "").trim();
+              const uuid = (row.FolioFiscal || "").trim();
+              const docKey = (row.Documento || "").trim();
+              const provider = (row.Proveedor || "").trim();
+              const date = (row.Fecha || "").trim();
+              
+              let groupKey = "";
+              if (num) groupKey = `num_${num}`;
+              else if (uuid) groupKey = `uuid_${uuid}`;
+              else groupKey = `row_${date}_${provider}_${docKey}_${idx}`;
+              
+              if (!groups[groupKey]) {
+                groups[groupKey] = [];
+              }
+              groups[groupKey].push(row);
+            });
+
+            const expenseGroups = Object.entries(groups);
+            addLog(`Filas agrupadas en ${expenseGroups.length} gastos únicos.`);
+
+            let totalImported = 0;
+            const batchLimit = 350;
+            let currentBatch = writeBatch(db);
+            let operationCount = 0;
+            let maxImportedNumero = 0;
+
+            for (const [groupKey, items] of expenseGroups) {
+              const firstItem = items[0];
+              const numero = (firstItem.Numero || "").trim();
+              const numVal = parseInt(numero) || 0;
+              if (numVal > maxImportedNumero) {
+                maxImportedNumero = numVal;
+              }
+              const uuid = (firstItem.FolioFiscal || "").trim();
+              const rawDate = (firstItem.Fecha || "").trim();
+              const providerName = (firstItem.Proveedor || "Proveedor Histórico Bind").trim();
+              const estatus = (firstItem.Estatus || "").trim();
+              
+              let expenseId = "";
+              if (numero) expenseId = `bind_hist_${numero}`;
+              else if (uuid) expenseId = `bind_hist_${uuid}`;
+              else expenseId = doc(collection(db, "companies", companyId, "expenses")).id;
+
+              const normVendor = normalize(providerName);
+              let vendorId = "";
+              let resolvedVendorName = providerName;
+
+              if (vendorLookup[normVendor]) {
+                vendorId = vendorLookup[normVendor].id;
+                resolvedVendorName = vendorLookup[normVendor].name;
+              } else if (localVendorCache[normVendor]) {
+                vendorId = localVendorCache[normVendor];
+              } else {
+                const newVendorRef = doc(collection(db, "companies", companyId, "vendors"));
+                vendorId = newVendorRef.id;
+                
+                currentBatch.set(newVendorRef, {
+                  name: providerName,
+                  rfc: "",
+                  email: "",
+                  phone: "",
+                  createdAt: new Date().toISOString()
+                });
+                
+                localVendorCache[normVendor] = vendorId;
+                operationCount++;
+              }
+
+              let subtotalSum = 0;
+              let vatSum = 0;
+              let totalSum = 0;
+
+              const mappedItems = items.map(item => {
+                const itemSubtotal = parseAmount(item.SubtotalMXN || item.Subtotal);
+                const itemVat = parseAmount(item.IVAMXN || item.IVA);
+                const itemTotal = parseAmount(item.TotalMXN || item.Total);
+
+                subtotalSum += itemSubtotal;
+                vatSum += itemVat;
+                totalSum += itemTotal;
+
+                const itemCC = (item.CC || "").trim().split(" ")[0];
+                const matchedAccount = accountLookup[itemCC];
+                
+                const normLoc = normalize(item.Sucursal);
+                const matchedLocation = locationLookup[normLoc];
+
+                const normCC = normalize(item.CentroCostos);
+                const matchedCostCenter = costCenterLookup[normCC];
+
+                const qty = parseAmount(item.Cantidad) || 1;
+
+                return {
+                  productId: "",
+                  variantId: "",
+                  productName: item.Concepto || "Gasto Histórico",
+                  variantTitle: item.Documento || "",
+                  quantity: qty,
+                  unitCost: itemSubtotal / qty,
+                  costCenterId: matchedCostCenter?.id || null,
+                  accountId: matchedAccount?.id || null,
+                  locationId: matchedLocation?.id || null
+                };
+              });
+
+              const firstCC = (firstItem.CC || "").trim().split(" ")[0];
+              const mainAccount = accountLookup[firstCC];
+
+              const normMainLoc = normalize(firstItem.Sucursal);
+              const mainLocation = locationLookup[normMainLoc] || locs[0] || null;
+
+              const isPaid = normalize(estatus) === "pagada";
+
+              const expenseDoc = {
+                id: expenseId,
+                number: numVal,
+                documentNumber: numero ? `GAS-${numero.padStart(5, '0')}` : "",
+                date: parseCsvDate(rawDate),
+                vendorId,
+                vendorName: resolvedVendorName,
+                concept: firstItem.Concepto || "Gasto Histórico Bind",
+                amount: totalSum,
+                vatRate: subtotalSum > 0 ? parseFloat((vatSum / subtotalSum).toFixed(4)) : 0.16,
+                locationId: mainLocation?.id || null,
+                locationName: mainLocation?.name || "",
+                accountId: mainAccount?.id || null,
+                accountCode: mainAccount?.code || "",
+                accountName: mainAccount?.name || "",
+                paidAmount: isPaid ? totalSum : 0,
+                status: isPaid ? "paid" : "pending",
+                satInvoiceId: uuid || null,
+                items: mappedItems,
+                createdAt: new Date().toISOString(),
+                createdBy: "Importador Histórico Bind"
+              };
+
+              const expenseRef = doc(db, "companies", companyId, "expenses", expenseId);
+              currentBatch.set(expenseRef, expenseDoc);
+              operationCount++;
+              totalImported++;
+
+              if (operationCount >= batchLimit) {
+                await currentBatch.commit();
+                addLog(`  -> Importados ${totalImported} de ${expenseGroups.length} gastos históricos...`);
+                currentBatch = writeBatch(db);
+                operationCount = 0;
+              }
+            }
+
+            if (operationCount > 0) {
+              await currentBatch.commit();
+            }
+
+            if (maxImportedNumero > 0) {
+              const counterRef = doc(db, "companies", companyId, "counters", "sequences");
+              await setDoc(counterRef, { gastos: maxImportedNumero }, { merge: true });
+              addLog(`✅ Siguiente folio de gasto configurado en: GAS-${(maxImportedNumero + 1).toString().padStart(5, '0')}`);
+            }
+
+            addLog(`✅ Importación completada: ${totalImported} gastos importados exitosamente.`);
+            alert("Gastos históricos importados exitosamente.");
+          } catch (err: any) {
+            console.error(err);
+            addLog(`❌ Error procesando datos del CSV: ${err.message}`);
+            alert(`Error procesando datos del CSV: ${err.message}`);
+          } finally {
+            setLoadingTask(null);
+          }
+        },
+        error: (err) => {
+          addLog(`❌ Error al analizar el CSV: ${err.message}`);
+          alert(`Error al analizar el CSV: ${err.message}`);
+          setLoadingTask(null);
+        }
+      });
+
+    } catch (e: any) {
+      console.error(e);
+      addLog(`❌ Error general en importación: ${e.message}`);
+      alert(`Error general en importación: ${e.message}`);
+      setLoadingTask(null);
+    }
+  };
 
   const [tasks, setTasks] = useState<SyncTask[]>([
     // Fase 1
@@ -641,6 +1199,68 @@ export default function MigrationPage() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Fase 3: Archivos Locales */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5">
+              <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 rounded">Fase 3</span>
+              <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-200">Importación de Archivos Bind</h2>
+            </div>
+            
+            <Card className="rounded-2xl border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base font-bold text-slate-800 dark:text-slate-200">1. Homologar Catálogo de Cuentas (XML)</CardTitle>
+                <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                  Selecciona el archivo XML del catálogo de cuentas de Bind (ej. <code>DCA140627E67202606CT.xml</code>) para homologar el catálogo de cuentas de este ERP.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <Input 
+                    type="file" 
+                    accept=".xml" 
+                    onChange={handleXmlFileChange} 
+                    className="flex-1 rounded-xl text-xs"
+                  />
+                  <Button 
+                    onClick={handleImportXml}
+                    disabled={!xmlFile || loadingTask !== null || !companyId}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs shrink-0 w-full sm:w-auto"
+                  >
+                    {loadingTask === "import_xml" ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Play className="w-3.5 h-3.5 mr-1.5" />}
+                    Homologar Catálogo
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-2xl border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base font-bold text-slate-800 dark:text-slate-200">2. Importar Gastos Históricos (CSV)</CardTitle>
+                <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                  Selecciona el archivo CSV de gastos exportados por Bind (ej. <code>Gastos (1).csv</code>) para importarlos a la base de datos de este ERP.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <Input 
+                    type="file" 
+                    accept=".csv" 
+                    onChange={handleCsvFileChange} 
+                    className="flex-1 rounded-xl text-xs"
+                  />
+                  <Button 
+                    onClick={handleImportCsv}
+                    disabled={!csvFile || loadingTask !== null || !companyId}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs shrink-0 w-full sm:w-auto"
+                  >
+                    {loadingTask === "import_csv" ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Play className="w-3.5 h-3.5 mr-1.5" />}
+                    Importar Gastos Históricos
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 

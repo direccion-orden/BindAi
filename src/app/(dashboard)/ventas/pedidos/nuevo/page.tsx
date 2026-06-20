@@ -387,7 +387,7 @@ export default function NuevoPedidoPage() {
   };
 
   // Dynamic categories extraction from products (productType and tags)
-  const categories = Array.from(
+  const categoriesRaw = Array.from(
     new Set(
       products.flatMap(p => [
         ...(p.productType ? [p.productType] : []),
@@ -395,6 +395,31 @@ export default function NuevoPedidoPage() {
       ])
     )
   ).filter(Boolean) as string[];
+
+  // Calculate usage count of each category based on variantUsageMap
+  const categoryUsageMap: Record<string, number> = {};
+  categoriesRaw.forEach(cat => {
+    categoryUsageMap[cat] = 0;
+  });
+
+  products.forEach(p => {
+    const pCats = [
+      ...(p.productType ? [p.productType] : []),
+      ...(p.tags || [])
+    ].filter(Boolean);
+    
+    p.variants.forEach(v => {
+      const usage = variantUsageMap[v.id] || 0;
+      pCats.forEach(cat => {
+        if (categoryUsageMap[cat] !== undefined) {
+          categoryUsageMap[cat] += usage;
+        }
+      });
+    });
+  });
+
+  // Sort categories by usage count descending (most used first)
+  const categories = [...categoriesRaw].sort((a, b) => (categoryUsageMap[b] || 0) - (categoryUsageMap[a] || 0));
 
   // Flatten products and variants to selectable cards, with usage counts and service classification
   const selectableItems = products.flatMap(product => 

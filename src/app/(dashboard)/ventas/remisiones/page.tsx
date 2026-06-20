@@ -237,6 +237,19 @@ export default function RemisionesPage() {
         </Link>
       </div>
 
+      {/* Summary Metrics Banner */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-card border rounded-xl p-5 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
+            <DollarSign className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Monto Total Filtrado</p>
+            <p className="text-xl font-bold text-slate-800">${totalFilteredAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Modern Filter Panel */}
       <div className="flex flex-col md:flex-row flex-wrap gap-4 items-stretch md:items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end flex-1">
@@ -331,11 +344,6 @@ export default function RemisionesPage() {
               </div>
             </>
           )}
-        </div>
-
-        <div className="text-right whitespace-nowrap bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
-          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Monto Total Filtrado</span>
-          <span className="text-lg font-black text-indigo-800">${totalFilteredAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
         </div>
       </div>
 

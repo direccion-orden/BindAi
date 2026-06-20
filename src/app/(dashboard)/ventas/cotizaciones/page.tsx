@@ -422,6 +422,19 @@ export default function CotizacionesCRMPage() {
         </div>
       </div>
 
+      {/* Summary Metrics Banner */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-card border rounded-xl p-5 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+            <DollarSign className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Cotizaciones</p>
+            <p className="text-xl font-bold text-slate-800">${totalCotizaciones.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Modern Filter Panel */}
       <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end flex-1 w-full">
@@ -516,13 +529,6 @@ export default function CotizacionesCRMPage() {
             </>
           )}
         </div>
-
-        {viewMode === "table" && (
-          <div className="text-right whitespace-nowrap bg-blue-50 border border-blue-100 rounded-lg px-4 py-2 self-center flex flex-col justify-center ml-auto">
-            <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Total Cotizaciones</span>
-            <span className="text-lg font-black text-blue-800">${totalCotizaciones.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
-          </div>
-        )}
       </div>
 
 

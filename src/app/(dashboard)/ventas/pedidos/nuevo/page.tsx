@@ -469,7 +469,8 @@ export default function NuevoPedidoPage() {
           onClick={() => setActiveTab("relacionados")} 
           className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${activeTab === 'relacionados' ? 'bg-background border-t border-x border-slate-200 text-indigo-600 font-bold -mb-[1px]' : 'text-slate-500 hover:text-slate-800'}`}
         >
-          Documentos relacionados
+          <span className="hidden sm:inline">Documentos relacionados</span>
+          <span className="sm:hidden">Docs</span>
         </button>
       </div>
 

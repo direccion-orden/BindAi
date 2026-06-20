@@ -80,6 +80,8 @@ export default function NuevoPedidoPage() {
   const [liveTab, setLiveTab] = useState<"products" | "services">("products");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [variantUsageMap, setVariantUsageMap] = useState<Record<string, number>>({});
+  const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
+  const [editingPriceVariantId, setEditingPriceVariantId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!companyId) return;
@@ -184,6 +186,8 @@ export default function NuevoPedidoPage() {
 
   const handleAddProduct = (product: ShopifyProduct, variant: any) => {
     const isService = !!product.isService || variant.sku?.startsWith("SER-");
+    const customPrice = customPrices[variant.id];
+    const finalPrice = customPrice !== undefined ? customPrice : (variant.price || 0);
     
     if (isService) {
       const lineKey = crypto.randomUUID();
@@ -194,7 +198,7 @@ export default function NuevoPedidoPage() {
         productName: product.title, 
         variantTitle: variant.title !== "Default Title" ? variant.title : "", 
         quantity: 1, 
-        unitPrice: variant.price || 0,
+        unitPrice: finalPrice,
         discountPercentage: 0,
         imageUrl: product.images?.[0]?.src || "",
         categoryIds: [
@@ -215,7 +219,7 @@ export default function NuevoPedidoPage() {
           productName: product.title, 
           variantTitle: variant.title !== "Default Title" ? variant.title : "", 
           quantity: 1, 
-          unitPrice: variant.price || 0,
+          unitPrice: finalPrice,
           discountPercentage: 0,
           imageUrl: product.images?.[0]?.src || "",
           categoryIds: [
@@ -1104,11 +1108,26 @@ export default function NuevoPedidoPage() {
             <div className="grid grid-cols-4 gap-2">
               {filteredSelectableItems.map(item => {
                 const qtyInOrder = items.filter(i => i.variantId === item.variant.id).reduce((sum, i) => sum + i.quantity, 0);
+                const isEditingPrice = editingPriceVariantId === item.variant.id;
+                const displayPrice = customPrices[item.variant.id] !== undefined 
+                  ? customPrices[item.variant.id] 
+                  : (item.variant.price || 0);
+
+                // Dynamic font size for service names to make it fit completely
+                const nameLen = item.product.title.length + (item.variant.title !== "Default Title" ? item.variant.title.length : 0);
+                const nameFontSizeClass = item.isService 
+                  ? (nameLen > 40 ? "text-[7.5px]" : nameLen > 25 ? "text-[8.5px]" : "text-[9.5px]")
+                  : "text-[9px]";
+
                 return (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => handleAddProduct(item.product, item.variant)}
+                    onClick={() => {
+                      if (!isEditingPrice) {
+                        handleAddProduct(item.product, item.variant);
+                      }
+                    }}
                     className="flex flex-col bg-card border rounded-xl overflow-hidden relative active:scale-95 transition-all text-left shadow-sm hover:border-slate-300"
                   >
                     <div className="aspect-square w-full bg-slate-50 relative overflow-hidden flex items-center justify-center border-b">
@@ -1127,13 +1146,50 @@ export default function NuevoPedidoPage() {
                         </span>
                       )}
                     </div>
-                    <div className="p-1.5 flex flex-col justify-between flex-1 min-h-[56px]">
-                      <p className="text-[9px] font-bold text-slate-800 line-clamp-2 leading-tight uppercase tracking-tight">
+                    <div className="p-1.5 flex flex-col justify-between flex-1 min-h-[64px]">
+                      <p className={`${nameFontSizeClass} font-bold text-slate-800 leading-tight uppercase tracking-tight break-words ${item.isService ? 'overflow-visible line-clamp-none' : 'line-clamp-2'}`}>
                         {item.product.title} {item.variant.title !== "Default Title" ? `(${item.variant.title})` : ""}
                       </p>
-                      <p className="text-[10px] font-black text-slate-900 mt-1">
-                        ${item.variant.price?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                      </p>
+                      <div 
+                        className="mt-1"
+                        onClick={(e) => {
+                          if (item.isService) {
+                            e.stopPropagation();
+                          }
+                        }}
+                      >
+                        {item.isService ? (
+                          isEditingPrice ? (
+                            <input
+                              type="number"
+                              autoFocus
+                              className="w-full text-[10px] font-bold border border-indigo-400 rounded px-1 py-0.5 bg-white text-slate-900 outline-none"
+                              value={customPrices[item.variant.id] ?? displayPrice}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setCustomPrices(prev => ({ ...prev, [item.variant.id]: val }));
+                              }}
+                              onBlur={() => setEditingPriceVariantId(null)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  setEditingPriceVariantId(null);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div 
+                              className="text-[9px] font-black text-indigo-600 border-b border-dashed border-indigo-400 pb-0.5 inline-block cursor-pointer hover:text-indigo-800"
+                              onClick={() => setEditingPriceVariantId(item.variant.id)}
+                            >
+                              ${displayPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            </div>
+                          )
+                        ) : (
+                          <p className="text-[10px] font-black text-slate-900">
+                            ${displayPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </button>
                 );

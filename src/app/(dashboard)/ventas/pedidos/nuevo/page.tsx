@@ -75,6 +75,12 @@ export default function NuevoPedidoPage() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("detalle");
 
+  // Mobile/Live View States
+  const [mobileViewMode, setMobileViewMode] = useState<"clasica" | "live">("clasica");
+  const [liveTab, setLiveTab] = useState<"products" | "services">("products");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [variantUsageMap, setVariantUsageMap] = useState<Record<string, number>>({});
+
   useEffect(() => {
     if (!companyId) return;
 
@@ -128,7 +134,24 @@ export default function NuevoPedidoPage() {
       setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
     });
 
-    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubW(); unsubD(); };
+    // Fetch orders to compute variant frequency usage
+    const unsubO = onSnapshot(collection(db, "companies", companyId, "pedidos"), (snap) => {
+      const usage: Record<string, number> = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (data.items && Array.isArray(data.items)) {
+          data.items.forEach((item: any) => {
+            if (item.variantId) {
+              const qty = Number(item.quantity) || 1;
+              usage[item.variantId] = (usage[item.variantId] || 0) + qty;
+            }
+          });
+        }
+      });
+      setVariantUsageMap(usage);
+    });
+
+    return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubW(); unsubD(); unsubO(); };
   }, [companyId]);
 
   const getFilteredClients = () => {
@@ -359,6 +382,51 @@ export default function NuevoPedidoPage() {
     }
   };
 
+  // Dynamic categories extraction from products (productType and tags)
+  const categories = Array.from(
+    new Set(
+      products.flatMap(p => [
+        ...(p.productType ? [p.productType] : []),
+        ...(p.tags || [])
+      ])
+    )
+  ).filter(Boolean) as string[];
+
+  // Flatten products and variants to selectable cards, with usage counts and service classification
+  const selectableItems = products.flatMap(product => 
+    product.variants.map(variant => {
+      const isService = !!product.isService || variant.sku?.startsWith("SER-") || product.productType?.toLowerCase().includes("servicio") || product.tags?.some(t => t.toLowerCase().includes("servicio"));
+      const usageCount = variantUsageMap[variant.id] || 0;
+      return {
+        product,
+        variant,
+        isService,
+        usageCount,
+        id: `${product.id}-${variant.id}`
+      };
+    })
+  );
+
+  // Sort by frequency of use: most used first (usageCount descending)
+  const sortedSelectableItems = [...selectableItems].sort((a, b) => b.usageCount - a.usageCount);
+
+  // Filter based on liveTab ("products" | "services") and selectedCategory
+  const filteredSelectableItems = sortedSelectableItems.filter(item => {
+    // 1. Service/Product filter
+    if (liveTab === "products" && item.isService) return false;
+    if (liveTab === "services" && !item.isService) return false;
+
+    // 2. Category filter
+    if (selectedCategory !== "all") {
+      const itemCategories = [
+        ...(item.product.productType ? [item.product.productType] : []),
+        ...(item.product.tags || [])
+      ];
+      if (!itemCategories.includes(selectedCategory)) return false;
+    }
+    return true;
+  });
+
   if (loading) {
     return <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
   }
@@ -407,6 +475,28 @@ export default function NuevoPedidoPage() {
 
       {activeTab === "detalle" && (
         <>
+          {/* Mobile View Selector */}
+          <div className="md:hidden flex items-center justify-between bg-card border rounded-xl p-3 shadow-sm mb-4">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Modo de Vista</span>
+            <div className="flex bg-slate-100 p-1 rounded-lg border">
+              <button 
+                type="button"
+                onClick={() => setMobileViewMode("clasica")} 
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${mobileViewMode === "clasica" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                Clásica
+              </button>
+              <button 
+                type="button"
+                onClick={() => setMobileViewMode("live")} 
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${mobileViewMode === "live" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                Live
+              </button>
+            </div>
+          </div>
+
+          <div className={mobileViewMode === "live" ? "hidden md:block" : "block"}>
           {/* Top Header Card: Datos Generales */}
       <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
         <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
@@ -858,8 +948,225 @@ export default function NuevoPedidoPage() {
             </div>
           </div>
         </div>
-      </>
+      </div>
+
+      {mobileViewMode === "live" && (
+        <div className="md:hidden space-y-4 pb-24">
+          {/* Compact Datos Generales */}
+          <div className="bg-card border rounded-xl p-4 shadow-sm space-y-3">
+            <div className="flex justify-between items-center border-b pb-1.5">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-indigo-600" /> Datos del Pedido
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="col-span-2 relative">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Cliente *</label>
+                {isNewClient ? (
+                  <div className="bg-blue-50/30 p-2 rounded-lg border border-blue-100 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-[10px] text-blue-900">Nuevo Cliente</span>
+                      <button type="button" onClick={() => setIsNewClient(false)} className="text-[10px] text-indigo-600 font-bold">Buscar Existente</button>
+                    </div>
+                    <Input 
+                      placeholder="Nombre *" 
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      className="bg-white border-blue-200 h-8 text-xs font-medium"
+                    />
+                    <Input 
+                      placeholder="Teléfono *" 
+                      value={newClientPhone}
+                      onChange={(e) => setNewClientPhone(e.target.value)}
+                      className="bg-white border-blue-200 h-8 text-xs font-medium"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input 
+                        placeholder="Buscar cliente..." 
+                        className="pl-8 bg-background h-8 text-xs font-semibold"
+                        value={clientSearch}
+                        onChange={(e) => {
+                          setClientSearch(e.target.value);
+                          if (clientId) setClientId(""); 
+                        }}
+                      />
+                    </div>
+                    {!clientId && clientSearch && (
+                      <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-40 overflow-y-auto bg-background divide-y z-50 shadow-xl">
+                        {getFilteredClients().map(c => (
+                          <div 
+                            key={c.id} 
+                            className="p-2 hover:bg-muted/50 cursor-pointer text-xs" 
+                            onClick={() => handleSelectClient(c)}
+                          >
+                            <div className="font-bold text-slate-900">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
+                            {(c.RFC || c.rfc) && <div className="text-[9px] text-slate-500">RFC: {c.RFC || c.rfc}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(() => {
+                      const selectedClient = clients.find(c => c.id === clientId);
+                      return selectedClient && (
+                        <div className="mt-1.5 p-1 px-2 bg-blue-50/50 border border-blue-100 rounded text-[10px] flex justify-between items-center">
+                          <span className="font-bold text-blue-900 truncate">{selectedClient.LegalName || selectedClient.CommercialName || selectedClient.name}</span>
+                          <button type="button" onClick={() => setIsNewClient(true)} className="text-indigo-600 font-bold shrink-0 ml-2">+ Nuevo Cliente</button>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Sucursal *</label>
+                <select 
+                  className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs font-semibold"
+                  value={locationId}
+                  onChange={e => setLocationId(e.target.value)}
+                >
+                  <option value="" disabled>Selecciona...</option>
+                  {locations.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Almacén *</label>
+                <select 
+                  className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs font-semibold"
+                  value={warehouseId}
+                  onChange={e => setWarehouseId(e.target.value)}
+                >
+                  <option value="" disabled>Selecciona...</option>
+                  {warehouses.map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Toggle Productos / Servicios */}
+          <div className="flex bg-slate-100 p-1 rounded-xl border">
+            <button
+              type="button"
+              onClick={() => { setLiveTab("products"); setSelectedCategory("all"); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${liveTab === "products" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+            >
+              <Package className="w-4 h-4" /> Productos
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLiveTab("services"); setSelectedCategory("all"); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${liveTab === "services" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+            >
+              <BookOpen className="w-4 h-4" /> Servicios
+            </button>
+          </div>
+
+          {/* Categorías Scrolling List */}
+          {categories.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none shrink-0 -mx-4 px-4">
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("all")}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full border whitespace-nowrap transition-all shrink-0 ${selectedCategory === "all" ? "bg-indigo-600 border-indigo-600 text-white shadow-sm" : "bg-white text-slate-600 border-slate-200"}`}
+              >
+                Todos
+              </button>
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-full border whitespace-nowrap transition-all shrink-0 ${selectedCategory === cat ? "bg-indigo-600 border-indigo-600 text-white shadow-sm" : "bg-white text-slate-600 border-slate-200"}`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Grid of Selectable Items */}
+          {filteredSelectableItems.length === 0 ? (
+            <div className="text-center py-10 bg-slate-50 border rounded-xl">
+              <Package className="w-10 h-10 mx-auto text-slate-300 mb-2 opacity-50" />
+              <p className="text-xs text-slate-500 font-medium">No hay {liveTab === "products" ? "productos" : "servicios"} en esta categoría.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-2">
+              {filteredSelectableItems.map(item => {
+                const qtyInOrder = items.filter(i => i.variantId === item.variant.id).reduce((sum, i) => sum + i.quantity, 0);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleAddProduct(item.product, item.variant)}
+                    className="flex flex-col bg-card border rounded-xl overflow-hidden relative active:scale-95 transition-all text-left shadow-sm hover:border-slate-300"
+                  >
+                    <div className="aspect-square w-full bg-slate-50 relative overflow-hidden flex items-center justify-center border-b">
+                      {item.product.images?.[0]?.src ? (
+                        <img 
+                          src={item.product.images[0].src} 
+                          alt={item.product.title} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Package className="w-5 h-5 text-slate-300" />
+                      )}
+                      {qtyInOrder > 0 && (
+                        <span className="absolute top-1 right-1 bg-indigo-600 text-white font-extrabold text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-md animate-scaleIn">
+                          {qtyInOrder}
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-1.5 flex flex-col justify-between flex-1 min-h-[56px]">
+                      <p className="text-[9px] font-bold text-slate-800 line-clamp-2 leading-tight uppercase tracking-tight">
+                        {item.product.title} {item.variant.title !== "Default Title" ? `(${item.variant.title})` : ""}
+                      </p>
+                      <p className="text-[10px] font-black text-slate-900 mt-1">
+                        ${item.variant.price?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Floating Bottom Bar (Sticky Bottom Bar) */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t p-3 flex justify-between items-center z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase font-black tracking-wider">{items.length} Partidas</p>
+              <p className="text-base font-black text-blue-700">${totals.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setMobileViewMode("clasica"); setActiveTab("detalle"); }}
+                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors"
+              >
+                Detalle ({items.length})
+              </button>
+              <Button 
+                onClick={handleSave} 
+                disabled={saving || items.length === 0 || (!isNewClient && !clientId) || (isNewClient && (!newClientName || !newClientPhone)) || !locationId || !accountId}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-1.5 h-8 rounded-lg shadow-md"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
+    </>
+  )}
 
       {activeTab === "pagos" && (
         <div className="bg-white border rounded-xl shadow-sm p-6">

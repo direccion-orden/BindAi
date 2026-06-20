@@ -22,7 +22,7 @@ interface OrderItem {
   productName: string;
   variantTitle: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice: number | string;
   discountPercentage: number;
   imageUrl?: string;
   categoryIds?: string[];
@@ -228,7 +228,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
     return {
       id: i.lineKey || i.variantId,
       quantity: i.quantity,
-      unitPrice: i.unitPrice,
+      unitPrice: Number(i.unitPrice) || 0,
       manualDiscountPercentage: i.discountPercentage,
       categoryIds: i.categoryIds || [
         ...(matchingProd?.productType ? [matchingProd.productType] : []),
@@ -335,7 +335,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         Items: items.map((item: any) => {
           const engineItem = totals.processedItems?.find(ei => ei.id === (item.lineKey || item.variantId));
           const discountAmt = engineItem ? engineItem.finalDiscountAmt : 0;
-          const itemUnitPriceExVAT = engineItem ? engineItem.unitPrice : (item.unitPrice / 1.16);
+          const itemUnitPriceExVAT = engineItem ? engineItem.unitPrice : ((Number(item.unitPrice) || 0) / 1.16);
           const subtotalItem = (item.quantity * itemUnitPriceExVAT) - discountAmt;
           return {
             ProductCode: "01010101",
@@ -374,7 +374,10 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
       await updateDoc(invRef, {
         clientId: finalClientId,
         clientName: finalClientName,
-        items: items,
+        items: items.map(i => ({
+          ...i,
+          unitPrice: Number(i.unitPrice) || 0
+        })),
         subtotal: totals.subtotal,
         totalDiscount: totals.totalDiscount,
         promoCode: totals.appliedPromo?.code || null,
@@ -710,8 +713,18 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
                             type="number" 
                             min={0} 
                             step={0.01}
-                            value={item.unitPrice}
-                            onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            value={item.unitPrice === 0 ? "" : item.unitPrice}
+                            onFocus={() => {
+                              if (item.unitPrice === 0 || item.unitPrice === "0") {
+                                updateItem(item.lineKey || item.variantId, 'unitPrice', "");
+                              }
+                            }}
+                            onBlur={() => {
+                              if (item.unitPrice === "") {
+                                updateItem(item.lineKey || item.variantId, 'unitPrice', 0);
+                              }
+                            }}
+                            onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', e.target.value)}
                             className="w-24 text-right font-medium"
                           />
                         </div>
@@ -729,7 +742,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
                         <div className="flex flex-col gap-1 min-w-[80px] text-right">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
                           <p className="font-bold text-slate-800">
-                            ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                            ${(item.quantity * Number(item.unitPrice) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                           </p>
                         </div>
                         <div className="flex items-center gap-1 mt-4 sm:mt-0">

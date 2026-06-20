@@ -23,7 +23,7 @@ interface OrderItem {
   productName: string;
   variantTitle: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice: number | string;
   discountPercentage: number;
   imageUrl?: string;
   categoryIds?: string[];
@@ -80,7 +80,7 @@ export default function NuevoPedidoPage() {
   const [liveTab, setLiveTab] = useState<"products" | "services">("products");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [variantUsageMap, setVariantUsageMap] = useState<Record<string, number>>({});
-  const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
+  const [customPrices, setCustomPrices] = useState<Record<string, number | string>>({});
   const [editingPriceVariantId, setEditingPriceVariantId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -256,7 +256,7 @@ export default function NuevoPedidoPage() {
   const engineItems: EngineItem[] = items.map(i => ({
     id: i.lineKey || i.variantId,
     quantity: i.quantity,
-    unitPrice: i.unitPrice,
+    unitPrice: Number(i.unitPrice) || 0,
     manualDiscountPercentage: i.discountPercentage,
     categoryIds: i.categoryIds || []
   }));
@@ -760,8 +760,18 @@ export default function NuevoPedidoPage() {
                             type="number" 
                             min={0} 
                             step={0.01}
-                            value={item.unitPrice}
-                            onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            value={item.unitPrice === 0 ? "" : item.unitPrice}
+                            onFocus={() => {
+                              if (item.unitPrice === 0 || item.unitPrice === "0") {
+                                updateItem(item.lineKey || item.variantId, 'unitPrice', "");
+                              }
+                            }}
+                            onBlur={() => {
+                              if (item.unitPrice === "") {
+                                updateItem(item.lineKey || item.variantId, 'unitPrice', 0);
+                              }
+                            }}
+                            onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', e.target.value)}
                             className="w-24 text-right font-medium"
                           />
                         </div>
@@ -781,7 +791,7 @@ export default function NuevoPedidoPage() {
                         <div className="flex flex-col gap-1 min-w-[80px] text-right">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
                           <p className="font-bold text-slate-800">
-                            ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                            ${(item.quantity * Number(item.unitPrice) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                           </p>
                         </div>
                         <div className="flex items-center gap-1 mt-4 sm:mt-0">
@@ -1112,6 +1122,7 @@ export default function NuevoPedidoPage() {
                 const displayPrice = customPrices[item.variant.id] !== undefined 
                   ? customPrices[item.variant.id] 
                   : (item.variant.price || 0);
+                const numericDisplayPrice = Number(displayPrice) || 0;
 
                 // Dynamic font size for service names to make it fit completely
                 const nameLen = item.product.title.length + (item.variant.title !== "Default Title" ? item.variant.title.length : 0);
@@ -1164,12 +1175,16 @@ export default function NuevoPedidoPage() {
                               type="number"
                               autoFocus
                               className="w-full text-[10px] font-bold border border-indigo-400 rounded px-1 py-0.5 bg-white text-slate-900 outline-none"
-                              value={customPrices[item.variant.id] ?? displayPrice}
+                              value={displayPrice === 0 || displayPrice === "0" ? "" : displayPrice}
                               onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0;
-                                setCustomPrices(prev => ({ ...prev, [item.variant.id]: val }));
+                                setCustomPrices(prev => ({ ...prev, [item.variant.id]: e.target.value }));
                               }}
-                              onBlur={() => setEditingPriceVariantId(null)}
+                              onBlur={() => {
+                                if (customPrices[item.variant.id] === "") {
+                                  setCustomPrices(prev => ({ ...prev, [item.variant.id]: 0 }));
+                                }
+                                setEditingPriceVariantId(null);
+                              }}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") {
                                   setEditingPriceVariantId(null);
@@ -1179,14 +1194,19 @@ export default function NuevoPedidoPage() {
                           ) : (
                             <div 
                               className="text-[9px] font-black text-indigo-600 border-b border-dashed border-indigo-400 pb-0.5 inline-block cursor-pointer hover:text-indigo-800"
-                              onClick={() => setEditingPriceVariantId(item.variant.id)}
+                              onClick={() => {
+                                setEditingPriceVariantId(item.variant.id);
+                                if (numericDisplayPrice === 0) {
+                                  setCustomPrices(prev => ({ ...prev, [item.variant.id]: "" }));
+                                }
+                              }}
                             >
-                              ${displayPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                              ${numericDisplayPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                             </div>
                           )
                         ) : (
                           <p className="text-[10px] font-black text-slate-900">
-                            ${displayPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            ${numericDisplayPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                           </p>
                         )}
                       </div>

@@ -97,7 +97,14 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     if (!companyId) return;
     setSaving(true);
     try {
-      const engineItems: EngineItem[] = (order.items || []).map((i: any) => ({
+      const sanitizedItems = (order.items || []).map((i: any) => ({
+        ...i,
+        quantity: Number(i.quantity) || 0,
+        unitPrice: Number(i.unitPrice) || 0,
+        discountPercentage: Number(i.discountPercentage) || 0
+      }));
+
+      const engineItems: EngineItem[] = sanitizedItems.map((i: any) => ({
         id: i.variantId || i.id,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
@@ -146,6 +153,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
 
       const updatedOrder = {
         ...order,
+        items: sanitizedItems,
         projectId: finalProjectId || null,
         projectName: finalProjectName,
         locationName: finalLocationName,
@@ -296,9 +304,9 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   // Recalc UI totals on the fly using calculateOrderTotals
   const engineItems: EngineItem[] = (order.items || []).map((i: any) => ({
     id: i.variantId || i.id,
-    quantity: i.quantity,
-    unitPrice: i.unitPrice,
-    manualDiscountPercentage: i.discountPercentage || 0,
+    quantity: Number(i.quantity) || 0,
+    unitPrice: Number(i.unitPrice) || 0,
+    manualDiscountPercentage: Number(i.discountPercentage) || 0,
     categoryIds: i.categoryIds || []
   }));
 
@@ -676,9 +684,25 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                             <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.lineKey || item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-20 text-center font-bold" />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Precio U.</label>
-                            <Input type="number" step={0.01} value={item.unitPrice} onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', parseFloat(e.target.value)||0)} className="w-24 text-right font-medium" />
-                          </div>
+                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Precio U.</label>
+                             <Input 
+                               type="number" 
+                               step={0.01} 
+                               value={item.unitPrice === 0 ? "" : item.unitPrice} 
+                               onFocus={() => {
+                                 if (item.unitPrice === 0 || item.unitPrice === "0") {
+                                   updateItem(item.lineKey || item.variantId, 'unitPrice', "");
+                                 }
+                               }}
+                               onBlur={() => {
+                                 if (item.unitPrice === "") {
+                                   updateItem(item.lineKey || item.variantId, 'unitPrice', 0);
+                                 }
+                               }}
+                               onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', e.target.value)} 
+                               className="w-24 text-right font-medium" 
+                             />
+                           </div>
                           <div className="flex flex-col gap-1">
                             <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Desc %</label>
                             <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.lineKey || item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-20 text-center text-emerald-600 font-bold" />

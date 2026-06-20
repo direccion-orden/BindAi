@@ -60,7 +60,14 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
     setLoading(true);
     try {
       // Recalculate totals using calculateOrderTotals
-      const engineItems: EngineItem[] = (editData.items || []).map((i: any) => ({
+      const sanitizedItems = (editData.items || []).map((i: any) => ({
+        ...i,
+        quantity: Number(i.quantity) || 0,
+        unitPrice: Number(i.unitPrice) || 0,
+        discountPercentage: Number(i.discountPercentage) || 0
+      }));
+
+      const engineItems: EngineItem[] = sanitizedItems.map((i: any) => ({
         id: i.variantId || i.id,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
@@ -120,6 +127,7 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
 
       const updatedQuote = {
         ...editData,
+        items: sanitizedItems,
         projectId: finalProjectId || null,
         projectName: finalProjectName,
         locationName: finalLocationName,
@@ -261,9 +269,9 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
   // Recalc UI totals on the fly during edit using calculateOrderTotals
   const engineItems: EngineItem[] = (editData.items || []).map((i: any) => ({
     id: i.variantId || i.id,
-    quantity: i.quantity,
-    unitPrice: i.unitPrice,
-    manualDiscountPercentage: i.discountPercentage || 0,
+    quantity: Number(i.quantity) || 0,
+    unitPrice: Number(i.unitPrice) || 0,
+    manualDiscountPercentage: Number(i.discountPercentage) || 0,
     categoryIds: i.categoryIds || []
   }));
 
@@ -464,7 +472,23 @@ export function QuoteModal({ quote, onClose, stages }: { quote: any, onClose: ()
                         </div>
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] text-slate-500 font-bold uppercase">Precio U.</label>
-                          <Input type="number" step={0.01} value={item.unitPrice} onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', parseFloat(e.target.value)||0)} className="w-24 h-8 text-right" />
+                          <Input 
+                            type="number" 
+                            step={0.01} 
+                            value={item.unitPrice === 0 ? "" : item.unitPrice} 
+                            onFocus={() => {
+                              if (item.unitPrice === 0 || item.unitPrice === "0") {
+                                updateItem(item.lineKey || item.variantId, 'unitPrice', "");
+                              }
+                            }}
+                            onBlur={() => {
+                              if (item.unitPrice === "") {
+                                updateItem(item.lineKey || item.variantId, 'unitPrice', 0);
+                              }
+                            }}
+                            onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', e.target.value)} 
+                            className="w-24 h-8 text-right" 
+                          />
                         </div>
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] text-emerald-600 font-bold uppercase">Desc %</label>

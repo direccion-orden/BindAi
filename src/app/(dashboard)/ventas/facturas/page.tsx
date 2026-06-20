@@ -189,8 +189,8 @@ export default function FacturasPage() {
       </div>
 
       {/* Modern Filter Panel */}
-      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
-        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1">
+      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-stretch md:items-end justify-between bg-card p-4 rounded-xl border shadow-sm shrink-0">
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end flex-1">
           <div className="space-y-1 w-full sm:w-64">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Buscar

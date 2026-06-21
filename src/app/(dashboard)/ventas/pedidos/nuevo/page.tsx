@@ -1166,6 +1166,7 @@ export default function NuevoPedidoPage() {
                         const rawQty = addQuantities[item.variant.id];
                         const qty = rawQty === "" || rawQty === undefined ? 1 : Number(rawQty);
                         handleAddProduct(item.product, item.variant, qty);
+                        setAddQuantities(prev => ({ ...prev, [item.variant.id]: 1 }));
                       }
                     }}
                     className="flex flex-col bg-card border rounded-xl overflow-hidden relative active:scale-95 transition-all text-left shadow-sm hover:border-slate-300"
@@ -1249,6 +1250,17 @@ export default function NuevoPedidoPage() {
                               min={1}
                               className="w-full text-[10px] font-bold border border-slate-200 rounded px-1 py-0.5 bg-white text-slate-900 outline-none text-center h-5"
                               value={addQuantities[item.variant.id] ?? 1}
+                              onFocus={() => {
+                                const currentVal = addQuantities[item.variant.id];
+                                if (currentVal === 1 || currentVal === undefined || currentVal === "1") {
+                                  setAddQuantities(prev => ({ ...prev, [item.variant.id]: "" }));
+                                }
+                              }}
+                              onBlur={() => {
+                                if (addQuantities[item.variant.id] === "") {
+                                  setAddQuantities(prev => ({ ...prev, [item.variant.id]: 1 }));
+                                }
+                              }}
                               onChange={(e) => {
                                 const val = parseInt(e.target.value);
                                 setAddQuantities(prev => ({ 

@@ -81,6 +81,7 @@ export default function NuevoPedidoPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [variantUsageMap, setVariantUsageMap] = useState<Record<string, number>>({});
   const [customPrices, setCustomPrices] = useState<Record<string, number | string>>({});
+  const [addQuantities, setAddQuantities] = useState<Record<string, number | string>>({});
   const [editingPriceVariantId, setEditingPriceVariantId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -184,7 +185,8 @@ export default function NuevoPedidoPage() {
     setNewProjectName("");
   };
 
-  const handleAddProduct = (product: ShopifyProduct, variant: any) => {
+  const handleAddProduct = (product: ShopifyProduct, variant: any, customQty?: number) => {
+    const qty = customQty !== undefined ? customQty : 1;
     const isService = !!product.isService || variant.sku?.startsWith("SER-");
     const customPrice = customPrices[variant.id];
     const finalPrice = customPrice !== undefined ? customPrice : (variant.price || 0);
@@ -197,7 +199,7 @@ export default function NuevoPedidoPage() {
         variantId: variant.id, 
         productName: product.title, 
         variantTitle: variant.title !== "Default Title" ? variant.title : "", 
-        quantity: 1, 
+        quantity: qty, 
         unitPrice: finalPrice,
         discountPercentage: 0,
         imageUrl: product.images?.[0]?.src || "",
@@ -218,7 +220,7 @@ export default function NuevoPedidoPage() {
           variantId: variant.id, 
           productName: product.title, 
           variantTitle: variant.title !== "Default Title" ? variant.title : "", 
-          quantity: 1, 
+          quantity: qty, 
           unitPrice: finalPrice,
           discountPercentage: 0,
           imageUrl: product.images?.[0]?.src || "",
@@ -232,7 +234,7 @@ export default function NuevoPedidoPage() {
           showComment: false
         }]);
       } else {
-        setItems(prev => prev.map(item => item.variantId === variant.id ? { ...item, quantity: item.quantity + 1 } : item));
+        setItems(prev => prev.map(item => item.variantId === variant.id ? { ...item, quantity: item.quantity + qty } : item));
       }
     }
     setProductSearch("");
@@ -1161,7 +1163,9 @@ export default function NuevoPedidoPage() {
                     type="button"
                     onClick={() => {
                       if (!isEditingPrice) {
-                        handleAddProduct(item.product, item.variant);
+                        const rawQty = addQuantities[item.variant.id];
+                        const qty = rawQty === "" || rawQty === undefined ? 1 : Number(rawQty);
+                        handleAddProduct(item.product, item.variant, qty);
                       }
                     }}
                     className="flex flex-col bg-card border rounded-xl overflow-hidden relative active:scale-95 transition-all text-left shadow-sm hover:border-slate-300"
@@ -1179,6 +1183,11 @@ export default function NuevoPedidoPage() {
                       {qtyInOrder > 0 && (
                         <span className="absolute top-1 right-1 bg-indigo-600 text-white font-extrabold text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-md animate-scaleIn">
                           {qtyInOrder}
+                        </span>
+                      )}
+                      {!item.isService && (
+                        <span className="absolute bottom-1 right-1 bg-black/75 text-white font-extrabold text-[8px] px-1 py-0.5 rounded shadow">
+                          ${numericDisplayPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                         </span>
                       )}
                     </div>
@@ -1230,9 +1239,25 @@ export default function NuevoPedidoPage() {
                             </div>
                           )
                         ) : (
-                          <p className="text-[10px] font-black text-slate-900">
-                            ${numericDisplayPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                          </p>
+                          <div 
+                            className="flex items-center gap-1 mt-0.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="text-[8px] text-slate-400 font-bold uppercase shrink-0">Cant:</span>
+                            <input 
+                              type="number"
+                              min={1}
+                              className="w-full text-[10px] font-bold border border-slate-200 rounded px-1 py-0.5 bg-white text-slate-900 outline-none text-center h-5"
+                              value={addQuantities[item.variant.id] ?? 1}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                setAddQuantities(prev => ({ 
+                                  ...prev, 
+                                  [item.variant.id]: e.target.value === "" ? "" : (isNaN(val) ? 1 : Math.max(1, val))
+                                }));
+                              }}
+                            />
+                          </div>
                         )}
                       </div>
                     </div>

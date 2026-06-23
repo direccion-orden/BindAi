@@ -1,17 +1,26 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Unlock, Vault, Coins, Banknote, History, Loader2, PlusCircle, ArrowDownToLine, Trash2, Save, CheckCircle2, Copy } from 'lucide-react';
+import { ShieldAlert, Unlock, Vault, Coins, Banknote, History, Loader2, PlusCircle, ArrowDownToLine, Trash2, Save, CheckCircle2, Copy, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/lib/firebase/client';
-import { collection, query, where, addDoc, onSnapshot, serverTimestamp, getDocs, doc, updateDoc, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, addDoc, onSnapshot, serverTimestamp, getDocs, doc, updateDoc, limit, orderBy, getDoc, setDoc } from 'firebase/firestore';
 
 export default function TesoreriaPage() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [pin, setPin] = useState("");
     const [error, setError] = useState("");
+    const [authenticating, setAuthenticating] = useState(false);
+
+    // Change PIN States
+    const [currentPin, setCurrentPin] = useState("");
+    const [newPin, setNewPin] = useState("");
+    const [confirmNewPin, setConfirmNewPin] = useState("");
+    const [updatingPin, setUpdatingPin] = useState(false);
+    const [pinChangeError, setPinChangeError] = useState("");
+    const [pinChangeSuccess, setPinChangeSuccess] = useState("");
     
     const [cashStatus, setCashStatus] = useState<any>(null);
     const [denominations, setDenominations] = useState<any[]>([]);
@@ -177,17 +186,91 @@ export default function TesoreriaPage() {
         }
     };
 
-    const TREASURER_PIN = process.env.NEXT_PUBLIC_TREASURER_PIN || "123456";
-
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (pin === TREASURER_PIN) {
-            setIsAuthenticated(true);
-            setError("");
-            loadData();
-        } else {
-            setError("PIN incorrecto. Intente de nuevo.");
-            setPin("");
+        if (!companyId) return;
+
+        setAuthenticating(true);
+        setError("");
+        try {
+            const docRef = doc(db, "companies", companyId, "credentials", "tesoreria");
+            const docSnap = await getDoc(docRef);
+
+            let expectedPin = process.env.NEXT_PUBLIC_TREASURER_PIN || "123456";
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data && data.pin) {
+                    expectedPin = data.pin;
+                }
+            }
+
+            if (pin === expectedPin) {
+                setIsAuthenticated(true);
+                setError("");
+                loadData();
+            } else {
+                setError("PIN incorrecto. Intente de nuevo.");
+                setPin("");
+            }
+        } catch (err) {
+            console.error("Error during treasurer login:", err);
+            setError("Error de conexión al verificar el PIN.");
+        } finally {
+            setAuthenticating(false);
+        }
+    };
+
+    const handleChangePin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!companyId) return;
+
+        setPinChangeError("");
+        setPinChangeSuccess("");
+
+        if (newPin.length !== 6) {
+            setPinChangeError("El nuevo PIN debe ser de 6 dígitos numéricos.");
+            return;
+        }
+
+        if (newPin !== confirmNewPin) {
+            setPinChangeError("El nuevo PIN y su confirmación no coinciden.");
+            return;
+        }
+
+        setUpdatingPin(true);
+        try {
+            const docRef = doc(db, "companies", companyId, "credentials", "tesoreria");
+            const docSnap = await getDoc(docRef);
+
+            let expectedPin = process.env.NEXT_PUBLIC_TREASURER_PIN || "123456";
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data && data.pin) {
+                    expectedPin = data.pin;
+                }
+            }
+
+            if (currentPin !== expectedPin) {
+                setPinChangeError("El PIN actual ingresado es incorrecto.");
+                setUpdatingPin(false);
+                return;
+            }
+
+            await setDoc(docRef, {
+                pin: newPin,
+                updatedAt: serverTimestamp(),
+                updatedBy: user?.email || "Tesorero"
+            });
+
+            setPinChangeSuccess("El PIN de tesorería se ha actualizado correctamente.");
+            setCurrentPin("");
+            setNewPin("");
+            setConfirmNewPin("");
+        } catch (err) {
+            console.error("Error updating PIN:", err);
+            setPinChangeError("No se pudo actualizar el PIN de seguridad.");
+        } finally {
+            setUpdatingPin(false);
         }
     };
 
@@ -503,9 +586,18 @@ export default function TesoreriaPage() {
                             autoFocus
                         />
                         {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
-                        <Button type="submit" className="w-full h-12 text-md font-semibold">
-                            <Unlock className="w-4 h-4 mr-2" />
-                            Desbloquear
+                        <Button type="submit" className="w-full h-12 text-md font-semibold" disabled={authenticating}>
+                            {authenticating ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Verificando...
+                                </>
+                            ) : (
+                                <>
+                                    <Unlock className="w-4 h-4 mr-2" />
+                                    Desbloquear
+                                </>
+                            )}
                         </Button>
                     </form>
                 </div>
@@ -917,6 +1009,67 @@ export default function TesoreriaPage() {
                             </table>
                         </div>
                     </div>
+                </div>
+
+                {/* Configuración de Seguridad: Cambiar PIN */}
+                <div className="bg-card border rounded-2xl p-6 shadow-sm md:col-span-2 space-y-6">
+                    <div className="flex justify-between items-center border-b pb-4">
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <Lock className="w-5 h-5 text-primary" />
+                            Seguridad: Cambiar PIN de Acceso
+                        </h2>
+                    </div>
+
+                    <form onSubmit={handleChangePin} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold">PIN Actual</label>
+                            <Input
+                                type="password"
+                                inputMode="numeric"
+                                maxLength={6}
+                                placeholder="******"
+                                value={currentPin}
+                                onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ""))}
+                                required
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold">Nuevo PIN (6 dígitos)</label>
+                            <Input
+                                type="password"
+                                inputMode="numeric"
+                                maxLength={6}
+                                placeholder="******"
+                                value={newPin}
+                                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+                                required
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold">Confirmar Nuevo PIN</label>
+                            <Input
+                                type="password"
+                                inputMode="numeric"
+                                maxLength={6}
+                                placeholder="******"
+                                value={confirmNewPin}
+                                onChange={(e) => setConfirmNewPin(e.target.value.replace(/\D/g, ""))}
+                                required
+                            />
+                        </div>
+                        <Button type="submit" disabled={updatingPin || !currentPin || !newPin || !confirmNewPin} className="h-10">
+                            {updatingPin ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Actualizando...
+                                </>
+                            ) : (
+                                "Actualizar PIN"
+                            )}
+                        </Button>
+                    </form>
+                    {pinChangeError && <p className="text-xs text-red-500 font-medium">{pinChangeError}</p>}
+                    {pinChangeSuccess && <p className="text-xs text-green-600 font-medium">{pinChangeSuccess}</p>}
                 </div>
 
             </div>

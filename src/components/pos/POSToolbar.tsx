@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Printer, RotateCcw, ChevronDown, Banknote, ArrowDownToLine } from "lucide-react";
+import { Printer, RotateCcw, ChevronDown, Banknote, ArrowDownToLine, Target } from "lucide-react";
 import { ReturnsModal } from "@/components/pos/ReturnsModal";
 import { ReprintTicketModal } from "@/components/pos/ReprintTicketModal";
 import { usePOS } from "@/context/POSContext";
@@ -11,12 +11,14 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { CajaModal } from "@/components/caja/CajaModal";
 import { RetiroCodigoModal } from "./RetiroCodigoModal";
+import { ResumenVentasModal } from "./ResumenVentasModal";
 
 export function POSToolbar() {
   const [isReturnsOpen, setIsReturnsOpen] = useState(false);
   const [isReprintOpen, setIsReprintOpen] = useState(false);
   const [isCajaOpen, setIsCajaOpen] = useState(false);
   const [isRetiroCodigoOpen, setIsRetiroCodigoOpen] = useState(false);
+  const [isResumenVentasOpen, setIsResumenVentasOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCajaActive, setIsCajaActive] = useState<boolean | null>(null);
   const [agentConnected, setAgentConnected] = useState(false);
@@ -185,6 +187,17 @@ export function POSToolbar() {
                   <ArrowDownToLine className="w-4 h-4 text-muted-foreground" />
                   Retirar con Código
                 </button>
+                <div className="h-px bg-border my-1"></div>
+                <button
+                  onClick={() => {
+                    setIsResumenVentasOpen(true);
+                    setIsDropdownOpen(false);
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-muted text-foreground transition-colors font-medium"
+                >
+                  <Target className="w-4 h-4 text-muted-foreground" />
+                  Resumen de Ventas
+                </button>
               </div>
             )}
           </div>
@@ -195,6 +208,7 @@ export function POSToolbar() {
       {isReprintOpen && <ReprintTicketModal onClose={() => setIsReprintOpen(false)} />}
       {isCajaOpen && <CajaModal isOpen={isCajaOpen} onClose={() => setIsCajaOpen(false)} />}
       {isRetiroCodigoOpen && <RetiroCodigoModal onClose={() => setIsRetiroCodigoOpen(false)} />}
+      {isResumenVentasOpen && <ResumenVentasModal onClose={() => setIsResumenVentasOpen(false)} />}
     </>
   );
 }

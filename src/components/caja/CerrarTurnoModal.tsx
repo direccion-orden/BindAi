@@ -49,13 +49,15 @@ export function CerrarTurnoModal({
 }) {
   const { user, companyId } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(2);
   const [cardSales, setCardSales] = useState(initialCardSales || "");
   const [recyclerConnected, setRecyclerConnected] = useState(false);
   const [loadingRecycler, setLoadingRecycler] = useState(false);
   
   // Bind Sales
   const [bindSales, setBindSales] = useState(0);
+  const [calculatedCashSales, setCalculatedCashSales] = useState(0);
+  const [calculatedCardSales, setCalculatedCardSales] = useState(0);
   const [fetchingBind, setFetchingBind] = useState(false);
 
   // Denomination counts
@@ -111,7 +113,7 @@ export function CerrarTurnoModal({
     if (isOpen) {
       setCounts(initialCounts || {});
       setCardSales(initialCardSales || "");
-      setStep(1);
+      setStep(2);
     }
   }, [isOpen, initialCounts, initialCardSales]);
 
@@ -119,6 +121,8 @@ export function CerrarTurnoModal({
   useEffect(() => {
     if (!isOpen || !companyId || !session?.openedAt || !session?.locationId) {
       setBindSales(0);
+      setCalculatedCashSales(0);
+      setCalculatedCardSales(0);
       return;
     }
 
@@ -149,12 +153,33 @@ export function CerrarTurnoModal({
           rem.status === "activa"
         );
 
-        // Sum total overall sales
-        let totalSales = 0;
+        // Sum cash sales and card sales
+        let cash = 0;
+        let card = 0;
+        let total = 0;
         filtered.forEach((rem: any) => {
-          totalSales += rem.totalAmount || rem.financials?.total || 0;
+          total += rem.totalAmount || rem.financials?.total || 0;
+          if (rem.payments) {
+            rem.payments.forEach((p: any) => {
+              const method = p.method?.toLowerCase() || "";
+              if (method === "efectivo") {
+                cash += p.amount || 0;
+              } else if (
+                method === "tarjeta" || 
+                method === "debito" || 
+                method === "credito" || 
+                method === "tarjeta debito" || 
+                method === "tarjeta credito" || 
+                method === "voucher"
+              ) {
+                card += p.amount || 0;
+              }
+            });
+          }
         });
-        setBindSales(totalSales);
+        setBindSales(total);
+        setCalculatedCashSales(cash);
+        setCalculatedCardSales(card);
       } catch (err) {
         console.error("Error computing sales totals in CerrarTurnoModal:", err);
       } finally {
@@ -173,10 +198,7 @@ export function CerrarTurnoModal({
   const totalIngresosManuales = transactions.filter(t => t.type === "INCOME").reduce((acc, t) => acc + t.amount, 0);
   const totalRetirosManuales = transactions.filter(t => t.type === "EXPENSE").reduce((acc, t) => acc + t.amount, 0);
 
-  const cardVouchers = parseFloat(cardSales) || 0;
-  const estimatedCashSales = Math.max(0, bindSales - cardVouchers);
-
-  const expectedCash = totalFondo + totalIngresosManuales - totalRetirosManuales + estimatedCashSales;
+  const expectedCash = totalFondo + totalIngresosManuales - totalRetirosManuales + calculatedCashSales;
 
   // Real physical counted cash
   const countedCash = DENOMINATIONS.reduce((acc, denom) => {
@@ -206,7 +228,7 @@ export function CerrarTurnoModal({
         closedByEmail: user?.email,
         closedByUid: user?.uid,
         bindTotalSales: bindSales,
-        cardTotalSales: cardVouchers,
+        cardTotalSales: calculatedCardSales,
         expectedCash: expectedCash,
         countedCash: countedCash,
         discrepancy: discrepancy,
@@ -233,141 +255,98 @@ export function CerrarTurnoModal({
           </DialogDescription>
         </DialogHeader>
 
-        {step === 1 && (
-          <div className="space-y-6 py-4">
-            <div className="bg-muted/50 p-4 rounded-lg flex flex-col sm:flex-row gap-4 items-center justify-between border">
-               <div>
-                 <p className="text-sm text-muted-foreground">Ventas Totales en Bind ERP (Desde apertura)</p>
-                 <div className="flex items-center gap-2">
-                    {fetchingBind ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
-                    <p className="text-2xl font-bold text-foreground">{fmt(bindSales)}</p>
-                 </div>
-               </div>
-               <div className="text-center sm:text-right">
-                 <p className="text-xs text-muted-foreground mb-1">Para aislar el efectivo,<br/> ingresa el total cobrado por terminal:</p>
-                 <div className="flex items-center gap-2">
-                    <span className="text-lg font-medium text-muted-foreground">-</span>
-                    <Input 
-                      type="number" 
-                      placeholder="Total Vouchers"
-                      value={cardSales}
-                      onChange={(e) => setCardSales(e.target.value)}
-                      className="w-32 text-right"
-                    />
-                 </div>
-               </div>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-4 border rounded-lg bg-card">
-               <div>
-                  <p className="text-xs text-muted-foreground uppercase">Fondo</p>
-                  <p className="font-semibold text-primary">{fmt(totalFondo)}</p>
-               </div>
-               <div>
-                  <p className="text-xs text-muted-foreground uppercase">+ Ingresos Manuales</p>
-                  <p className="font-semibold text-green-600">{fmt(totalIngresosManuales)}</p>
-               </div>
-               <div>
-                  <p className="text-xs text-muted-foreground uppercase">- Retiros Manuales</p>
-                  <p className="font-semibold text-red-600">{fmt(totalRetirosManuales)}</p>
-               </div>
-               <div>
-                  <p className="text-xs text-muted-foreground uppercase">+ Efectivo x Ventas</p>
-                  <p className="font-semibold text-green-600">{fmt(estimatedCashSales)}</p>
-               </div>
-            </div>
-
-            <div className="flex items-center justify-between bg-primary/10 p-5 rounded-lg border border-primary/20">
-               <div>
-                 <h4 className="text-lg font-bold text-primary">Efectivo Esperado en Caja</h4>
-                 <p className="text-sm text-primary/80">Esta cantidad es lo que el sistema espera matemáticamente</p>
-               </div>
-               <div className="text-3xl font-black text-primary">
-                 {fmt(expectedCash)}
-               </div>
-            </div>
-            
-            <DialogFooter>
-               <Button onClick={() => setStep(2)}>Siguiente: Conteo Ciego</Button>
-            </DialogFooter>
+        <div className="space-y-6 py-4">
+          <div className="flex justify-between items-center border-b pb-2">
+            <h3 className="font-bold text-lg">Arqueo Físico de Billetes y Monedas</h3>
+            {recyclerConnected && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleLoadFromRecycler}
+                disabled={loadingRecycler}
+                className="border-indigo-500/30 text-indigo-600 hover:bg-indigo-50 font-bold text-xs gap-1.5 h-8"
+              >
+                {loadingRecycler ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Arqueando...
+                  </>
+                ) : (
+                  "Arqueo Automático (Reciclador)"
+                )}
+              </Button>
+            )}
           </div>
-        )}
-
-        {step === 2 && (
-          <div className="space-y-6 py-4">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="font-bold text-lg">Arqueo Físico de Billetes y Monedas</h3>
-              {recyclerConnected && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLoadFromRecycler}
-                  disabled={loadingRecycler}
-                  className="border-indigo-500/30 text-indigo-600 hover:bg-indigo-50 font-bold text-xs gap-1.5 h-8"
-                >
-                  {loadingRecycler ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Arqueando...
-                    </>
-                  ) : (
-                    "Arqueo Automático (Reciclador)"
-                  )}
-                </Button>
-              )}
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-rows-6 md:grid-flow-col gap-x-8 gap-y-3 pl-2">
-              {DENOMINATIONS.map((denom) => {
-                const qty = counts[denom.value.toString()] || '';
-                const subtotal = (Number(qty) * denom.value) || 0;
-                return (
-                  <div key={denom.value} className="flex items-center gap-3">
-                    <div className="w-32 text-sm font-medium text-muted-foreground whitespace-nowrap">
-                      {denom.label}
-                    </div>
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      className="w-20 h-8 text-center"
-                      value={qty}
-                      onChange={(e) => handleCountChange(denom.value.toString(), e.target.value)}
-                    />
-                    <div className="text-sm text-foreground font-medium w-20 text-right">
-                      {fmt(subtotal)}
-                    </div>
+          
+          <div className="grid grid-cols-1 md:grid-rows-6 md:grid-flow-col gap-x-8 gap-y-3 pl-2">
+            {DENOMINATIONS.map((denom) => {
+              const qty = counts[denom.value.toString()] || '';
+              const subtotal = (Number(qty) * denom.value) || 0;
+              return (
+                <div key={denom.value} className="flex items-center gap-3">
+                  <div className="w-32 text-sm font-medium text-muted-foreground whitespace-nowrap">
+                    {denom.label}
                   </div>
-                );
-              })}
-            </div>
-
-            <div className={`p-5 rounded-lg border flex flex-col sm:flex-row items-center justify-between shadow-sm transition-colors ${Math.abs(discrepancy) > 0 ? 'bg-destructive/10 border-destructive/30' : 'bg-green-500/10 border-green-500/30'}`}>
-               <div className="text-center sm:text-left mb-4 sm:mb-0">
-                 <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Total Físico Contado</p>
-                 <p className="text-3xl font-black">{fmt(countedCash)}</p>
-               </div>
-               
-               <div className="text-center sm:text-right border-t sm:border-t-0 sm:border-l pt-4 sm:pt-0 sm:pl-6 border-foreground/10">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Diferencia / Descuadre</p>
-                  <p className={`text-2xl font-bold ${discrepancy === 0 ? 'text-green-600' : 'text-destructive'}`}>
-                    {discrepancy === 0 ? '¡CAJA CUADRADA!' : `${discrepancy > 0 ? 'SOBRANTE +' : 'FALTANTE '}${fmt(discrepancy)}`}
-                  </p>
-               </div>
-            </div>
-
-            <DialogFooter className="flex items-center sm:justify-between w-full">
-               <Button variant="ghost" onClick={() => setStep(1)} disabled={loading}>
-                 Volver
-               </Button>
-               <Button variant={discrepancy === 0 ? 'default' : 'destructive'} onClick={handleCloseShift} disabled={loading} className="gap-2">
-                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                 Confirmar Arqueo y Cerrar Caja
-               </Button>
-            </DialogFooter>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    className="w-20 h-8 text-center"
+                    value={qty}
+                    onChange={(e) => handleCountChange(denom.value.toString(), e.target.value)}
+                  />
+                  <div className="text-sm text-foreground font-medium w-20 text-right">
+                    {fmt(subtotal)}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
+
+          <div className="grid grid-cols-2 gap-4 border-t pt-4">
+             <div className="bg-muted/30 border border-border p-3.5 rounded-lg text-center">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Esperado en Caja</p>
+                <p className="text-2xl font-bold text-primary mt-0.5">{fmt(expectedCash)}</p>
+             </div>
+             <div className="bg-muted/30 border border-border p-3.5 rounded-lg text-center">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Total Físico Contado</p>
+                <p className="text-2xl font-bold mt-0.5">{fmt(countedCash)}</p>
+             </div>
+          </div>
+
+          <div className={`p-4 rounded-lg border flex flex-col sm:flex-row items-center justify-between shadow-sm transition-colors ${Math.abs(discrepancy) > 0 ? 'bg-destructive/10 border-destructive/30' : 'bg-green-500/10 border-green-500/30'}`}>
+             <div className="text-center sm:text-left mb-4 sm:mb-0">
+               <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Estado de Caja</p>
+               <p className={`text-2xl font-bold ${discrepancy === 0 ? 'text-green-600' : 'text-destructive'}`}>
+                 {discrepancy === 0 ? '¡CAJA CUADRADA!' : `${discrepancy > 0 ? 'SOBRANTE' : 'FALTANTE'}`}
+               </p>
+             </div>
+             
+             <div className="text-center sm:text-right border-t sm:border-t-0 sm:border-l pt-4 sm:pt-0 sm:pl-6 border-foreground/10 w-full sm:w-auto">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Diferencia / Descuadre</p>
+                <p className={`text-2xl font-black ${discrepancy === 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  {discrepancy === 0 ? fmt(0) : `${discrepancy > 0 ? '+' : ''}${fmt(discrepancy)}`}
+                </p>
+             </div>
+          </div>
+
+          <DialogFooter className="flex items-center sm:justify-between w-full border-t pt-4">
+             <Button variant="ghost" onClick={onClose} disabled={loading} className="text-slate-500 hover:text-slate-800 hover:bg-slate-100 font-bold h-10 px-4 rounded-lg transition-all">
+               Cancelar
+             </Button>
+             <Button 
+               type="button"
+               variant={discrepancy === 0 ? 'default' : 'destructive'} 
+               onClick={handleCloseShift} 
+               disabled={loading} 
+               className={`gap-2 font-bold h-10 px-5 rounded-lg shadow-md hover:shadow-lg transition-all ${discrepancy === 0 ? '!bg-indigo-600 hover:!bg-indigo-700 text-white' : ''}`}
+             >
+               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+               Confirmar Arqueo y Cerrar Caja
+             </Button>
+          </DialogFooter>
+        </div>
 
       </DialogContent>
     </Dialog>

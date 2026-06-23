@@ -248,7 +248,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
       } else {
         setOrder((prev: any) => ({
           ...prev,
-          items: prev.items.map((item: any) => item.variantId === variant.id ? { ...item, quantity: item.quantity + 1 } : item)
+          items: prev.items.map((item: any) => item.variantId === variant.id ? { ...item, quantity: (Number(item.quantity) || 0) + 1 } : item)
         }));
       }
     }
@@ -681,7 +681,30 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                         <div className="flex flex-wrap items-center gap-3 justify-end">
                           <div className="flex flex-col gap-1">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cant.</label>
-                            <Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.lineKey || item.variantId, 'quantity', parseInt(e.target.value)||1)} className="w-20 text-center font-bold" />
+                            <Input 
+                              type="number" 
+                              min={1} 
+                              value={item.quantity}
+                              onFocus={() => {
+                                if (item.quantity === 1 || item.quantity === "1") {
+                                  updateItem(item.lineKey || item.variantId, 'quantity', "");
+                                }
+                              }}
+                              onBlur={() => {
+                                if (item.quantity === "") {
+                                  updateItem(item.lineKey || item.variantId, 'quantity', 1);
+                                }
+                              }}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                updateItem(
+                                  item.lineKey || item.variantId, 
+                                  'quantity', 
+                                  e.target.value === "" ? "" : (isNaN(val) ? 1 : Math.max(1, val))
+                                );
+                              }}
+                              className="w-20 text-center font-bold" 
+                            />
                           </div>
                           <div className="flex flex-col gap-1">
                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Precio U.</label>
@@ -710,7 +733,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                           <div className="flex flex-col gap-1 text-right min-w-[80px]">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
                             <p className="font-bold text-slate-800">
-                              ${(item.quantity * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                              ${(Number(item.quantity) * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                             </p>
                           </div>
                           <div className="flex items-center gap-1 mt-4 sm:mt-0">

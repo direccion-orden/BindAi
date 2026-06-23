@@ -22,7 +22,7 @@ interface OrderItem {
   variantId: string;
   productName: string;
   variantTitle: string;
-  quantity: number;
+  quantity: number | string;
   unitPrice: number | string;
   discountPercentage: number;
   imageUrl?: string;
@@ -234,7 +234,7 @@ export default function NuevoPedidoPage() {
           showComment: false
         }]);
       } else {
-        setItems(prev => prev.map(item => item.variantId === variant.id ? { ...item, quantity: item.quantity + qty } : item));
+        setItems(prev => prev.map(item => item.variantId === variant.id ? { ...item, quantity: (Number(item.quantity) || 0) + qty } : item));
       }
     }
     setProductSearch("");
@@ -257,7 +257,7 @@ export default function NuevoPedidoPage() {
   // Calculations via Engine
   const engineItems: EngineItem[] = items.map(i => ({
     id: i.lineKey || i.variantId,
-    quantity: i.quantity,
+    quantity: Number(i.quantity) || 1,
     unitPrice: Number(i.unitPrice) || 0,
     manualDiscountPercentage: i.discountPercentage,
     categoryIds: i.categoryIds || []
@@ -354,6 +354,8 @@ export default function NuevoPedidoPage() {
         clientName: finalClientName,
         items: items.map(item => ({
           ...item,
+          quantity: Number(item.quantity) || 1,
+          unitPrice: Number(item.unitPrice) || 0,
           lineKey: item.lineKey || item.variantId
         })),
         subtotal: totals.subtotal,
@@ -775,7 +777,24 @@ export default function NuevoPedidoPage() {
                             type="number" 
                             min={1} 
                             value={item.quantity}
-                            onChange={(e) => updateItem(item.lineKey || item.variantId, 'quantity', parseInt(e.target.value) || 1)}
+                            onFocus={() => {
+                              if (item.quantity === 1 || item.quantity === "1") {
+                                updateItem(item.lineKey || item.variantId, 'quantity', "");
+                              }
+                            }}
+                            onBlur={() => {
+                              if (item.quantity === "") {
+                                updateItem(item.lineKey || item.variantId, 'quantity', 1);
+                              }
+                            }}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value);
+                              updateItem(
+                                item.lineKey || item.variantId,
+                                'quantity',
+                                e.target.value === "" ? "" : (isNaN(val) ? 1 : Math.max(1, val))
+                              );
+                            }}
                             className="w-20 text-center font-bold"
                           />
                         </div>
@@ -818,7 +837,7 @@ export default function NuevoPedidoPage() {
                         <div className="flex flex-col gap-1 min-w-[80px] text-right">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
                           <p className="font-bold text-slate-800">
-                            ${(item.quantity * Number(item.unitPrice) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                            ${(Number(item.quantity) * Number(item.unitPrice) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                           </p>
                         </div>
                         <div className="flex items-center gap-1 mt-4 sm:mt-0">
@@ -1144,7 +1163,7 @@ export default function NuevoPedidoPage() {
           ) : (
             <div className="grid grid-cols-4 gap-2">
               {filteredSelectableItems.map(item => {
-                const qtyInOrder = items.filter(i => i.variantId === item.variant.id).reduce((sum, i) => sum + i.quantity, 0);
+                const qtyInOrder = items.filter(i => i.variantId === item.variant.id).reduce((sum, i) => sum + Number(i.quantity), 0);
                 const isEditingPrice = editingPriceVariantId === item.variant.id;
                 const displayPrice = customPrices[item.variant.id] !== undefined 
                   ? customPrices[item.variant.id] 

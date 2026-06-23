@@ -34,11 +34,59 @@ export function AbrirTurnoForm({
   const { user, companyId } = useAuth();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
+  const [recyclerConnected, setRecyclerConnected] = useState(false);
+  const [loadingRecycler, setLoadingRecycler] = useState(false);
   
   // Locations state
   const [locations, setLocations] = useState<Array<{id: string, name: string}>>([]);
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [loadingLocs, setLoadingLocs] = useState(false);
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const ping = await fetch('http://localhost:3001/api/status', { signal: AbortSignal.timeout(1000) });
+        if (ping.ok) {
+          setRecyclerConnected(true);
+        } else {
+          setRecyclerConnected(false);
+        }
+      } catch (e) {
+        setRecyclerConnected(false);
+      }
+    };
+    checkConnection();
+    const interval = setInterval(checkConnection, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleLoadFromRecycler = async () => {
+    setLoadingRecycler(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/system');
+      if (!res.ok) throw new Error("Error fetching system info");
+      const systemData = await res.json();
+      if (systemData.paymentDevices) {
+        const newCounts: Record<string, number> = {};
+        systemData.paymentDevices.forEach((device: any) => {
+          if (device.denominations) {
+            device.denominations.forEach((denom: any) => {
+              if (denom.enabled && denom.storedLevel !== undefined) {
+                const valPesos = denom.value / 100;
+                newCounts[valPesos.toString()] = denom.storedLevel;
+              }
+            });
+          }
+        });
+        setCounts(newCounts);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo obtener el inventario del Reciclador de Efectivo.");
+    } finally {
+      setLoadingRecycler(false);
+    }
+  };
 
   useEffect(() => {
     if (defaultLocationId && locations.some(loc => loc.id === defaultLocationId)) {
@@ -150,11 +198,30 @@ export function AbrirTurnoForm({
 
   return (
     <div className="space-y-6">
-      <div className="border-b pb-4">
-        <h2 className="text-xl font-bold">Declarar Fondo Inicial</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Configura tu sucursal e ingresa la cantidad exacta de billetes y monedas con los que inicia el turno.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
+        <div className="flex-1 space-y-1">
+          <h2 className="text-xl font-bold">Declarar Fondo Inicial</h2>
+          <p className="text-sm text-muted-foreground max-w-xl">
+            Configura tu sucursal e ingresa la cantidad exacta de billetes y monedas con los que inicia el turno.
+          </p>
+        </div>
+        {recyclerConnected && (
+          <Button
+            type="button"
+            onClick={handleLoadFromRecycler}
+            disabled={loadingRecycler}
+            className="!bg-indigo-600 hover:!bg-indigo-700 text-white font-bold shrink-0 text-xs gap-1.5 h-9 px-4 rounded-lg shadow-md hover:shadow-lg transition-all"
+          >
+            {loadingRecycler ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Cargando...
+              </>
+            ) : (
+              "Cargar del Reciclador"
+            )}
+          </Button>
+        )}
       </div>
 
       <div className="space-y-3 bg-muted/20 p-4 rounded-lg border">
@@ -212,10 +279,19 @@ export function AbrirTurnoForm({
       </div>
 
       <div className="flex gap-3 justify-end pt-2">
-        <Button variant="ghost" onClick={onCancel} disabled={loading}>
+        <Button 
+          variant="ghost" 
+          onClick={onCancel} 
+          disabled={loading}
+          className="text-slate-500 hover:text-slate-800 hover:bg-slate-100 font-bold h-10 px-4 rounded-lg transition-all"
+        >
           Cancelar
         </Button>
-        <Button onClick={handleOpenShift} disabled={loading || !selectedLocationId} className="gap-2">
+        <Button 
+          onClick={handleOpenShift} 
+          disabled={loading || !selectedLocationId} 
+          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-10 px-5 rounded-lg shadow-md hover:shadow-lg transition-all gap-2"
+        >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Abrir Turno
         </Button>

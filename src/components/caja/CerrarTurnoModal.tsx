@@ -51,6 +51,8 @@ export function CerrarTurnoModal({
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [cardSales, setCardSales] = useState(initialCardSales || "");
+  const [recyclerConnected, setRecyclerConnected] = useState(false);
+  const [loadingRecycler, setLoadingRecycler] = useState(false);
   
   // Bind Sales
   const [bindSales, setBindSales] = useState(0);
@@ -58,6 +60,52 @@ export function CerrarTurnoModal({
 
   // Denomination counts
   const [counts, setCounts] = useState<Record<string, number>>(initialCounts || {});
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const ping = await fetch('http://localhost:3001/api/status', { signal: AbortSignal.timeout(1000) });
+        if (ping.ok) {
+          setRecyclerConnected(true);
+        } else {
+          setRecyclerConnected(false);
+        }
+      } catch (e) {
+        setRecyclerConnected(false);
+      }
+    };
+    checkConnection();
+    const interval = setInterval(checkConnection, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleLoadFromRecycler = async () => {
+    setLoadingRecycler(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/system');
+      if (!res.ok) throw new Error("Error fetching system info");
+      const systemData = await res.json();
+      if (systemData.paymentDevices) {
+        const newCounts: Record<string, number> = {};
+        systemData.paymentDevices.forEach((device: any) => {
+          if (device.denominations) {
+            device.denominations.forEach((denom: any) => {
+              if (denom.enabled && denom.storedLevel !== undefined) {
+                const valPesos = denom.value / 100;
+                newCounts[valPesos.toString()] = denom.storedLevel;
+              }
+            });
+          }
+        });
+        setCounts(newCounts);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo obtener el inventario del Reciclador de Efectivo.");
+    } finally {
+      setLoadingRecycler(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -247,7 +295,28 @@ export function CerrarTurnoModal({
 
         {step === 2 && (
           <div className="space-y-6 py-4">
-            <h3 className="font-bold border-b pb-2">Arqueo Físico de Billetes y Monedas</h3>
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-bold text-lg">Arqueo Físico de Billetes y Monedas</h3>
+              {recyclerConnected && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLoadFromRecycler}
+                  disabled={loadingRecycler}
+                  className="border-indigo-500/30 text-indigo-600 hover:bg-indigo-50 font-bold text-xs gap-1.5 h-8"
+                >
+                  {loadingRecycler ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Arqueando...
+                    </>
+                  ) : (
+                    "Arqueo Automático (Reciclador)"
+                  )}
+                </Button>
+              )}
+            </div>
             
             <div className="grid grid-cols-1 md:grid-rows-6 md:grid-flow-col gap-x-8 gap-y-3 pl-2">
               {DENOMINATIONS.map((denom) => {

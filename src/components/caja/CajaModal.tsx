@@ -178,9 +178,6 @@ export function CajaModal({ isOpen, onClose }: CajaModalProps) {
               <Banknote className="h-6 w-6 text-primary" />
               Control de Caja
             </DialogTitle>
-            <DialogDescription>
-              Gestiona el turno de caja operativo para registrar ventas y movimientos.
-            </DialogDescription>
           </DialogHeader>
 
           {loading ? (

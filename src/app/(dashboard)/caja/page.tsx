@@ -94,10 +94,57 @@ export default function CajaPage() {
 
   const [liveCardSales, setLiveCardSales] = useState("");
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
-
+  const [recyclerConnected, setRecyclerConnected] = useState(false);
+  const [loadingRecycler, setLoadingRecycler] = useState(false);
   
   const [syncStatus, setSyncStatus] = useState<'idle'|'syncing'|'saved'>('idle');
   const hasMounted = useRef(false);
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const ping = await fetch('http://localhost:3001/api/status', { signal: AbortSignal.timeout(1000) });
+        if (ping.ok) {
+          setRecyclerConnected(true);
+        } else {
+          setRecyclerConnected(false);
+        }
+      } catch (e) {
+        setRecyclerConnected(false);
+      }
+    };
+    checkConnection();
+    const interval = setInterval(checkConnection, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleLoadFromRecycler = async () => {
+    setLoadingRecycler(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/system');
+      if (!res.ok) throw new Error("Error fetching system info");
+      const systemData = await res.json();
+      if (systemData.paymentDevices) {
+        const newCounts: Record<string, number> = {};
+        systemData.paymentDevices.forEach((device: any) => {
+          if (device.denominations) {
+            device.denominations.forEach((denom: any) => {
+              if (denom.enabled && denom.storedLevel !== undefined) {
+                const valPesos = denom.value / 100;
+                newCounts[valPesos.toString()] = denom.storedLevel;
+              }
+            });
+          }
+        });
+        setLiveCounts(newCounts);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo obtener el inventario del Reciclador de Efectivo.");
+    } finally {
+      setLoadingRecycler(false);
+    }
+  };
 
   useEffect(() => {
     if (activeSession?.liveAudit && !hasMounted.current) {
@@ -442,7 +489,28 @@ export default function CajaPage() {
             {/* Arqueo en Caliente */}
             <div className="bg-card border rounded-lg shadow-sm p-4 animate-in fade-in">
                <div className="flex items-center justify-between border-b pb-2 mb-4">
-                 <h3 className="font-semibold text-lg">Arqueo Físico Simultáneo (Sin Cerrar)</h3>
+                 <div className="flex items-center gap-3">
+                   <h3 className="font-semibold text-lg">Arqueo Físico Simultáneo (Sin Cerrar)</h3>
+                   {recyclerConnected && (
+                     <Button
+                       type="button"
+                       variant="outline"
+                       size="sm"
+                       onClick={handleLoadFromRecycler}
+                       disabled={loadingRecycler}
+                       className="border-indigo-500/30 text-indigo-600 hover:bg-indigo-50 font-bold text-xs gap-1.5 h-7 px-2.5 rounded-md"
+                     >
+                       {loadingRecycler ? (
+                         <>
+                           <Loader2 className="w-3 h-3 animate-spin" />
+                           Escaneando...
+                         </>
+                       ) : (
+                         "Escanear Reciclador"
+                       )}
+                     </Button>
+                   )}
+                 </div>
                  {syncStatus === 'syncing' && <span className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Sincronizando...</span>}
                  {syncStatus === 'saved' && <span className="text-xs text-green-600 flex items-center gap-1 font-medium"><CheckCircle2 className="w-3 h-3"/> Activo en la Nube</span>}
                </div>

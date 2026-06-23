@@ -72,6 +72,9 @@ service cloud.firestore {
       match /cash_transactions/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /cash_withdrawals/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
       match /cf_forecasts/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }

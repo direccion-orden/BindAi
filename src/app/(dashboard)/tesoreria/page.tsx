@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Unlock, Vault, Coins, Banknote, History, Loader2, PlusCircle, ArrowDownToLine, Trash2, Save, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, Unlock, Vault, Coins, Banknote, History, Loader2, PlusCircle, ArrowDownToLine, Trash2, Save, CheckCircle2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/lib/firebase/client';
-import { collection, query, where, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, addDoc, onSnapshot, serverTimestamp, getDocs, doc, updateDoc, limit, orderBy } from 'firebase/firestore';
 
 export default function TesoreriaPage() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -59,6 +59,123 @@ export default function TesoreriaPage() {
         
         return () => unsubscribe();
     }, [companyId]);
+
+    // Withdrawal Authorization Integration
+    const [locations, setLocations] = useState<any[]>([]);
+    const [selectedLocationId, setSelectedLocationId] = useState("");
+    const [withdrawalAmount, setWithdrawalAmount] = useState("");
+    const [generatedCode, setGeneratedCode] = useState("");
+    const [withdrawals, setWithdrawals] = useState<any[]>([]);
+    const [generatingCode, setGeneratingCode] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    useEffect(() => {
+        if (!companyId) return;
+
+        // Fetch locations
+        const qLoc = query(collection(db, "companies", companyId, "locations"));
+        const unsubLoc = onSnapshot(qLoc, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setLocations(data);
+            if (data.length > 0 && !selectedLocationId) {
+                setSelectedLocationId(data[0].id);
+            }
+        });
+
+        // Fetch withdrawals
+        const qWith = query(
+            collection(db, "companies", companyId, "cash_withdrawals"),
+            orderBy("createdAt", "desc"),
+            limit(50)
+        );
+        const unsubWith = onSnapshot(qWith, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setWithdrawals(data);
+        }, (err) => {
+            console.error("Error fetching withdrawals:", err);
+        });
+
+        return () => {
+            unsubLoc();
+            unsubWith();
+        };
+    }, [companyId]);
+
+    const generateUniqueCode = async (): Promise<string> => {
+        let attempts = 0;
+        while (attempts < 10) {
+            const code = Math.floor(100000 + Math.random() * 900000).toString();
+            const q = query(
+                collection(db, "companies", companyId!, "cash_withdrawals"),
+                where("code", "==", code),
+                where("status", "==", "pending")
+            );
+            const querySnapshot = await getDocs(q);
+            if (querySnapshot.empty) {
+                return code;
+            }
+            attempts++;
+        }
+        throw new Error("No se pudo generar un código único después de varios intentos.");
+    };
+
+    const handleGenerateWithdrawalCode = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!companyId) return;
+        const amount = parseFloat(withdrawalAmount);
+        if (isNaN(amount) || amount <= 0) {
+            alert("Por favor ingrese un monto válido mayor a 0.");
+            return;
+        }
+        if (!selectedLocationId) {
+            alert("Por favor seleccione una sucursal.");
+            return;
+        }
+
+        setGeneratingCode(true);
+        try {
+            const code = await generateUniqueCode();
+            const selectedLoc = locations.find(l => l.id === selectedLocationId);
+            const locationName = selectedLoc ? selectedLoc.name || selectedLoc.Name || selectedLoc.nombre || "Sucursal" : "Sucursal";
+
+            await addDoc(collection(db, "companies", companyId, "cash_withdrawals"), {
+                code,
+                amount,
+                locationId: selectedLocationId,
+                locationName,
+                status: "pending",
+                createdAt: serverTimestamp(),
+                createdBy: user?.email || "Tesorero"
+            });
+
+            setGeneratedCode(code);
+            setWithdrawalAmount("");
+        } catch (err: any) {
+            console.error("Error generating code:", err);
+            alert(err.message || "Error al generar el código.");
+        } finally {
+            setGeneratingCode(false);
+        }
+    };
+
+    const handleCancelWithdrawal = async (id: string) => {
+        if (!companyId) return;
+        if (!confirm("¿Estás seguro de que deseas cancelar este código de retiro?")) {
+            return;
+        }
+
+        try {
+            const ref = doc(db, "companies", companyId, "cash_withdrawals", id);
+            await updateDoc(ref, {
+                status: "cancelled",
+                cancelledAt: serverTimestamp(),
+                cancelledBy: user?.email || "Tesorero"
+            });
+        } catch (err) {
+            console.error("Error cancelling withdrawal:", err);
+            alert("No se pudo cancelar el retiro.");
+        }
+    };
 
     const TREASURER_PIN = process.env.NEXT_PUBLIC_TREASURER_PIN || "123456";
 
@@ -638,6 +755,167 @@ export default function TesoreriaPage() {
                         {denominations.length === 0 && !loading && (
                             <p className="text-sm text-muted-foreground col-span-full">No hay denominaciones configuradas disponibles.</p>
                         )}
+                    </div>
+                </div>
+
+                {/* Autorización de Retiros */}
+                <div className="bg-card border rounded-2xl p-6 shadow-sm md:col-span-2 space-y-6">
+                    <div className="flex justify-between items-center border-b pb-4">
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <ArrowDownToLine className="w-5 h-5 text-primary" />
+                            Autorización de Retiros Especiales
+                        </h2>
+                    </div>
+
+                    <form onSubmit={handleGenerateWithdrawalCode} className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold">Sucursal Destino</label>
+                            <select
+                                value={selectedLocationId}
+                                onChange={(e) => setSelectedLocationId(e.target.value)}
+                                className="w-full bg-background border border-border rounded-lg text-sm px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary font-medium"
+                                required
+                            >
+                                <option value="">Seleccionar Sucursal...</option>
+                                {locations.map((loc) => (
+                                    <option key={loc.id} value={loc.id}>
+                                        {loc.name || loc.Name || loc.nombre || loc.id}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold">Monto a Retirar (MXN)</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-2.5 text-muted-foreground font-medium">$</span>
+                                <Input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    value={withdrawalAmount}
+                                    onChange={(e) => setWithdrawalAmount(e.target.value)}
+                                    className="pl-7 h-10"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <Button type="submit" disabled={generatingCode || !selectedLocationId || !withdrawalAmount} className="h-10">
+                            {generatingCode ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Generando...
+                                </>
+                            ) : (
+                                "Generar Código de Retiro"
+                            )}
+                        </Button>
+                    </form>
+
+                    {generatedCode && (
+                        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in zoom-in-95">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-primary/15 rounded-full flex items-center justify-center text-primary shrink-0">
+                                    <Unlock className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold text-primary">Código Generado Correctamente</h4>
+                                    <p className="text-xs text-muted-foreground">
+                                        Proporcione este código al personal de la tienda seleccionada.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 bg-card border px-4 py-2 rounded-lg shadow-sm">
+                                <span className="font-mono text-2xl font-bold tracking-widest text-primary">{generatedCode}</span>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(generatedCode);
+                                        setCopied(true);
+                                        setTimeout(() => setCopied(false), 2000);
+                                    }}
+                                    className="h-8 w-8 p-0"
+                                >
+                                    {copied ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-bold flex items-center gap-2">
+                            <History className="w-4 h-4 text-muted-foreground" />
+                            Historial de Retiros Autorizados
+                        </h3>
+                        <div className="border rounded-xl overflow-hidden bg-card">
+                            <table className="w-full border-collapse text-left text-sm text-muted-foreground">
+                                <thead className="bg-muted/55 text-foreground font-semibold text-xs uppercase border-b">
+                                    <tr>
+                                        <th className="px-4 py-3">Código</th>
+                                        <th className="px-4 py-3">Sucursal</th>
+                                        <th className="px-4 py-3">Monto</th>
+                                        <th className="px-4 py-3">Estado</th>
+                                        <th className="px-4 py-3">Creado por</th>
+                                        <th className="px-4 py-3">Fecha</th>
+                                        <th className="px-4 py-3 text-right">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    {withdrawals.map((withdrawal) => {
+                                        const dateStr = withdrawal.createdAt?.toDate 
+                                            ? withdrawal.createdAt.toDate().toLocaleString('es-MX') 
+                                            : "...";
+                                        return (
+                                            <tr key={withdrawal.id} className="hover:bg-muted/30">
+                                                <td className="px-4 py-3 font-mono font-bold text-foreground">{withdrawal.code}</td>
+                                                <td className="px-4 py-3 font-medium text-foreground">{withdrawal.locationName}</td>
+                                                <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">{formatMoney(withdrawal.amount)}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                                        withdrawal.status === 'pending' 
+                                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' 
+                                                            : withdrawal.status === 'completed'
+                                                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                                                : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300'
+                                                    }`}>
+                                                        <span className={`h-1.5 w-1.5 rounded-full ${
+                                                            withdrawal.status === 'pending' 
+                                                                ? 'bg-amber-500' 
+                                                                : withdrawal.status === 'completed'
+                                                                    ? 'bg-emerald-500'
+                                                                    : 'bg-rose-500'
+                                                        }`} />
+                                                        {withdrawal.status === 'pending' ? 'Pendiente' : withdrawal.status === 'completed' ? 'Completado' : 'Cancelado'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-xs">{withdrawal.createdBy?.split('@')[0] || "Tesorero"}</td>
+                                                <td className="px-4 py-3 text-xs">{dateStr}</td>
+                                                <td className="px-4 py-3 text-right">
+                                                    {withdrawal.status === 'pending' && (
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={() => handleCancelWithdrawal(withdrawal.id)}
+                                                            className="h-8 px-2"
+                                                        >
+                                                            Cancelar
+                                                        </Button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {withdrawals.length === 0 && (
+                                        <tr>
+                                            <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                                                No hay retiros autorizados registrados.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 

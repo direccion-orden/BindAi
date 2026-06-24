@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { collection, query, onSnapshot, doc, getDoc, writeBatch, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, TrendingDown, TrendingUp, AlertTriangle, Settings, RefreshCcw, Save } from "lucide-react";
+import { Loader2, TrendingDown, TrendingUp, AlertTriangle, Settings, RefreshCcw, Save, Search, Tag, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShopifyProduct } from "@/types/product";
@@ -52,15 +52,34 @@ export default function DDMRPPage() {
     moq: number;
   }>>({});
 
+  // Filters and Categories State
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("Todas");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [savingAll, setSavingAll] = useState(false);
+
   useEffect(() => {
     if (!companyId) return;
+
+    // Fetch Categories
+    getDocs(collection(db, "companies", companyId, "categories")).then(snap => {
+      const catList = snap.docs.map(doc => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          name: d.name || d.Name || d.description || d.Description || ""
+        };
+      }).filter(c => c.name !== "");
+      catList.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      setCategories(catList);
+    });
 
     // Fetch Products
     const unsubP = onSnapshot(query(collection(db, "companies", companyId, "products")), (snap) => {
       const prods = snap.docs.map(d => ({ id: d.id, ...d.data() } as ShopifyProduct));
       setProducts(prods);
       
-      // Initialize Config Forms for non-decoupled
+      // Initialize Config Forms for variants
       const forms: any = {};
       prods.forEach(p => p.variants.forEach(v => {
         if (!forms[v.id]) {
@@ -132,6 +151,132 @@ export default function DDMRPPage() {
       alert("Error al guardar la configuración");
     } finally {
       setSavingConfig(null);
+    }
+  };
+
+  // Filtered variants for Buffer Configuration
+  const filteredConfigItems = useMemo(() => {
+    const list: { product: ShopifyProduct; variant: any; variantIndex: number }[] = [];
+    products.forEach(p => {
+      // Resolve Category ID
+      const catId = p.categoryId || (p as any).Category1ID || "";
+      
+      if (selectedCategory !== "Todas") {
+        const matchedCatObj = categories.find(c => c.name.toLowerCase() === selectedCategory.toLowerCase());
+        const matchedCatId = matchedCatObj?.id;
+
+        const matchesCategory = matchedCatId && (
+          catId === matchedCatId ||
+          p.productType?.toLowerCase() === selectedCategory.toLowerCase()
+        );
+        if (!matchesCategory) return;
+      }
+
+      p.variants.forEach((v, idx) => {
+        const fullName = v.title !== "Default Title" ? `${p.title} - ${v.title}` : p.title;
+        const sku = v.sku || "";
+
+        if (searchTerm.trim() !== "") {
+          const term = searchTerm.toLowerCase().trim();
+          const matchesSearch = 
+            fullName.toLowerCase().includes(term) ||
+            sku.toLowerCase().includes(term);
+          if (!matchesSearch) return;
+        }
+
+        list.push({ product: p, variant: v, variantIndex: idx });
+      });
+    });
+    return list;
+  }, [products, categories, selectedCategory, searchTerm]);
+
+  // Bulk Selection State
+  const isAllFilteredSelected = useMemo(() => {
+    if (filteredConfigItems.length === 0) return false;
+    return filteredConfigItems.every(({ variant }) => {
+      const form = configForms[variant.id];
+      return form?.isDecoupled === true;
+    });
+  }, [filteredConfigItems, configForms]);
+
+  const isSomeFilteredSelected = useMemo(() => {
+    return filteredConfigItems.some(({ variant }) => {
+      const form = configForms[variant.id];
+      return form?.isDecoupled === true;
+    });
+  }, [filteredConfigItems, configForms]);
+
+  const handleToggleSelectAllFiltered = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const checked = e.target.checked;
+    setConfigForms(prev => {
+      const next = { ...prev };
+      filteredConfigItems.forEach(({ variant }) => {
+        const form = next[variant.id];
+        if (form) {
+          next[variant.id] = { ...form, isDecoupled: checked };
+        }
+      });
+      return next;
+    });
+  };
+
+  // Pending Changes State
+  const changedConfigItems = useMemo(() => {
+    const list: { productId: string; variantIndex: number; variantId: string; config: any }[] = [];
+    products.forEach(p => {
+      p.variants.forEach((v, idx) => {
+        const form = configForms[v.id];
+        if (form) {
+          const currentConfig = v.ddmrp || { isDecoupled: false, leadTimeDays: 7, variabilityFactor: 0.5, moq: 1 };
+          const isChanged = JSON.stringify(form) !== JSON.stringify(currentConfig);
+          if (isChanged) {
+            list.push({ productId: p.id, variantIndex: idx, variantId: v.id, config: form });
+          }
+        }
+      });
+    });
+    return list;
+  }, [products, configForms]);
+
+  const hasChanges = changedConfigItems.length > 0;
+
+  // Bulk Save Handler
+  const handleSaveAllConfigs = async () => {
+    if (!companyId || changedConfigItems.length === 0) return;
+    setSavingAll(true);
+    try {
+      const groupedByProduct: Record<string, { variantIndex: number; config: any }[]> = {};
+      changedConfigItems.forEach(({ productId, variantIndex, config }) => {
+        if (!groupedByProduct[productId]) {
+          groupedByProduct[productId] = [];
+        }
+        groupedByProduct[productId].push({ variantIndex, config });
+      });
+
+      const batch = writeBatch(db);
+
+      for (const productId of Object.keys(groupedByProduct)) {
+        const prodRef = doc(db, "companies", companyId, "products", productId);
+        const prodSnap = await getDoc(prodRef);
+        if (prodSnap.exists()) {
+          const prodData = prodSnap.data() as ShopifyProduct;
+          const updates = groupedByProduct[productId];
+          updates.forEach(({ variantIndex, config }) => {
+            if (prodData.variants && prodData.variants[variantIndex]) {
+              prodData.variants[variantIndex].ddmrp = config;
+            }
+          });
+          batch.update(prodRef, { variants: prodData.variants });
+        }
+      }
+
+      await batch.commit();
+      alert("Configuraciones de buffers guardadas exitosamente");
+    } catch (e) {
+      console.error(e);
+      alert("Error al guardar las configuraciones de buffers");
+    } finally {
+      setSavingAll(false);
     }
   };
 
@@ -339,43 +484,118 @@ export default function DDMRPPage() {
       )}
 
       {activeTab === 'config' && (
-        <div className="bg-card border rounded-xl shadow-sm p-6">
-          <div className="mb-6">
-            <h2 className="text-lg font-bold">Posicionamiento Estratégico (Configuración)</h2>
-            <p className="text-sm text-muted-foreground">Activa el Buffer DDMRP para los artículos que deseas gestionar mediante demanda real. Define los tiempos de entrega de tu proveedor y el tamaño de lote.</p>
+        <div className="bg-card border rounded-xl shadow-sm p-6 space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold">Posicionamiento Estratégico (Configuración)</h2>
+              <p className="text-sm text-muted-foreground">Activa el Buffer DDMRP para los artículos que deseas gestionar mediante demanda real. Define los tiempos de entrega de tu proveedor y el tamaño de lote.</p>
+            </div>
+            {hasChanges && (
+              <Button
+                onClick={handleSaveAllConfigs}
+                disabled={savingAll}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold gap-2 shadow-sm shrink-0 self-start md:self-center"
+              >
+                {savingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Guardar Todos los Cambios ({changedConfigItems.length})
+              </Button>
+            )}
           </div>
           
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-muted/50 text-muted-foreground font-medium border-b text-xs uppercase">
-                <tr>
-                  <th className="px-4 py-3">Producto</th>
-                  <th className="px-4 py-3 text-center">Activar Buffer</th>
-                  <th className="px-4 py-3">Lead Time (Días)</th>
-                  <th className="px-4 py-3">Factor Variabilidad</th>
-                  <th className="px-4 py-3">MOQ (Mínimo Compra)</th>
-                  <th className="px-4 py-3 text-right">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {products.map(p => 
-                  p.variants.map((v, i) => {
-                    const form = configForms[v.id];
+          {/* Filters Bar */}
+          <div className="p-4 border border-slate-200 rounded-xl flex flex-col md:flex-row items-center gap-4 bg-slate-50/50">
+            {/* Search Input */}
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input 
+                placeholder="Buscar por producto o SKU..." 
+                className="pl-9 h-10 text-xs w-full bg-white border-slate-200 placeholder:text-slate-400"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            {/* Category Filter */}
+            <div className="w-full md:w-60 shrink-0">
+              <div className="relative">
+                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full pl-9 pr-3 border border-slate-200 rounded-md h-10 text-xs bg-white text-slate-700 font-semibold"
+                >
+                  <option value="Todas">Todas las categorías</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.name}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border rounded-lg">
+            {filteredConfigItems.length === 0 ? (
+              <div className="p-12 text-center space-y-3">
+                <div className="p-3 bg-slate-100 rounded-full w-max mx-auto">
+                  <Inbox className="w-6 h-6 text-slate-400" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-700">Sin artículos encontrados</h3>
+                <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                  No hay productos ni variantes que coincidan con los filtros de búsqueda aplicados.
+                </p>
+              </div>
+            ) : (
+              <table className="w-full text-sm text-left">
+                <thead className="bg-muted/50 text-muted-foreground font-medium border-b text-xs uppercase">
+                  <tr>
+                    <th className="px-4 py-3 pl-6">Producto</th>
+                    <th className="px-4 py-3 text-center w-36">
+                      <div className="flex flex-col items-center gap-1">
+                        <span>Activar Buffer</span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={isAllFilteredSelected}
+                            ref={el => {
+                              if (el) {
+                                el.indeterminate = isSomeFilteredSelected && !isAllFilteredSelected;
+                              }
+                            }}
+                            onChange={handleToggleSelectAllFiltered}
+                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            title="Seleccionar todos los filtrados"
+                          />
+                          <span className="text-[9px] text-muted-foreground font-bold lowercase select-none">Todos</span>
+                        </div>
+                      </div>
+                    </th>
+                    <th className="px-4 py-3">Lead Time (Días)</th>
+                    <th className="px-4 py-3">Factor Variabilidad</th>
+                    <th className="px-4 py-3">MOQ (Mínimo Compra)</th>
+                    <th className="px-4 py-3 pr-6 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredConfigItems.map(({ product, variant, variantIndex }) => {
+                    const form = configForms[variant.id];
                     if (!form) return null;
-                    const isChanged = JSON.stringify(form) !== JSON.stringify(v.ddmrp || { isDecoupled: false, leadTimeDays: 7, variabilityFactor: 0.5, moq: 1 });
+                    const isChanged = JSON.stringify(form) !== JSON.stringify(variant.ddmrp || { isDecoupled: false, leadTimeDays: 7, variabilityFactor: 0.5, moq: 1 });
                     
                     return (
-                      <tr key={v.id} className="hover:bg-muted/10">
-                        <td className="px-4 py-3">
-                          <p className="font-medium">{p.title}</p>
-                          <p className="text-xs text-muted-foreground">{v.sku} {v.title !== "Default Title" ? `- ${v.title}` : ''}</p>
+                      <tr key={variant.id} className="hover:bg-muted/10">
+                        <td className="px-4 py-3 pl-6">
+                          <p className="font-semibold text-slate-900 text-sm leading-tight">{product.title}</p>
+                          <p className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded w-max mt-1">
+                            {variant.sku} {variant.title !== "Default Title" ? `- ${variant.title}` : ''}
+                          </p>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <input 
                             type="checkbox" 
                             checked={form.isDecoupled}
-                            onChange={e => setConfigForms(prev => ({...prev, [v.id]: {...form, isDecoupled: e.target.checked}}))}
-                            className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500"
+                            onChange={e => setConfigForms(prev => ({...prev, [variant.id]: {...form, isDecoupled: e.target.checked}}))}
+                            className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -383,16 +603,16 @@ export default function DDMRPPage() {
                             type="number" 
                             min={1} 
                             value={form.leadTimeDays}
-                            onChange={e => setConfigForms(prev => ({...prev, [v.id]: {...form, leadTimeDays: parseInt(e.target.value)||1}}))}
-                            className="w-24 h-8"
+                            onChange={e => setConfigForms(prev => ({...prev, [variant.id]: {...form, leadTimeDays: parseInt(e.target.value)||1}}))}
+                            className="w-24 h-8 text-xs font-semibold"
                             disabled={!form.isDecoupled}
                           />
                         </td>
                         <td className="px-4 py-3">
                           <select 
                             value={form.variabilityFactor}
-                            onChange={e => setConfigForms(prev => ({...prev, [v.id]: {...form, variabilityFactor: parseFloat(e.target.value)}}))}
-                            className="border rounded-md px-2 py-1 text-sm bg-background h-8"
+                            onChange={e => setConfigForms(prev => ({...prev, [variant.id]: {...form, variabilityFactor: parseFloat(e.target.value)}}))}
+                            className="border border-slate-200 rounded-md px-2 py-1 text-xs bg-white h-8 font-semibold text-slate-700"
                             disabled={!form.isDecoupled}
                           >
                             <option value={0.2}>Baja (0.2)</option>
@@ -405,29 +625,30 @@ export default function DDMRPPage() {
                             type="number" 
                             min={1} 
                             value={form.moq}
-                            onChange={e => setConfigForms(prev => ({...prev, [v.id]: {...form, moq: parseInt(e.target.value)||1}}))}
-                            className="w-24 h-8"
+                            onChange={e => setConfigForms(prev => ({...prev, [variant.id]: {...form, moq: parseInt(e.target.value)||1}}))}
+                            className="w-24 h-8 text-xs font-semibold"
                             disabled={!form.isDecoupled}
                           />
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 pr-6 text-right">
                           {isChanged && (
                             <Button 
                               size="sm" 
-                              onClick={() => handleSaveConfig(p.id, i, v.id)}
-                              disabled={savingConfig === v.id}
-                              className="bg-emerald-600 hover:bg-emerald-700 h-8"
+                              onClick={() => handleSaveConfig(product.id, variantIndex, variant.id)}
+                              disabled={savingConfig === variant.id}
+                              className="bg-emerald-600 hover:bg-emerald-700 h-8 text-xs shadow-sm font-semibold gap-1.5"
                             >
-                              {savingConfig === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 mr-1" />} Guardar
+                              {savingConfig === variant.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                              Guardar
                             </Button>
                           )}
                         </td>
                       </tr>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

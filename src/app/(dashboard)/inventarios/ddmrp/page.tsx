@@ -101,7 +101,6 @@ export default function DDMRPPage() {
       
       const q = query(
         collection(db, "companies", companyId, "inventory_movements"),
-        where("type", "==", "OUT"),
         where("createdAt", ">=", thirtyDaysAgo.toISOString())
       );
       
@@ -110,9 +109,11 @@ export default function DDMRPPage() {
         const map: Record<string, number> = {};
         snap.docs.forEach(doc => {
           const data = doc.data();
-          const id = data.variantId || data.productId; 
-          if (id) {
-            map[id] = (map[id] || 0) + (data.quantity || 0);
+          if (data.type === "OUT") {
+            const id = data.variantId || data.productId; 
+            if (id) {
+              map[id] = (map[id] || 0) + (data.quantity || 0);
+            }
           }
         });
 

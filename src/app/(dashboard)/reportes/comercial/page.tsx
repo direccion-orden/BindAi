@@ -408,7 +408,12 @@ export default function ReporteComercialPage() {
         const docDate = new Date(dateStr);
         if (isNaN(docDate.getTime())) return;
         
-        const docDateOnly = docDate.toISOString().split("T")[0]; // YYYY-MM-DD
+        const docDateOnly = (() => {
+          const year = docDate.getFullYear();
+          const month = String(docDate.getMonth() + 1).padStart(2, '0');
+          const day = String(docDate.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        })(); // YYYY-MM-DD
         if (tableStartDate && docDateOnly < tableStartDate) return;
         if (tableEndDate && docDateOnly > tableEndDate) return;
 

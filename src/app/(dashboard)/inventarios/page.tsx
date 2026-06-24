@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { Boxes, ArrowRightLeft, Target, TrendingUp } from "lucide-react";
+import { Boxes, ArrowRightLeft, Target, TrendingUp, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
@@ -17,7 +17,17 @@ export default function InventariosDashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Link href="/inventarios/existencias" className="block">
+          <div className="bg-card border rounded-xl p-6 shadow-sm flex flex-col items-center justify-center text-center space-y-2 hover:border-primary transition-colors cursor-pointer group h-full">
+            <div className="p-3 bg-primary/10 rounded-full group-hover:bg-primary/20 transition-colors">
+              <Warehouse className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="font-semibold">Existencias</h3>
+            <p className="text-xs text-muted-foreground">Stock actual por sucursal</p>
+          </div>
+        </Link>
+
         <div className="bg-card border rounded-xl p-6 shadow-sm flex flex-col items-center justify-center text-center space-y-2 hover:border-primary transition-colors cursor-pointer group">
           <div className="p-3 bg-primary/10 rounded-full group-hover:bg-primary/20 transition-colors">
             <ArrowRightLeft className="w-6 h-6 text-primary" />

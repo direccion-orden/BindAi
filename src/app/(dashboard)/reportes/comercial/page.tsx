@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, getDocs, query } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -24,6 +24,7 @@ export default function ReporteComercialPage() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
   const [categories, setCategories] = useState<{ [key: string]: string }>({});
+  const [productsMap, setProductsMap] = useState<{ [key: string]: any }>({});
   const [loading, setLoading] = useState(true);
 
   // States for filters
@@ -32,6 +33,7 @@ export default function ReporteComercialPage() {
   const [selectedMonth, setSelectedMonth] = useState("all");
 
   // States for product sales table
+  const [tableDateFilterOption, setTableDateFilterOption] = useState("this_year");
   const [tableStartDate, setTableStartDate] = useState("2026-01-01");
   const [tableEndDate, setTableEndDate] = useState("2026-12-31");
   const [tableSucursal, setTableSucursal] = useState("all");
@@ -39,6 +41,96 @@ export default function ReporteComercialPage() {
   const [tableSearch, setTableSearch] = useState("");
   const [tableSortField, setTableSortField] = useState<string>("totalSales");
   const [tableSortDirection, setTableSortDirection] = useState<"asc" | "desc">("desc");
+  const [taxMode, setTaxMode] = useState<"con_iva" | "sin_iva">("con_iva");
+
+  const handleTableDateFilterChange = useCallback((option: string) => {
+    setTableDateFilterOption(option);
+    
+    const getLocalDateString = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    
+    if (option === "all") {
+      setTableStartDate("");
+      setTableEndDate("");
+    } else if (option === "today") {
+      const todayStr = getLocalDateString(now);
+      setTableStartDate(todayStr);
+      setTableEndDate(todayStr);
+    } else if (option === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+      setTableStartDate(yesterdayStr);
+      setTableEndDate(yesterdayStr);
+    } else if (option === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setTableStartDate(getLocalDateString(startOfMonth));
+      setTableEndDate(getLocalDateString(now));
+    } else if (option === "last_month") {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setTableStartDate(getLocalDateString(startOfLastMonth));
+      setTableEndDate(getLocalDateString(endOfLastMonth));
+    } else if (option === "this_year") {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      setTableStartDate(getLocalDateString(startOfYear));
+      setTableEndDate(getLocalDateString(now));
+    } else if (option === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      setTableStartDate(getLocalDateString(thirtyDaysAgo));
+    }
+  }, []);
+
+  const resolveItemCategoryId = useCallback((item: any) => {
+    if (!item) return "";
+    
+    // 1. Look up from products map
+    const prodId = item.productId;
+    if (prodId && productsMap[prodId]) {
+      const p = productsMap[prodId];
+      if (p.Category1ID) return p.Category1ID;
+      if (p.categoryId) return p.categoryId;
+    }
+    
+    // 2. Look up using item.categoryIds (e.g. from remisiones)
+    if (item.categoryIds && item.categoryIds.length > 0) {
+      const catVal = item.categoryIds[0];
+      if (categories[catVal]) {
+        return catVal;
+      }
+      const nameLower = String(catVal).toLowerCase().trim();
+      const foundCatEntry = Object.entries(categories).find(
+        ([_, name]) => name.toLowerCase().trim() === nameLower
+      );
+      if (foundCatEntry) {
+        return foundCatEntry[0];
+      }
+    }
+    
+    // 3. Fallback for services based on code / productId prefixes
+    const upperProdId = String(prodId || "").toUpperCase();
+    if (upperProdId.startsWith("SER-ENVIO") || upperProdId.includes("ENVIO")) {
+      const found = Object.entries(categories).find(([_, name]) => name.toUpperCase().includes("ENVIO"));
+      if (found) return found[0];
+    }
+    if (upperProdId.startsWith("SER-ARRE") || upperProdId.includes("ARRENDAMIENTO")) {
+      const found = Object.entries(categories).find(([_, name]) => name.toUpperCase().includes("ARRENDAMIENTO"));
+      if (found) return found[0];
+    }
+    if (upperProdId.startsWith("SER-") || upperProdId.includes("SERVICIO")) {
+      const found = Object.entries(categories).find(([_, name]) => name.toUpperCase().includes("SERVICIOS"));
+      if (found) return found[0];
+    }
+
+    return "";
+  }, [productsMap, categories]);
 
   // Fetch all required data once
   useEffect(() => {
@@ -48,13 +140,14 @@ export default function ReporteComercialPage() {
       setLoading(true);
       try {
         // Parallel queries to Firestore
-        const [locSnap, remSnap, factSnap, pedSnap, goalSnap, catSnap] = await Promise.all([
+        const [locSnap, remSnap, factSnap, pedSnap, goalSnap, catSnap, prodSnap] = await Promise.all([
           getDocs(collection(db, "companies", companyId, "locations")),
           getDocs(collection(db, "companies", companyId, "remisiones")),
           getDocs(collection(db, "companies", companyId, "facturas")),
           getDocs(collection(db, "companies", companyId, "pedidos")),
           getDocs(collection(db, "companies", companyId, "sales_goals")),
-          getDocs(collection(db, "companies", companyId, "categories"))
+          getDocs(collection(db, "companies", companyId, "categories")),
+          getDocs(collection(db, "companies", companyId, "products"))
         ]);
 
         // Map Locations
@@ -88,6 +181,20 @@ export default function ReporteComercialPage() {
         });
         setCategories(cats);
 
+        // Map Products catalog lookup
+        const prods: { [key: string]: any } = {};
+        prodSnap.forEach(d => {
+          const data = d.data();
+          prods[d.id] = {
+            id: d.id,
+            Category1ID: data.Category1ID || null,
+            Category2ID: data.Category2ID || null,
+            Category3ID: data.Category3ID || null,
+            categoryId: data.categoryId || null
+          };
+        });
+        setProductsMap(prods);
+
       } catch (err) {
         console.error("Error loading reports data:", err);
       } finally {
@@ -97,6 +204,11 @@ export default function ReporteComercialPage() {
 
     loadData();
   }, [companyId]);
+
+  // Initialize table dates dynamically
+  useEffect(() => {
+    handleTableDateFilterChange("this_year");
+  }, [handleTableDateFilterChange]);
 
   // Compute stats and charts reactively
   const stats = useMemo(() => {
@@ -195,11 +307,8 @@ export default function ReporteComercialPage() {
         doc.items.forEach((item: any) => {
           const val = (item.quantity || 0) * (item.unitPrice || 0);
           // Find category name
-          let catName = "Otros";
-          if (item.categoryIds && item.categoryIds.length > 0) {
-            const firstCatId = item.categoryIds[0];
-            catName = categories[firstCatId] || firstCatId || "Otros";
-          }
+          const catId = resolveItemCategoryId(item);
+          const catName = categories[catId] || "Otros";
           categoryTotals[catName] = (categoryTotals[catName] || 0) + val;
         });
       });
@@ -276,7 +385,7 @@ export default function ReporteComercialPage() {
       topClientsData,
       branchPerformance
     };
-  }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth]);
+  }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId]);
 
   // Compute product sales table data reactively
   const productSalesTableData = useMemo(() => {
@@ -307,16 +416,27 @@ export default function ReporteComercialPage() {
         if (tableSucursal !== "all" && doc.locationId !== tableSucursal) return;
 
         if (!doc.items) return;
+        
+        // 1. Calculate sum of items in this document to detect base format
+        const docItemsSum = doc.items.reduce((sum: number, it: any) => sum + (it.quantity || 0) * (it.unitPrice || 0), 0);
+        const docTotal = doc.totalAmount || doc.TotalAmount || 0;
+        const docSub = doc.subtotal || doc.Subtotal || 0;
+        
+        // Determine real tax ratio for the document (default to 1.16 if invalid)
+        const taxRatio = (docTotal > 0 && docSub > 0) ? (docTotal / docSub) : 1.16;
+        
+        // If itemsSum is closer to subtotal than to totalAmount, items are Sin IVA
+        const diffToSub = Math.abs(docItemsSum - docSub);
+        const diffToTot = Math.abs(docItemsSum - docTotal);
+        const itemsAreSinIva = docSub > 0 && docTotal > 0 && diffToSub < diffToTot;
+
         doc.items.forEach((item: any) => {
-          let firstCatId = "";
-          if (item.categoryIds && item.categoryIds.length > 0) {
-            firstCatId = item.categoryIds[0];
-          }
+          const resolvedCatId = resolveItemCategoryId(item);
 
           // Category check
-          if (tableCategory !== "all" && firstCatId !== tableCategory) return;
+          if (tableCategory !== "all" && resolvedCatId !== tableCategory) return;
 
-          const catName = categories[firstCatId] || firstCatId || "Sin Asignar";
+          const catName = categories[resolvedCatId] || "Sin Categoría";
           const key = `${item.productId}-${item.variantId || 'default'}`;
 
           if (!agg[key]) {
@@ -329,8 +449,22 @@ export default function ReporteComercialPage() {
               totalSales: 0
             };
           }
+          
+          const rawItemValue = (item.quantity || 0) * (item.unitPrice || 0);
+          let itemValue = rawItemValue;
+          
+          if (taxMode === "con_iva") {
+            if (itemsAreSinIva) {
+              itemValue = rawItemValue * taxRatio;
+            }
+          } else {
+            if (!itemsAreSinIva) {
+              itemValue = rawItemValue / taxRatio;
+            }
+          }
+
           agg[key].quantity += (item.quantity || 0);
-          agg[key].totalSales += (item.quantity || 0) * (item.unitPrice || 0);
+          agg[key].totalSales += itemValue;
         });
       });
     };
@@ -369,7 +503,15 @@ export default function ReporteComercialPage() {
     });
 
     return list;
-  }, [remisiones, facturas, categories, tableStartDate, tableEndDate, tableSucursal, tableCategory, tableSearch, tableSortField, tableSortDirection]);
+  }, [remisiones, facturas, categories, tableStartDate, tableEndDate, tableSucursal, tableCategory, tableSearch, tableSortField, tableSortDirection, resolveItemCategoryId, taxMode]);
+
+  const tableTotals = useMemo(() => {
+    return productSalesTableData.reduce((acc, item) => {
+      acc.totalSales += item.totalSales || 0;
+      acc.totalQuantity += item.quantity || 0;
+      return acc;
+    }, { totalSales: 0, totalQuantity: 0 });
+  }, [productSalesTableData]);
 
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }).format(amount);
@@ -429,7 +571,9 @@ export default function ReporteComercialPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `ventas_por_producto_${tableStartDate}_a_${tableEndDate}.csv`);
+    const startName = tableStartDate || "inicio";
+    const endName = tableEndDate || "fin";
+    link.setAttribute("download", `ventas_por_producto_${startName}_a_${endName}.csv`);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
@@ -800,21 +944,56 @@ export default function ReporteComercialPage() {
               Listado detallado de unidades vendidas e ingresos generados por producto y categoría.
             </p>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm"
-            className="gap-2 h-9 border-slate-200 font-semibold text-slate-600 hover:bg-slate-50 shadow-sm"
-            onClick={handleExportProductSalesCSV}
-            disabled={productSalesTableData.length === 0}
-          >
-            <Download className="w-4 h-4" /> Exportar Ventas
-          </Button>
+          
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+            {/* Toggle Con/Sin IVA */}
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 shadow-sm shrink-0">
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                  taxMode === "con_iva"
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+                onClick={() => setTaxMode("con_iva")}
+              >
+                Con IVA
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                  taxMode === "sin_iva"
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+                onClick={() => setTaxMode("sin_iva")}
+              >
+                Sin IVA
+              </button>
+            </div>
+
+            <div className="inline-flex items-center justify-between sm:justify-start px-3 py-1.5 rounded-lg text-sm sm:text-base font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100 gap-2 shadow-sm">
+              <span>Total: {formatMoney(tableTotals.totalSales)}</span>
+              <span className="text-xs font-bold text-slate-500 bg-white border border-slate-100 px-2 py-0.5 rounded-md">
+                {tableTotals.totalQuantity} uds
+              </span>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="gap-2 h-9 border-slate-200 font-semibold text-slate-600 hover:bg-slate-50 shadow-sm shrink-0"
+              onClick={handleExportProductSalesCSV}
+              disabled={productSalesTableData.length === 0}
+            >
+              <Download className="w-4 h-4" /> Exportar Ventas
+            </Button>
+          </div>
         </div>
 
         {/* Local Filters Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50/50 p-4 border border-slate-100 rounded-xl">
+        <div className="flex flex-wrap items-end gap-3 bg-slate-50/50 p-4 border border-slate-100 rounded-xl">
           {/* Search */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Buscar Producto</span>
             <input 
               type="text"
@@ -825,30 +1004,54 @@ export default function ReporteComercialPage() {
             />
           </div>
 
-          {/* Fecha Inicio */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Fecha Inicio</span>
-            <input 
-              type="date"
+          {/* Fecha */}
+          <div className="flex flex-col gap-1 w-full sm:w-44">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Fecha</span>
+            <select
               className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
-              value={tableStartDate}
-              onChange={(e) => setTableStartDate(e.target.value)}
-            />
+              value={tableDateFilterOption}
+              onChange={(e) => handleTableDateFilterChange(e.target.value)}
+            >
+              <option value="all">Cualquier fecha</option>
+              <option value="today">Hoy</option>
+              <option value="yesterday">Ayer</option>
+              <option value="this_month">Este Mes</option>
+              <option value="last_month">Mes Anterior</option>
+              <option value="last_30_days">Últimos 30 Días</option>
+              <option value="this_year">Este Año</option>
+              <option value="custom">Rango Personalizado</option>
+            </select>
           </div>
 
-          {/* Fecha Fin */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Fecha Fin</span>
-            <input 
-              type="date"
-              className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
-              value={tableEndDate}
-              onChange={(e) => setTableEndDate(e.target.value)}
-            />
-          </div>
+          {/* Rango de Fechas Condicional */}
+          {tableDateFilterOption === "custom" && (
+            <>
+              {/* Desde */}
+              <div className="flex flex-col gap-1 w-full sm:w-36">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Desde</span>
+                <input 
+                  type="date"
+                  className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
+                  value={tableStartDate}
+                  onChange={(e) => setTableStartDate(e.target.value)}
+                />
+              </div>
+
+              {/* Hasta */}
+              <div className="flex flex-col gap-1 w-full sm:w-36">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Hasta</span>
+                <input 
+                  type="date"
+                  className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
+                  value={tableEndDate}
+                  onChange={(e) => setTableEndDate(e.target.value)}
+                />
+              </div>
+            </>
+          )}
 
           {/* Sucursal */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 w-full sm:w-48">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Sucursal</span>
             <select
               className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
@@ -863,7 +1066,7 @@ export default function ReporteComercialPage() {
           </div>
 
           {/* Categoría */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 w-full sm:w-48">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Categoría</span>
             <select
               className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"

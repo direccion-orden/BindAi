@@ -147,12 +147,12 @@ export function RetiroCodigoModal({ onClose }: RetiroCodigoModalProps) {
 
     // Real Recycler Mode
     try {
-      // El reciclador físico para el comando RefundAmount espera el valor directamente en pesos
-      const amountInPesos = withdrawalData.amount;
+      // Revertir a centavos: la máquina interpreta el valor en centavos (comprobado en la prueba física)
+      const amountInCents = Math.round(withdrawalData.amount * 100);
       const res = await fetch("http://localhost:3001/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request: "RefundAmount", value: amountInPesos })
+        body: JSON.stringify({ request: "RefundAmount", value: amountInCents })
       });
 
       if (!res.ok) {

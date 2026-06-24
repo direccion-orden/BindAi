@@ -644,11 +644,15 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
       <div className="bg-card border rounded-xl p-6 shadow-sm space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">Cliente</p>
-            <p className="font-bold text-slate-900">{editData.clientName}</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase h-5 flex items-center">Cliente</p>
+            {isEditing ? (
+              <div className="mt-1 flex h-8 items-center text-xs font-bold text-slate-900">{editData.clientName}</div>
+            ) : (
+              <p className="font-bold text-slate-900 mt-1">{editData.clientName}</p>
+            )}
           </div>
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">Sucursal</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase h-5 flex items-center">Sucursal</p>
             {isEditing ? (
               <select 
                 className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
@@ -661,11 +665,11 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                 ))}
               </select>
             ) : (
-              <p className="font-bold text-slate-900">{editData.locationName || "N/A"}</p>
+              <p className="font-bold text-slate-900 mt-1">{editData.locationName || "N/A"}</p>
             )}
           </div>
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">Almacén</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase h-5 flex items-center">Almacén</p>
             {isEditing ? (
               <select 
                 className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
@@ -678,7 +682,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                 ))}
               </select>
             ) : (
-              <p className="font-bold text-slate-900">{editData.warehouseName || "N/A"}</p>
+              <p className="font-bold text-slate-900 mt-1">{editData.warehouseName || "N/A"}</p>
             )}
           </div>
           <div>
@@ -732,11 +736,11 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                 </select>
               )
             ) : (
-              <p className="font-bold text-slate-900">{editData.projectName || "Ninguno"}</p>
+              <p className="font-bold text-slate-900 mt-1">{editData.projectName || "Ninguno"}</p>
             )}
           </div>
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">Estatus</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase h-5 flex items-center">Estatus</p>
             {isEditing ? (
               <select 
                 className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"

@@ -31,6 +31,15 @@ export default function ReporteComercialPage() {
   const [selectedYear, setSelectedYear] = useState(2026); // Default to 2026 based on DB audit
   const [selectedMonth, setSelectedMonth] = useState("all");
 
+  // States for product sales table
+  const [tableStartDate, setTableStartDate] = useState("2026-01-01");
+  const [tableEndDate, setTableEndDate] = useState("2026-12-31");
+  const [tableSucursal, setTableSucursal] = useState("all");
+  const [tableCategory, setTableCategory] = useState("all");
+  const [tableSearch, setTableSearch] = useState("");
+  const [tableSortField, setTableSortField] = useState<string>("totalSales");
+  const [tableSortDirection, setTableSortDirection] = useState<"asc" | "desc">("desc");
+
   // Fetch all required data once
   useEffect(() => {
     if (!companyId) return;
@@ -269,6 +278,99 @@ export default function ReporteComercialPage() {
     };
   }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth]);
 
+  // Compute product sales table data reactively
+  const productSalesTableData = useMemo(() => {
+    const agg: { [key: string]: {
+      productId: string;
+      productName: string;
+      sku: string;
+      categoryName: string;
+      quantity: number;
+      totalSales: number;
+    } } = {};
+
+    const filterAndAggregate = (docs: any[]) => {
+      docs.forEach(doc => {
+        if (doc.status === "cancelada") return;
+        
+        // Date range check
+        const dateStr = doc.createdAt || doc.date;
+        if (!dateStr) return;
+        const docDate = new Date(dateStr);
+        if (isNaN(docDate.getTime())) return;
+        
+        const docDateOnly = docDate.toISOString().split("T")[0]; // YYYY-MM-DD
+        if (tableStartDate && docDateOnly < tableStartDate) return;
+        if (tableEndDate && docDateOnly > tableEndDate) return;
+
+        // Sucursal check
+        if (tableSucursal !== "all" && doc.locationId !== tableSucursal) return;
+
+        if (!doc.items) return;
+        doc.items.forEach((item: any) => {
+          let firstCatId = "";
+          if (item.categoryIds && item.categoryIds.length > 0) {
+            firstCatId = item.categoryIds[0];
+          }
+
+          // Category check
+          if (tableCategory !== "all" && firstCatId !== tableCategory) return;
+
+          const catName = categories[firstCatId] || firstCatId || "Sin Asignar";
+          const key = `${item.productId}-${item.variantId || 'default'}`;
+
+          if (!agg[key]) {
+            agg[key] = {
+              productId: item.productId,
+              productName: item.productName || "Producto sin nombre",
+              sku: item.sku || "-",
+              categoryName: catName,
+              quantity: 0,
+              totalSales: 0
+            };
+          }
+          agg[key].quantity += (item.quantity || 0);
+          agg[key].totalSales += (item.quantity || 0) * (item.unitPrice || 0);
+        });
+      });
+    };
+
+    filterAndAggregate(remisiones);
+    
+    // For facturas, ignore those that are from remisiones
+    const activeFacturas = facturas.filter(f => !f.posSaleId && !f.remisionId && !f.remissionId);
+    filterAndAggregate(activeFacturas);
+
+    let list = Object.values(agg);
+
+    // Apply search filter
+    if (tableSearch.trim() !== "") {
+      const term = tableSearch.toLowerCase().trim();
+      list = list.filter(item => 
+        item.productName.toLowerCase().includes(term) ||
+        item.sku.toLowerCase().includes(term)
+      );
+    }
+
+    // Apply sort
+    list.sort((a, b) => {
+      let aVal = a[tableSortField as keyof typeof a];
+      let bVal = b[tableSortField as keyof typeof b];
+
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return tableSortDirection === "asc" ? aVal - bVal : bVal - aVal;
+      }
+
+      const aStr = String(aVal || "").toLowerCase();
+      const bStr = String(bVal || "").toLowerCase();
+      return tableSortDirection === "asc" 
+        ? aStr.localeCompare(bStr, 'es')
+        : bStr.localeCompare(aStr, 'es');
+    });
+
+    return list;
+  }, [remisiones, facturas, categories, tableStartDate, tableEndDate, tableSucursal, tableCategory, tableSearch, tableSortField, tableSortDirection]);
+
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }).format(amount);
   };
@@ -287,6 +389,48 @@ export default function ReporteComercialPage() {
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", `desempeno_comercial_${selectedYear}_${selectedSucursal}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleTableSort = (field: string) => {
+    if (tableSortField === field) {
+      setTableSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setTableSortField(field);
+      setTableSortDirection("desc");
+    }
+  };
+
+  const renderTableSortIcon = (field: string) => {
+    if (tableSortField !== field) return <span className="text-slate-300 ml-1">⇅</span>;
+    return tableSortDirection === "asc" ? <span className="text-indigo-600 ml-1">▲</span> : <span className="text-indigo-600 ml-1">▼</span>;
+  };
+
+  const handleExportProductSalesCSV = () => {
+    if (productSalesTableData.length === 0) return;
+    
+    const headers = ["Producto", "SKU", "Categoria", "Unidades Vendidas", "Ingreso Total (MXN)"];
+    const rows = productSalesTableData.map(item => [
+      item.productName,
+      item.sku,
+      item.categoryName,
+      item.quantity,
+      item.totalSales.toFixed(2)
+    ]);
+    
+    const csvContent = "\uFEFF" + [
+      headers.join(","),
+      ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `ventas_por_producto_${tableStartDate}_a_${tableEndDate}.csv`);
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -641,6 +785,151 @@ export default function ReporteComercialPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      {/* Row 3: Venta por Producto */}
+      <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col gap-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
+          <div>
+            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+              <Package className="w-5 h-5 text-indigo-600" />
+              Detalle de Venta por Producto
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Listado detallado de unidades vendidas e ingresos generados por producto y categoría.
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="gap-2 h-9 border-slate-200 font-semibold text-slate-600 hover:bg-slate-50 shadow-sm"
+            onClick={handleExportProductSalesCSV}
+            disabled={productSalesTableData.length === 0}
+          >
+            <Download className="w-4 h-4" /> Exportar Ventas
+          </Button>
+        </div>
+
+        {/* Local Filters Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50/50 p-4 border border-slate-100 rounded-xl">
+          {/* Search */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Buscar Producto</span>
+            <input 
+              type="text"
+              placeholder="Buscar por nombre o SKU..."
+              className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-medium placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
+              value={tableSearch}
+              onChange={(e) => setTableSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Fecha Inicio */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Fecha Inicio</span>
+            <input 
+              type="date"
+              className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
+              value={tableStartDate}
+              onChange={(e) => setTableStartDate(e.target.value)}
+            />
+          </div>
+
+          {/* Fecha Fin */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Fecha Fin</span>
+            <input 
+              type="date"
+              className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
+              value={tableEndDate}
+              onChange={(e) => setTableEndDate(e.target.value)}
+            />
+          </div>
+
+          {/* Sucursal */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Sucursal</span>
+            <select
+              className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
+              value={tableSucursal}
+              onChange={(e) => setTableSucursal(e.target.value)}
+            >
+              <option value="all">Todas las Sucursales</option>
+              {locations.map(loc => (
+                <option key={loc.id} value={loc.id}>{loc.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Categoría */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Categoría</span>
+            <select
+              className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs outline-none font-semibold text-slate-700 shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer"
+              value={tableCategory}
+              onChange={(e) => setTableCategory(e.target.value)}
+            >
+              <option value="all">Todas las Categorías</option>
+              {Object.entries(categories).map(([catId, catName]) => (
+                <option key={catId} value={catId}>{catName}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto border rounded-xl shadow-inner">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b">
+              <tr>
+                <th className="px-4 py-3.5 pl-6 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleTableSort("productName")}>
+                  Producto {renderTableSortIcon("productName")}
+                </th>
+                <th className="px-4 py-3.5 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleTableSort("sku")}>
+                  SKU {renderTableSortIcon("sku")}
+                </th>
+                <th className="px-4 py-3.5 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleTableSort("categoryName")}>
+                  Categoría {renderTableSortIcon("categoryName")}
+                </th>
+                <th className="px-4 py-3.5 text-right cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleTableSort("quantity")}>
+                  Unidades Vendidas {renderTableSortIcon("quantity")}
+                </th>
+                <th className="px-4 py-3.5 text-right pr-6 cursor-pointer select-none hover:bg-slate-100 transition-colors" onClick={() => handleTableSort("totalSales")}>
+                  Ingreso Total {renderTableSortIcon("totalSales")}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y text-slate-700">
+              {productSalesTableData.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                    No se encontraron ventas de productos con los filtros aplicados.
+                  </td>
+                </tr>
+              ) : (
+                productSalesTableData.map((item, idx) => (
+                  <tr key={`${item.productId}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 py-3 pl-6 font-bold text-slate-900 text-xs sm:text-sm max-w-xs sm:max-w-md truncate" title={item.productName}>
+                      {item.productName}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600 font-semibold">{item.sku}</td>
+                    <td className="px-4 py-3 text-xs">
+                      <span className="px-2.5 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        {item.categoryName}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-extrabold text-slate-900 font-mono text-xs sm:text-sm">
+                      {item.quantity}
+                    </td>
+                    <td className="px-4 py-3 text-right pr-6 font-extrabold text-emerald-600 font-mono text-xs sm:text-sm">
+                      {formatMoney(item.totalSales)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

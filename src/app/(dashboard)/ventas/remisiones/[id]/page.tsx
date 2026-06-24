@@ -302,13 +302,13 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
                 
                 <div className="text-right flex items-center gap-6 justify-end">
                   <div className="text-slate-500 text-xs font-medium">
-                    <span className="font-semibold text-slate-700">{item.quantity}</span> x ${(item.unitPrice / 1.16).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                    <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
                     {item.discountPercentage > 0 && (
                       <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
                     )}
                   </div>
                   <div className="font-bold text-slate-950 min-w-[100px] text-base">
-                    ${(item.quantity * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                    ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                   </div>
                 </div>
               </div>

@@ -278,7 +278,7 @@ export function ProcessOrderModal({
       Currency: "MXN",
       ExpeditionPlace: companyZipCode,
       Items: order.items.map((item: any) => {
-        const itemUnitPriceExVAT = item.unitPrice / 1.16;
+        const itemUnitPriceExVAT = item.unitPrice;
         const discountAmt = item.quantity * itemUnitPriceExVAT * ((item.discountPercentage || 0) / 100);
         const unitPriceRounded = Number(itemUnitPriceExVAT.toFixed(4));
         const subtotalVal = Number((item.quantity * unitPriceRounded).toFixed(4));

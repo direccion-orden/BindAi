@@ -335,7 +335,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         Items: items.map((item: any) => {
           const engineItem = totals.processedItems?.find(ei => ei.id === (item.lineKey || item.variantId));
           const discountAmt = engineItem ? engineItem.finalDiscountAmt : 0;
-          const itemUnitPriceExVAT = engineItem ? engineItem.unitPrice : ((Number(item.unitPrice) || 0) / 1.16);
+          const itemUnitPriceExVAT = engineItem ? engineItem.unitPrice : (Number(item.unitPrice) || 0);
           const subtotalItem = (item.quantity * itemUnitPriceExVAT) - discountAmt;
           return {
             ProductCode: "01010101",

@@ -733,7 +733,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                           <div className="flex flex-col gap-1 text-right min-w-[80px]">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
                             <p className="font-bold text-slate-800">
-                              ${(Number(item.quantity) * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                              ${(Number(item.quantity) * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                             </p>
                           </div>
                           <div className="flex items-center gap-1 mt-4 sm:mt-0">
@@ -754,13 +754,13 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                       ) : (
                         <div className="text-right flex items-center gap-6">
                           <div className="text-slate-500 text-xs">
-                            <span className="font-semibold text-slate-700">{item.quantity}</span> x ${(item.unitPrice / 1.16).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                            <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
                             {item.discountPercentage > 0 && (
                               <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
                             )}
                           </div>
                           <div className="font-bold text-slate-950 min-w-[100px] text-base">
-                            ${(item.quantity * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                            ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                           </div>
                         </div>
                       )}

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Truck } from "lucide-react";
 import { FileText, Package, Trash2, Edit2, Save, Search, Loader2, XCircle, MessageSquare, ArrowLeft, Percent } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { generateQuoteImage } from "@/actions/generate-image";
 import { calculateOrderTotals, EngineDiscount, EngineItem } from "@/lib/utils/discountEngine";
+import { getNextSequence } from "@/lib/firebase/counters";
 
 const CRM_STAGES = [
   { id: "nueva", name: "Nueva / Prospecto", color: "#94a3b8" },
@@ -24,7 +25,7 @@ const CRM_STAGES = [
 
 export default function QuoteDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = React.use(paramsPromise);
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   const router = useRouter();
   
   const [quote, setQuote] = useState<any>(null);
@@ -211,6 +212,168 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
     }
   };
 
+  const handleConvertToOrder = async () => {
+    if (!companyId || !quote) return;
+    if (!window.confirm("¿Deseas generar el Pedido de Venta a partir de esta cotización?")) return;
+
+    setLoading(true);
+    try {
+      const orderId = crypto.randomUUID();
+      const orderNumber = await getNextSequence(companyId, "pedidos");
+      
+      const newOrder = {
+        id: orderId,
+        orderNumber,
+        quoteId: quote.id,
+        quoteNumber: quote.quoteNumber,
+        clientId: quote.clientId || null,
+        clientName: quote.clientName,
+        items: quote.items || [],
+        subtotal: quote.subtotal || 0,
+        tax: quote.tax || 0,
+        totalAmount: quote.totalAmount,
+        projectId: quote.projectId || null,
+        projectName: quote.projectName || null,
+        locationId: quote.locationId || null,
+        locationName: quote.locationName || "",
+        warehouseId: quote.warehouseId || null,
+        warehouseName: quote.warehouseName || "",
+        status: "por_surtir",
+        createdAt: new Date().toISOString(),
+        createdBy: user?.email || "Unknown",
+      };
+
+      await setDoc(doc(db, "companies", companyId, "pedidos", orderId), newOrder);
+
+      await updateDoc(doc(db, "companies", companyId, "quotes", quote.id), {
+        status: "ganada",
+        orderId: orderId
+      });
+
+      alert(`Pedido ${orderNumber} creado exitosamente.`);
+      router.push("/ventas/pedidos");
+    } catch (error) {
+      console.error("Error creating order:", error);
+      alert("Hubo un error al generar el pedido.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConvertToRemission = async () => {
+    if (!companyId || !quote) return;
+    if (!window.confirm("¿Deseas generar la Remisión de Venta a partir de esta cotización? Esto descontará inventario.")) return;
+
+    setLoading(true);
+    try {
+      const remId = crypto.randomUUID();
+      const remNumber = await getNextSequence(companyId, "remisiones");
+      const now = new Date().toISOString();
+
+      // Fetch default 401.1 account details
+      const accountsSnap = await getDocs(query(collection(db, "companies", companyId, "accounts"), where("code", "==", "401.1")));
+      let finalAccountId = "";
+      let finalAccountCode = "401.1";
+      let finalAccountName = "Ventas Nacionales";
+      if (!accountsSnap.empty) {
+        const accDoc = accountsSnap.docs[0];
+        finalAccountId = accDoc.id;
+        finalAccountCode = accDoc.data().code || "401.1";
+        finalAccountName = accDoc.data().name || "Ventas Nacionales";
+      } else {
+        const allAccountsSnap = await getDocs(collection(db, "companies", companyId, "accounts"));
+        const targetAcc = allAccountsSnap.docs.find(d => d.data().code === "401.1");
+        if (targetAcc) {
+          finalAccountId = targetAcc.id;
+          finalAccountCode = targetAcc.data().code || "401.1";
+          finalAccountName = targetAcc.data().name || "Ventas Nacionales";
+        }
+      }
+
+      const newRemission = {
+        id: remId,
+        remissionNumber: remNumber,
+        orderId: null,
+        orderNumber: null,
+        quoteId: quote.id,
+        quoteNumber: quote.quoteNumber,
+        clientId: quote.clientId || null,
+        clientName: quote.clientName,
+        items: (quote.items || []).map((i: any) => ({
+          ...i,
+          unitPrice: Number(i.unitPrice) || 0
+        })),
+        subtotal: quote.subtotal || 0,
+        totalDiscount: quote.totalDiscount || 0,
+        promoCode: quote.promoCode || null,
+        globalDiscountType: quote.globalDiscountType || "none",
+        globalDiscountValue: quote.globalDiscountValue || 0,
+        globalDiscountAmount: quote.globalDiscountAmount || 0,
+        tax: quote.tax || 0,
+        totalAmount: quote.totalAmount,
+        projectId: quote.projectId || null,
+        projectName: quote.projectName || null,
+        locationId: quote.locationId || null,
+        locationName: quote.locationName || "",
+        warehouseId: quote.warehouseId || null,
+        warehouseName: quote.warehouseName || "",
+        accountId: finalAccountId,
+        accountCode: finalAccountCode,
+        accountName: finalAccountName,
+        status: "activa",
+        createdAt: now,
+        createdBy: user?.email || "Unknown"
+      };
+
+      await setDoc(doc(db, "companies", companyId, "remisiones", remId), newRemission);
+
+      // Inventory Deduction Logic
+      for (const item of (quote.items || [])) {
+        if (item.isService || item.sku?.startsWith("SER-")) continue;
+
+        const productRef = doc(db, "companies", companyId, "products", item.productId);
+        const productDoc = await getDoc(productRef);
+        if (productDoc.exists()) {
+          const productData = productDoc.data();
+          const updatedVariants = productData.variants?.map((v: any) => {
+            if (v.id === (item.variantId || item.id)) {
+              return { ...v, stock: Math.max(0, (v.stock || 0) - item.quantity) };
+            }
+            return v;
+          });
+          
+          await updateDoc(productRef, { variants: updatedVariants });
+          
+          // Generate Inventory Movement record
+          const movId = crypto.randomUUID();
+          await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
+            id: movId,
+            productId: item.productId,
+            variantId: item.variantId || item.id || "",
+            type: "OUT",
+            quantity: item.quantity,
+            reason: `Remisión desde Cotización ${remNumber}`,
+            referenceId: remId,
+            createdAt: now
+          });
+        }
+      }
+
+      await updateDoc(doc(db, "companies", companyId, "quotes", quote.id), {
+        status: "ganada",
+        remissionId: remId
+      });
+
+      alert(`Remisión ${remNumber} generada exitosamente. Inventario descontado.`);
+      router.push("/ventas/remisiones");
+    } catch (error) {
+      console.error("Error creating remission:", error);
+      alert("Hubo un error al generar la remisión.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const updateItem = (lineKeyOrVariantId: string, field: string, value: any) => {
     setEditData((prev: any) => ({
       ...prev,
@@ -345,27 +508,64 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
           </div>
         </div>
         
-        <div className="flex gap-2 shrink-0">
+        <div className="flex flex-wrap gap-2 shrink-0">
           {!isEditing && (
             <Link href={`/pdf/cotizacion/${quote.id}`} target="_blank">
-              <Button variant="outline" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+              <Button variant="outline" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 h-9 px-3 text-xs">
                 <FileText className="w-4 h-4" /> Ver PDF
               </Button>
             </Link>
           )}
+
+          {!isEditing && quote.status !== 'cancelada' && quote.status !== 'ganada' && (
+            <>
+              <Button 
+                onClick={handleConvertToOrder}
+                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold h-9 px-3 text-xs shadow-sm"
+                disabled={loading}
+              >
+                <Package className="w-4 h-4" /> Convertir a Pedido
+              </Button>
+              <Button 
+                onClick={handleConvertToRemission}
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-9 px-3 text-xs shadow-sm"
+                disabled={loading}
+              >
+                <Truck className="w-4 h-4" /> Convertir a Remisión
+              </Button>
+            </>
+          )}
+
+          {!isEditing && quote.orderId && (
+            <Link href={`/ventas/pedidos/${quote.orderId}`}>
+              <Button variant="outline" className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50 h-9 px-3 text-xs font-semibold">
+                <FileText className="w-4 h-4" /> Ver Pedido Relacionado
+              </Button>
+            </Link>
+          )}
+
+          {!isEditing && quote.remissionId && (
+            <Link href={`/ventas/remisiones/${quote.remissionId}`}>
+              <Button variant="outline" className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 h-9 px-3 text-xs font-semibold">
+                <Truck className="w-4 h-4" /> Ver Remisión Relacionada
+              </Button>
+            </Link>
+          )}
+
           <Button 
             variant={isEditing ? "default" : "secondary"} 
-            className="gap-2"
+            className="gap-2 h-9 px-3 text-xs"
             onClick={() => isEditing ? handleSave() : setIsEditing(true)}
             disabled={loading || quote.status === 'cancelada'}
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditing ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
             {isEditing ? "Guardar Cambios" : "Editar"}
           </Button>
+
           {!isEditing && quote.status !== 'cancelada' && quote.status !== 'ganada' && (
             <Button 
               variant="destructive" 
-              className="gap-2"
+              className="gap-2 h-9 px-3 text-xs"
               onClick={handleCancelQuote}
               disabled={loading}
             >
@@ -373,7 +573,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
             </Button>
           )}
           {isEditing && (
-            <Button variant="ghost" onClick={() => { setIsEditing(false); setEditData({...quote}); }} className="text-slate-500">
+            <Button variant="ghost" onClick={() => { setIsEditing(false); setEditData({...quote}); }} className="text-slate-500 h-9 px-3 text-xs">
               Cancelar
             </Button>
           )}
@@ -637,7 +837,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                       <div className="flex flex-col gap-1 text-right min-w-[90px]">
                         <label className="text-[10px] text-slate-500 font-bold uppercase">Subtotal</label>
                         <span className="h-8 flex items-center justify-end font-bold text-slate-900 pr-1">
-                          ${(item.quantity * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                          ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                         </span>
                       </div>
                       <div className="flex items-center gap-1 mt-4">
@@ -656,13 +856,13 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                   ) : (
                     <div className="text-right flex items-center gap-6">
                       <div className="text-slate-500 text-xs">
-                        <span className="font-semibold text-slate-700">{item.quantity}</span> x ${(item.unitPrice / 1.16).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                        <span className="font-semibold text-slate-700">{item.quantity}</span> x ${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}
                         {item.discountPercentage > 0 && (
                           <span className="text-emerald-600 font-medium ml-1.5">(-{item.discountPercentage}%)</span>
                         )}
                       </div>
                       <div className="font-bold text-slate-950 min-w-[100px] text-base">
-                        ${(item.quantity * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                        ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                       </div>
                     </div>
                   )}

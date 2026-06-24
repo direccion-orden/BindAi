@@ -72,11 +72,11 @@ export default function FacturaPDFPage({ params }: { params: Promise<{ id: strin
 
   const displaySubtotal = factura.subtotal !== undefined 
     ? factura.subtotal 
-    : (factura.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16)), 0) || 0);
+    : (factura.items?.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0) || 0);
 
   const displayDiscount = factura.totalDiscount !== undefined 
     ? factura.totalDiscount 
-    : (factura.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16) * ((item.discountPercentage || 0) / 100)), 0) || 0);
+    : (factura.items?.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * ((item.discountPercentage || 0) / 100)), 0) || 0);
 
   const displayTax = factura.tax !== undefined ? factura.tax : (displaySubtotal - displayDiscount) * 0.16;
 
@@ -195,7 +195,7 @@ export default function FacturaPDFPage({ params }: { params: Promise<{ id: strin
                 </thead>
                 <tbody className="divide-y divide-muted/30">
                   {factura.items?.map((item: any, idx: number) => {
-                    const netPrice = (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100);
+                    const netPrice = item.unitPrice * (1 - item.discountPercentage / 100);
                     const amount = item.quantity * netPrice;
                     return (
                       <tr key={idx} className="border-muted/30 hover:bg-transparent">

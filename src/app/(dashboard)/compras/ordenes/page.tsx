@@ -29,8 +29,13 @@ export interface PurchaseOrder {
   paidAmount?: number;
   locationId?: string;
   locationName?: string;
+  shippingAddress?: string;
+  accountId?: string;
+  accountCode?: string;
+  accountName?: string;
   items: PurchaseOrderItem[];
 }
+
 
 export default function OrdenesCompraPage() {
   const { companyId } = useAuth();

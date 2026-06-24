@@ -75,11 +75,11 @@ export default function CotizacionPDFPage({ params }: { params: Promise<{ id: st
 
   const displaySubtotal = quote.subtotal !== undefined 
     ? quote.subtotal 
-    : (quote.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16)), 0) || 0);
+    : (quote.items?.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0) || 0);
 
   const displayDiscount = quote.totalDiscount !== undefined 
     ? quote.totalDiscount 
-    : (quote.items?.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice / 1.16) * ((item.discountPercentage || 0) / 100)), 0) || 0);
+    : (quote.items?.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice * ((item.discountPercentage || 0) / 100)), 0) || 0);
 
   const displayTax = quote.tax !== undefined 
     ? quote.tax 
@@ -226,10 +226,10 @@ export default function CotizacionPDFPage({ params }: { params: Promise<{ id: st
                         </div>
                       </td>
                       <td className="py-3 px-2 text-center font-medium text-xs sm:text-sm">{item.quantity}</td>
-                      <td className="py-3 px-2 text-right font-mono text-[10px] sm:text-xs">${(item.unitPrice / 1.16).toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+                      <td className="py-3 px-2 text-right font-mono text-[10px] sm:text-xs">${item.unitPrice.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
                       {hasLineDiscount && <td className="py-3 px-2 text-center text-emerald-600 font-semibold text-xs sm:text-sm">{item.discountPercentage > 0 ? `${item.discountPercentage}%` : '-'}</td>}
                       <td className="py-3 px-2 text-right font-mono font-black text-[10px] sm:text-xs">
-                        ${(item.quantity * (item.unitPrice / 1.16) * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
+                        ${(item.quantity * item.unitPrice * (1 - item.discountPercentage / 100)).toLocaleString('es-MX', {minimumFractionDigits:2})}
                       </td>
                     </tr>
                   ))}

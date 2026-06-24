@@ -56,29 +56,14 @@ export function calculateOrderTotals(
 ): DiscountEngineResult {
   const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
 
-  // Convert items input to ex-VAT
-  const itemsExVAT = items.map(item => ({
-    ...item,
-    unitPrice: item.unitPrice / 1.16
-  }));
+  // Keep original items (since input unitPrice is already ex-VAT)
+  const itemsExVAT = items;
 
-  // Convert fixed manual global discount to ex-VAT
-  const globalDiscountValueExVAT = globalDiscountType === "fixed_amount"
-    ? globalDiscountValue / 1.16
-    : globalDiscountValue;
+  // Keep original global discount value (ex-VAT)
+  const globalDiscountValueExVAT = globalDiscountValue;
 
-  // Convert fixed promo discounts and requirements to ex-VAT
-  const availableDiscountsExVAT = availableDiscounts.map(d => {
-    const minReq = d.minRequirement?.type === "min_amount" && d.minRequirement.value != null
-      ? { ...d.minRequirement, value: d.minRequirement.value / 1.16 }
-      : d.minRequirement;
-
-    return {
-      ...d,
-      value: d.type === "fixed_amount" ? d.value / 1.16 : d.value,
-      minRequirement: minReq
-    };
-  });
+  // Keep original promo discounts and requirements (ex-VAT)
+  const availableDiscountsExVAT = availableDiscounts;
 
   // 1. Calculate Base Subtotals & Manual Discounts
   let subtotal = 0;
@@ -132,7 +117,7 @@ export function calculateOrderTotals(
       if (subtotalAfterGlobal < promo.minRequirement.value) {
         if (promo.code?.toUpperCase() === enteredPromoCode?.toUpperCase()) {
           const originalPromo = availableDiscounts.find(d => d.id === promo.id);
-          const reqValue = originalPromo?.minRequirement?.value || (promo.minRequirement.value * 1.16);
+          const reqValue = originalPromo?.minRequirement?.value || promo.minRequirement.value;
           codeError = `El código requiere una compra mínima de $${round2(reqValue)}.`;
         }
         continue;

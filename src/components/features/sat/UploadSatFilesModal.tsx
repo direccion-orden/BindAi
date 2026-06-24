@@ -78,10 +78,13 @@ const parseXmlInvoice = (xmlText: string): any => {
       emisorRfc = emisorNode.getAttribute("Rfc") || "Desconocido";
       emisorName = emisorNode.getAttribute("Nombre") || "Desconocido";
     } else {
-      const emisorMatch = xmlText.match(/<cfdi:Emisor[^>]+Rfc="([^"]+)"[^>]+Nombre="([^"]+)"/i);
-      if (emisorMatch) {
-        emisorRfc = emisorMatch[1];
-        emisorName = emisorMatch[2];
+      const emisorNodeMatch = xmlText.match(/<cfdi:Emisor([^>]+?)\/?>/i) || xmlText.match(/<Emisor([^>]+?)\/?>/i);
+      if (emisorNodeMatch) {
+        const emisorAttrs = emisorNodeMatch[1];
+        const rfcM = emisorAttrs.match(/Rfc="([^"]+)"/i);
+        const nombreM = emisorAttrs.match(/Nombre="([^"]+)"/i);
+        if (rfcM) emisorRfc = rfcM[1];
+        if (nombreM) emisorName = nombreM[1];
       }
     }
 

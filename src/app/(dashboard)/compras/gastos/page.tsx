@@ -312,33 +312,32 @@ export default function GastosManualesPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
-                <th className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
+                <th className="px-4 py-3 w-24 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
                   <div className="flex items-center">Fecha {renderSortIcon("date")}</div>
                 </th>
-                <th className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
+                <th className="px-4 py-3 w-28 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
                   <div className="flex items-center">Folio {renderSortIcon("documentNumber")}</div>
                 </th>
-                <th className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
+                <th className="px-4 py-3 max-w-[150px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
                   <div className="flex items-center">Proveedor {renderSortIcon("vendorName")}</div>
                 </th>
-                <th className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("concept")}>
+                <th className="px-4 py-3 max-w-[180px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("concept")}>
                   <div className="flex items-center">Concepto {renderSortIcon("concept")}</div>
                 </th>
-                <th className="px-4 py-3">Cuenta Gasto</th>
-                <th className="px-4 py-3">Sucursal</th>
-                <th className="px-4 py-3">Estatus</th>
-                <th className="px-4 py-3 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
+                <th className="px-4 py-3 w-32">Sucursal</th>
+                <th className="px-4 py-3 w-24">Estatus</th>
+                <th className="px-4 py-3 w-28 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
                   <div className="flex items-center justify-end">Monto {renderSortIcon("amount")}</div>
                 </th>
-                <th className="px-4 py-3 text-right">Pagado</th>
-                <th className="px-4 py-3 text-right">Pendiente</th>
-                <th className="px-4 py-3 text-center">Acciones</th>
+                <th className="px-4 py-3 w-28 text-right">Pagado</th>
+                <th className="px-4 py-3 w-28 text-right">Pendiente</th>
+                <th className="px-4 py-3 w-24 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {sortedExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                     No se encontraron gastos operativos registrados.
                   </td>
                 </tr>
@@ -346,74 +345,71 @@ export default function GastosManualesPage() {
                 sortedExpenses.map((exp) => {
                   const saldo = Math.max(0, exp.amount - (exp.paidAmount || 0));
                   return (
-                    <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {exp.date}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-700">
-                        {exp.documentNumber || "-"}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-slate-900">
-                        {exp.vendorName}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {exp.concept}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500 font-medium">
-                        {exp.accountCode ? `${exp.accountCode} - ${exp.accountName}` : exp.accountName}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500 font-medium">
-                        {exp.locationName}
-                      </td>
-                      <td className="px-4 py-3">
-                        {exp.status === "paid" ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
-                            Pagado
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200">
-                            Pendiente
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-900">
-                        {formatMoney(exp.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-emerald-600 font-semibold">
-                        {formatMoney(exp.paidAmount || 0)}
-                      </td>
-                      <td className={`px-4 py-3 text-right font-bold ${saldo > 0 ? "text-amber-600" : "text-slate-400"}`}>
-                        {formatMoney(saldo)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <Link href={`/gastos/${exp.id}`} target="_blank">
-                            <Button 
-                              variant="outline" 
-                              size="icon"
-                              className="h-8 w-8 bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-800 shrink-0"
-                              title="Ver Detalle"
-                            >
-                              <Eye className="w-4 h-4 text-indigo-600" />
-                            </Button>
-                          </Link>
-                          {saldo > 0.01 && (
-                            <Button 
-                              variant="outline" 
-                              size="icon" 
-                              onClick={() => {
-                                  setSelectedExpense(exp);
-                                  setIsPaymentModalOpen(true);
-                              }}
-                              className="h-8 w-8 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 shrink-0"
-                              title="Registrar Pago"
-                            >
-                              <DollarSign className="w-4 h-4 font-bold" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                     <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
+                       <td className="px-4 py-3 whitespace-nowrap">
+                         {exp.date}
+                       </td>
+                       <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-700">
+                         {exp.documentNumber || "-"}
+                       </td>
+                       <td className="px-4 py-3 font-medium text-slate-900 max-w-[150px] truncate" title={exp.vendorName}>
+                         {exp.vendorName}
+                       </td>
+                       <td className="px-4 py-3 text-slate-700 max-w-[180px] truncate" title={exp.concept}>
+                         {exp.concept}
+                       </td>
+                       <td className="px-4 py-3 text-slate-500 font-medium">
+                         {exp.locationName}
+                       </td>
+                       <td className="px-4 py-3">
+                         {exp.status === "paid" ? (
+                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+                             Pagado
+                           </span>
+                         ) : (
+                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200">
+                             Pendiente
+                           </span>
+                         )}
+                       </td>
+                       <td className="px-4 py-3 text-right font-bold text-slate-900">
+                         {formatMoney(exp.amount)}
+                       </td>
+                       <td className="px-4 py-3 text-right text-emerald-600 font-semibold">
+                         {formatMoney(exp.paidAmount || 0)}
+                       </td>
+                       <td className={`px-4 py-3 text-right font-bold ${saldo > 0 ? "text-amber-600" : "text-slate-400"}`}>
+                         {formatMoney(saldo)}
+                       </td>
+                       <td className="px-4 py-3 text-center">
+                         <div className="flex items-center justify-center gap-2">
+                           <Link href={`/gastos/${exp.id}`} target="_blank">
+                             <Button 
+                               variant="outline" 
+                               size="icon"
+                               className="h-8 w-8 bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-800 shrink-0"
+                               title="Ver Detalle"
+                             >
+                               <Eye className="w-4 h-4 text-indigo-600" />
+                             </Button>
+                           </Link>
+                           {saldo > 0.01 && (
+                             <Button 
+                               variant="outline" 
+                               size="icon" 
+                               onClick={() => {
+                                   setSelectedExpense(exp);
+                                   setIsPaymentModalOpen(true);
+                               }}
+                               className="h-8 w-8 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 shrink-0"
+                               title="Registrar Pago"
+                             >
+                               <DollarSign className="w-4 h-4 font-bold" />
+                             </Button>
+                           )}
+                         </div>
+                       </td>
+                     </tr>
                   );
                 })
               )}

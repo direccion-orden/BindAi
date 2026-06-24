@@ -66,7 +66,7 @@ export async function POST(req: Request) {
                         const uuidMatch = content.match(/UUID="([^"]+)"/i);
                         const totalMatch = content.match(/Total="([^"]+)"/i);
                         const fechaMatch = content.match(/Fecha="([^"]+)"/i);
-                        const emisorMatch = content.match(/<cfdi:Emisor[^>]+Rfc="([^"]+)"[^>]+Nombre="([^"]+)"/i);
+                        const emisorNodeMatch = content.match(/<cfdi:Emisor([^>]+?)\/?>/i) || content.match(/<Emisor([^>]+?)\/?>/i);
                         const folioMatch = content.match(/Folio="([^"]+)"/i);
                         const serieMatch = content.match(/Serie="([^"]+)"/i);
                         
@@ -74,12 +74,23 @@ export async function POST(req: Request) {
                             const folio = folioMatch ? folioMatch[1] : "";
                             const serie = serieMatch ? serieMatch[1] : "";
                             const combinedFolio = serie ? `${serie}-${folio}` : folio;
+                            
+                            let emisorRfc = "Desconocido";
+                            let emisorName = "Desconocido";
+                            if (emisorNodeMatch) {
+                                const emisorAttrs = emisorNodeMatch[1];
+                                const rfcM = emisorAttrs.match(/Rfc="([^"]+)"/i);
+                                const nombreM = emisorAttrs.match(/Nombre="([^"]+)"/i);
+                                if (rfcM) emisorRfc = rfcM[1];
+                                if (nombreM) emisorName = nombreM[1];
+                            }
+
                             invoices.push({
                                 uuid: uuidMatch[1],
                                 total: totalMatch ? parseFloat(totalMatch[1]) : 0,
                                 date: fechaMatch ? fechaMatch[1] : "",
-                                emisorRfc: emisorMatch ? emisorMatch[1] : "Desconocido",
-                                emisorName: emisorMatch ? emisorMatch[2] : "Desconocido",
+                                emisorRfc,
+                                emisorName,
                                 folio: combinedFolio,
                                 xmlBase64: Buffer.from(content).toString('base64'),
                                 status: "pending_review",

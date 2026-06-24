@@ -412,7 +412,8 @@ export default function GastosPage() {
           </h1>
           <p className="text-muted-foreground mt-1">Bandeja de entrada de facturas recibidas (XMLs del SAT)</p>
         </div>
-        <div className="flex flex-col md:flex-row items-center gap-4 bg-muted/30 p-2 rounded-lg border">
+        <div className="flex flex-col gap-2.5 bg-muted/30 p-2.5 rounded-lg border w-full md:w-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <div className="flex items-center gap-2 px-2">
                 <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Buscar a partir de:</span>
                 <Input 
@@ -424,17 +425,13 @@ export default function GastosPage() {
                 />
             </div>
             
-            <div className="flex items-center gap-2 md:border-l md:pl-4">
+            <div className="flex items-center gap-2 sm:border-l sm:pl-4">
               {!fielConfigured ? (
-                <Button variant="destructive" className="gap-2 cursor-not-allowed h-9" disabled>
+                <Button variant="destructive" className="gap-2 cursor-not-allowed h-9 w-full" disabled>
                   <AlertCircle className="w-4 h-4" /> FIEL No Configurada
                 </Button>
               ) : (
                 <>
-                  <Button variant="outline" onClick={() => setIsUploadModalOpen(true)} className="gap-2 h-9">
-                    <FileText className="w-4 h-4" />
-                    Carga Manual
-                  </Button>
                   <Button variant="outline" onClick={() => setIsRequestsModalOpen(true)} className="gap-2 h-9">
                     <RefreshCw className="w-4 h-4" />
                     Revisar Pendientes
@@ -446,6 +443,15 @@ export default function GastosPage() {
                 </>
               )}
             </div>
+          </div>
+          {fielConfigured && (
+            <div className="flex justify-end border-t pt-2">
+              <Button onClick={() => setIsUploadModalOpen(true)} className="gap-2 h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md w-full sm:w-auto">
+                <FileText className="w-4 h-4" />
+                Carga Manual
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -564,7 +570,7 @@ export default function GastosPage() {
                       <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold sticky top-0 z-10 backdrop-blur-sm">
                           <tr>
                               <th 
-                                className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                className="px-4 py-3 w-24 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
                                 onClick={() => handleSort("date")}
                               >
                                 <div className="flex items-center">
@@ -573,7 +579,7 @@ export default function GastosPage() {
                                 </div>
                               </th>
                               <th 
-                                className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                className="px-4 py-3 max-w-[200px] text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
                                 onClick={() => handleSort("emisorName")}
                               >
                                 <div className="flex items-center">
@@ -581,17 +587,9 @@ export default function GastosPage() {
                                   {renderSortIcon("emisorName")}
                                 </div>
                               </th>
+
                               <th 
-                                className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
-                                onClick={() => handleSort("emisorRfc")}
-                              >
-                                <div className="flex items-center">
-                                  RFC
-                                  {renderSortIcon("emisorRfc")}
-                                </div>
-                              </th>
-                              <th 
-                                className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                className="px-4 py-3 w-28 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
                                 onClick={() => handleSort("folio")}
                               >
                                 <div className="flex items-center">
@@ -600,7 +598,7 @@ export default function GastosPage() {
                                 </div>
                               </th>
                               <th 
-                                className="px-4 py-3 text-right font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
+                                className="px-4 py-3 w-28 text-right font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted hover:text-foreground transition-colors"
                                 onClick={() => handleSort("total")}
                               >
                                 <div className="flex items-center justify-end">
@@ -608,16 +606,15 @@ export default function GastosPage() {
                                   {renderSortIcon("total")}
                                 </div>
                               </th>
-                              <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Estado</th>
-                              <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Acción</th>
+                              <th className="px-4 py-3 w-24 text-center font-semibold text-muted-foreground">Estado</th>
+                              <th className="px-4 py-3 w-24 text-center font-semibold text-muted-foreground">Acción</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y">
                           {sortedInvoices.map((inv) => (
                               <tr key={inv.id} className="hover:bg-muted/30 transition-colors">
                                   <td className="px-4 py-3 whitespace-nowrap">{inv.date ? inv.date.substring(0, 10) : ""}</td>
-                                  <td className="px-4 py-3 font-medium">{inv.emisorName}</td>
-                                  <td className="px-4 py-3">{inv.emisorRfc}</td>
+                                  <td className="px-4 py-3 font-medium max-w-[200px] truncate" title={inv.emisorName}>{inv.emisorName}</td>
                                   <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
                                     {inv.folio ? (
                                       <Link href={`/gastos/${inv.id}`} target="_blank" className="text-indigo-600 hover:text-indigo-800 hover:underline">

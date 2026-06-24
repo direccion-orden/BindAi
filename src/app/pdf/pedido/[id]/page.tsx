@@ -93,6 +93,22 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
           .no-print { display: none !important; }
           body { background-color: white !important; }
           @page { margin: 15mm; size: letter; }
+          .print-container {
+            display: block !important;
+            min-height: 0 !important;
+            height: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+          .print-card {
+            overflow: visible !important;
+            min-height: 0 !important;
+            height: auto !important;
+            display: block !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
         }
         * {
           -webkit-print-color-adjust: exact !important;
@@ -112,8 +128,8 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
         </Button>
       </div>
 
-      <div className="bg-slate-50/50 min-h-screen pt-24 pb-20 px-4 flex justify-center print:pt-0 print:pb-0 print:px-0">
-        <div className="w-full max-w-[800px] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.05)] print:shadow-none print:max-w-none print:w-full mx-auto relative overflow-hidden text-foreground p-8 sm:p-16 min-h-[1056px] flex flex-col justify-between rounded-sm">
+      <div className="print-container bg-slate-50/50 min-h-screen pt-24 pb-20 px-4 flex justify-center print:pt-0 print:pb-0 print:px-0">
+        <div className="print-card w-full max-w-[800px] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.05)] print:shadow-none print:max-w-none print:w-full mx-auto relative overflow-hidden text-foreground p-8 sm:p-16 min-h-[1056px] flex flex-col justify-between rounded-sm">
           
           <div>
             {/* Header */}
@@ -134,6 +150,11 @@ export default function PedidoPDFPage({ params }: { params: Promise<{ id: string
               <div className="text-right">
                 <h2 className="text-xl sm:text-2xl font-black text-foreground uppercase tracking-tight mb-1">PEDIDO DE VENTA</h2>
                 <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em]">{order.orderNumber}</p>
+                {order.projectName && (
+                  <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider mt-1">
+                    Proyecto: {order.projectName}
+                  </p>
+                )}
               </div>
             </div>
 

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FolderOpen, Truck } from "lucide-react";
-import { FileText, Package, Trash2, Edit2, Save, Search, Loader2, XCircle, MessageSquare, ArrowLeft, Percent } from "lucide-react";
+import { FileText, Package, Trash2, Edit2, Save, Search, Loader2, XCircle, MessageSquare, ArrowLeft, Percent, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { doc, getDoc, updateDoc, collection, query, getDocs, where, setDoc } from "firebase/firestore";
@@ -35,6 +35,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
   const [editData, setEditData] = useState<any>(null);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
   
   const [products, setProducts] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -500,82 +501,142 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <div>
-            <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 block w-max mb-1">{quote.quoteNumber}</span>
-            <h1 className="text-3xl font-extrabold tracking-tight">
+          <div className="flex flex-col">
+            <h1 className="text-3xl font-extrabold tracking-tight whitespace-nowrap">
               {isEditing ? "Editar Cotización" : "Detalles de Cotización"}
             </h1>
+            <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 block w-max mt-1">{quote.quoteNumber}</span>
           </div>
         </div>
         
         <div className="flex flex-wrap gap-2 shrink-0">
-          {!isEditing && (
-            <Link href={`/pdf/cotizacion/${quote.id}`} target="_blank">
-              <Button variant="outline" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 h-9 px-3 text-xs">
-                <FileText className="w-4 h-4" /> Ver PDF
-              </Button>
-            </Link>
-          )}
-
-          {!isEditing && quote.status !== 'cancelada' && quote.status !== 'ganada' && (
+          {isEditing ? (
             <>
               <Button 
-                onClick={handleConvertToOrder}
-                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold h-9 px-3 text-xs shadow-sm"
+                variant="default" 
+                className="gap-2 h-9 px-3 text-xs"
+                onClick={handleSave}
                 disabled={loading}
               >
-                <Package className="w-4 h-4" /> Convertir a Pedido
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Guardar Cambios
               </Button>
               <Button 
-                onClick={handleConvertToRemission}
-                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-9 px-3 text-xs shadow-sm"
-                disabled={loading}
+                variant="ghost" 
+                onClick={() => { setIsEditing(false); setEditData({...quote}); }} 
+                className="text-slate-500 h-9 px-3 text-xs"
               >
-                <Truck className="w-4 h-4" /> Convertir a Remisión
+                Cancelar
               </Button>
             </>
-          )}
-
-          {!isEditing && quote.orderId && (
-            <Link href={`/ventas/pedidos/${quote.orderId}`}>
-              <Button variant="outline" className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50 h-9 px-3 text-xs font-semibold">
-                <FileText className="w-4 h-4" /> Ver Pedido Relacionado
+          ) : (
+            <div className="relative">
+              <Button 
+                onClick={() => setShowDropdown(!showDropdown)}
+                className="gap-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold h-9 px-3 text-xs shadow-sm"
+              >
+                Acciones <ChevronDown className="w-4 h-4" />
               </Button>
-            </Link>
-          )}
+              
+              {showDropdown && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowDropdown(false)} 
+                  />
+                  <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 divide-y divide-slate-100 focus:outline-none">
+                    <div className="py-1">
+                      {quote.status !== 'cancelada' && (
+                        <button
+                          onClick={() => {
+                            setShowDropdown(false);
+                            setIsEditing(true);
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-xs text-slate-700 hover:bg-slate-100 text-left font-medium"
+                          disabled={loading}
+                        >
+                          <Edit2 className="w-4 h-4 text-slate-500" />
+                          Editar Cotización
+                        </button>
+                      )}
+                      
+                      <Link 
+                        href={`/pdf/cotizacion/${quote.id}`} 
+                        target="_blank"
+                        onClick={() => setShowDropdown(false)}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-xs text-indigo-700 hover:bg-indigo-50 font-medium"
+                      >
+                        <FileText className="w-4 h-4 text-indigo-500" />
+                        Ver PDF
+                      </Link>
 
-          {!isEditing && quote.remissionId && (
-            <Link href={`/ventas/remisiones/${quote.remissionId}`}>
-              <Button variant="outline" className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 h-9 px-3 text-xs font-semibold">
-                <Truck className="w-4 h-4" /> Ver Remisión Relacionada
-              </Button>
-            </Link>
-          )}
+                      {quote.status !== 'cancelada' && quote.status !== 'ganada' && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setShowDropdown(false);
+                              handleConvertToOrder();
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2 text-xs text-blue-700 hover:bg-blue-50 text-left font-medium"
+                            disabled={loading}
+                          >
+                            <Package className="w-4 h-4 text-blue-500" />
+                            Convertir a Pedido
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowDropdown(false);
+                              handleConvertToRemission();
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2 text-xs text-emerald-700 hover:bg-emerald-50 text-left font-medium"
+                            disabled={loading}
+                          >
+                            <Truck className="w-4 h-4 text-emerald-500" />
+                            Convertir a Remisión
+                          </button>
+                        </>
+                      )}
 
-          <Button 
-            variant={isEditing ? "default" : "secondary"} 
-            className="gap-2 h-9 px-3 text-xs"
-            onClick={() => isEditing ? handleSave() : setIsEditing(true)}
-            disabled={loading || quote.status === 'cancelada'}
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditing ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
-            {isEditing ? "Guardar Cambios" : "Editar"}
-          </Button>
+                      {quote.orderId && (
+                        <Link 
+                          href={`/ventas/pedidos/${quote.orderId}`}
+                          onClick={() => setShowDropdown(false)}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-xs text-blue-700 hover:bg-blue-50 font-medium"
+                        >
+                          <FileText className="w-4 h-4 text-blue-500" />
+                          Ver Pedido Relacionado
+                        </Link>
+                      )}
 
-          {!isEditing && quote.status !== 'cancelada' && quote.status !== 'ganada' && (
-            <Button 
-              variant="destructive" 
-              className="gap-2 h-9 px-3 text-xs"
-              onClick={handleCancelQuote}
-              disabled={loading}
-            >
-              <XCircle className="w-4 h-4" /> Cancelar
-            </Button>
-          )}
-          {isEditing && (
-            <Button variant="ghost" onClick={() => { setIsEditing(false); setEditData({...quote}); }} className="text-slate-500 h-9 px-3 text-xs">
-              Cancelar
-            </Button>
+                      {quote.remissionId && (
+                        <Link 
+                          href={`/ventas/remisiones/${quote.remissionId}`}
+                          onClick={() => setShowDropdown(false)}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-xs text-emerald-700 hover:bg-emerald-50 font-medium"
+                        >
+                          <Truck className="w-4 h-4 text-emerald-500" />
+                          Ver Remisión Relacionada
+                        </Link>
+                      )}
+
+                      {quote.status !== 'cancelada' && quote.status !== 'ganada' && (
+                        <button
+                          onClick={() => {
+                            setShowDropdown(false);
+                            handleCancelQuote();
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-xs text-red-600 hover:bg-red-50 text-left font-medium"
+                          disabled={loading}
+                        >
+                          <XCircle className="w-4 h-4 text-red-500" />
+                          Cancelar Cotización
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>

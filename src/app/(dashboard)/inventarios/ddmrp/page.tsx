@@ -424,7 +424,7 @@ export default function DDMRPPage() {
                     const flowPct = Math.min(100, (item.netFlow / item.zones.tog) * 100);
 
                     return (
-                      <tr key={item.variantId} className="hover:bg-muted/30">
+                      <tr key={`${item.variantId}-${item.productId}`} className="hover:bg-muted/30">
                         <td className="px-4 py-3">
                           {item.statusColor === 'RED' && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-100 text-red-800 text-[10px] font-bold"><AlertTriangle className="w-3 h-3"/> CRÍTICO</span>}
                           {item.statusColor === 'YELLOW' && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-yellow-100 text-yellow-800 text-[10px] font-bold"><RefreshCcw className="w-3 h-3"/> REORDEN</span>}
@@ -583,7 +583,7 @@ export default function DDMRPPage() {
                     const isChanged = JSON.stringify(form) !== JSON.stringify(variant.ddmrp || { isDecoupled: false, leadTimeDays: 7, variabilityFactor: 0.5, moq: 1 });
                     
                     return (
-                      <tr key={variant.id} className="hover:bg-muted/10">
+                      <tr key={`${variant.id}-${product.id}`} className="hover:bg-muted/10">
                         <td className="px-4 py-3 pl-6">
                           <p className="font-semibold text-slate-900 text-sm leading-tight">{product.title}</p>
                           <p className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded w-max mt-1">

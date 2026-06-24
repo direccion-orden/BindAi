@@ -100,7 +100,7 @@ export default function DDMRPPage() {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
       const q = query(
-        collection(db, "companies", companyId, "inventory_transactions"),
+        collection(db, "companies", companyId, "inventory_movements"),
         where("type", "==", "OUT"),
         where("createdAt", ">=", thirtyDaysAgo.toISOString())
       );

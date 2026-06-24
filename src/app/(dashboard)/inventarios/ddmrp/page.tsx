@@ -110,11 +110,31 @@ export default function DDMRPPage() {
         const map: Record<string, number> = {};
         snap.docs.forEach(doc => {
           const data = doc.data();
-          // Assuming transaction logs variantId. Wait, our transactions only log productId and productName?
-          // Let's fallback to productId if variantId is missing, but ideally we should track variantId in transactions.
-          // For now, if we don't have variantId, we use productId.
           const id = data.variantId || data.productId; 
-          map[id] = (map[id] || 0) + (data.quantity || 0);
+          if (id) {
+            map[id] = (map[id] || 0) + (data.quantity || 0);
+          }
+        });
+
+        // Fetch active orders (status: "por_surtir")
+        const pedidosQ = query(
+          collection(db, "companies", companyId, "pedidos"),
+          where("status", "==", "por_surtir")
+        );
+        const pedidosSnap = await getDocs(pedidosQ);
+        const isoLimit = thirtyDaysAgo.toISOString();
+
+        pedidosSnap.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.createdAt && data.createdAt >= isoLimit) {
+            const items = data.items || [];
+            items.forEach((item: any) => {
+              const id = item.variantId || item.productId;
+              if (id) {
+                map[id] = (map[id] || 0) + (item.quantity || 0);
+              }
+            });
+          }
         });
         
         // Divide by 30 to get average per day

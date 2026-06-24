@@ -16,7 +16,10 @@ import {
   AlertCircle,
   Tag,
   Layers,
-  Inbox
+  Inbox,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import {
   Table,
@@ -263,6 +266,51 @@ export default function ExistenciasPage() {
     });
   }, [stockItems, selectedCategory, searchTerm, categories]);
 
+  // Sorting State
+  const [sortField, setSortField] = useState("fullName");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 ml-1.5 inline shrink-0 font-bold" />
+    );
+  };
+
+  // Sort filtered items
+  const sortedFilteredItems = useMemo(() => {
+    const list = [...filteredItems];
+    list.sort((a, b) => {
+      let aVal = a[sortField as keyof FlattenedStockItem];
+      let bVal = b[sortField as keyof FlattenedStockItem];
+
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+      }
+
+      const aStr = String(aVal || "").toLowerCase();
+      const bStr = String(bVal || "").toLowerCase();
+
+      return sortDirection === "asc"
+        ? aStr.localeCompare(bStr, "es", { sensitivity: "base" })
+        : bStr.localeCompare(aStr, "es", { sensitivity: "base" });
+    });
+    return list;
+  }, [filteredItems, sortField, sortDirection]);
+
   // Export to Excel / CSV with BOM
   const handleExportCSV = () => {
     const headers = [
@@ -275,7 +323,7 @@ export default function ExistenciasPage() {
       "Almacenes Detalle (Almacen - Sucursal: Cantidad)"
     ];
 
-    const rows = filteredItems.map(item => {
+    const rows = sortedFilteredItems.map(item => {
       const breakdownText = item.breakdown
         .map(b => `${b.warehouseName} (${b.locationName}): ${b.qty}`)
         .join(" | ");
@@ -337,12 +385,11 @@ export default function ExistenciasPage() {
         </div>
         <div className="flex items-center gap-2 pl-10 md:pl-0">
           <Button 
-            variant="outline" 
-            className="gap-2 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold h-9 text-xs" 
+            className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold h-9 text-xs shadow-sm" 
             onClick={handleExportCSV}
-            disabled={filteredItems.length === 0}
+            disabled={sortedFilteredItems.length === 0}
           >
-            <Download className="w-4 h-4 text-indigo-600" /> Exportar a Excel
+            <Download className="w-4 h-4 text-white" /> Exportar a Excel
           </Button>
         </div>
       </div>
@@ -402,7 +449,7 @@ export default function ExistenciasPage() {
 
         {/* Inventory Table */}
         <div className="overflow-x-auto">
-          {filteredItems.length === 0 ? (
+          {sortedFilteredItems.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <div className="p-3 bg-slate-100 rounded-full w-max mx-auto">
                 <Inbox className="w-6 h-6 text-slate-400" />
@@ -416,16 +463,41 @@ export default function ExistenciasPage() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50 hover:bg-slate-50/50">
-                  <TableHead className="font-semibold text-slate-600 text-xs pl-6">Producto / Variante</TableHead>
-                  <TableHead className="font-semibold text-slate-600 text-xs">SKU</TableHead>
-                  <TableHead className="font-semibold text-slate-600 text-xs">Cod. Barras</TableHead>
-                  <TableHead className="font-semibold text-slate-600 text-xs">Categoria</TableHead>
+                  <TableHead 
+                    className="font-semibold text-slate-600 text-xs pl-6 cursor-pointer select-none hover:bg-slate-100/80 transition-colors"
+                    onClick={() => handleSort("fullName")}
+                  >
+                    Producto / Variante {renderSortIcon("fullName")}
+                  </TableHead>
+                  <TableHead 
+                    className="font-semibold text-slate-600 text-xs cursor-pointer select-none hover:bg-slate-100/80 transition-colors"
+                    onClick={() => handleSort("sku")}
+                  >
+                    SKU {renderSortIcon("sku")}
+                  </TableHead>
+                  <TableHead 
+                    className="font-semibold text-slate-600 text-xs cursor-pointer select-none hover:bg-slate-100/80 transition-colors"
+                    onClick={() => handleSort("barcode")}
+                  >
+                    Cod. Barras {renderSortIcon("barcode")}
+                  </TableHead>
+                  <TableHead 
+                    className="font-semibold text-slate-600 text-xs cursor-pointer select-none hover:bg-slate-100/80 transition-colors"
+                    onClick={() => handleSort("categoryName")}
+                  >
+                    Categoria {renderSortIcon("categoryName")}
+                  </TableHead>
                   <TableHead className="font-semibold text-slate-600 text-xs">Distribucion Almacen</TableHead>
-                  <TableHead className="font-semibold text-slate-600 text-xs pr-6 text-right">Existencia</TableHead>
+                  <TableHead 
+                    className="font-semibold text-slate-600 text-xs pr-6 text-right cursor-pointer select-none hover:bg-slate-100/80 transition-colors"
+                    onClick={() => handleSort("totalStock")}
+                  >
+                    Existencia {renderSortIcon("totalStock")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredItems.map((item, idx) => (
+                {sortedFilteredItems.map((item, idx) => (
                   <TableRow key={`${item.productId}-${item.variantId}-${idx}`} className="hover:bg-slate-50/30">
                     {/* Producto */}
                     <TableCell className="pl-6 py-3.5">

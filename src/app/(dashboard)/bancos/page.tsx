@@ -38,7 +38,11 @@ export default function BancosPage() {
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"history" | "reconcile">("history");
-  const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [selectedTxs, setSelectedTxs] = useState<BankTransaction[]>([]);
+
+  useEffect(() => {
+    setSelectedTxs([]);
+  }, [selectedAccountId]);
 
   // Reconcile data loading states
   const [unpaidSales, setUnpaidSales] = useState<any[]>([]);
@@ -154,6 +158,33 @@ export default function BancosPage() {
     }
     return filteredTransactions;
   }, [filteredTransactions, activeTab]);
+
+  const eligibleTransactions = useMemo(() => {
+    if (displayedTransactions.length === 0) return [];
+    const isSelectingCharges = selectedTxs.length > 0 ? selectedTxs[0].amount < 0 : null;
+    if (isSelectingCharges !== null) {
+      return displayedTransactions.filter(t => (t.amount < 0) === isSelectingCharges);
+    } else {
+      const firstIsCharge = displayedTransactions[0].amount < 0;
+      return displayedTransactions.filter(t => (t.amount < 0) === firstIsCharge);
+    }
+  }, [displayedTransactions, selectedTxs]);
+
+  const allEligibleSelected = useMemo(() => {
+    if (eligibleTransactions.length === 0) return false;
+    return eligibleTransactions.every(tx => selectedTxs.some(t => t.id === tx.id));
+  }, [eligibleTransactions, selectedTxs]);
+
+  const handleSelectAllToggle = () => {
+    if (allEligibleSelected) {
+      setSelectedTxs(prev => prev.filter(tx => !eligibleTransactions.some(e => e.id === tx.id)));
+    } else {
+      setSelectedTxs(prev => {
+        const filteredPrev = prev.filter(tx => !eligibleTransactions.some(e => e.id === tx.id));
+        return [...filteredPrev, ...eligibleTransactions];
+      });
+    }
+  };
 
   const formatMoney = (amount: number, currency: string = "MXN") => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency }).format(amount);
@@ -324,41 +355,87 @@ export default function BancosPage() {
                           <div className="lg:w-[40%] bg-card border rounded-xl shadow-sm flex flex-col h-full overflow-hidden">
                               <div className="p-3 border-b bg-slate-50 flex items-center justify-between shrink-0">
                                   <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                                      Movimientos Bancarios ({displayedTransactions.length})
+                                      Movimientos ({displayedTransactions.length})
                                   </span>
+                                  {displayedTransactions.length > 0 && (
+                                      <button
+                                          type="button"
+                                          onClick={handleSelectAllToggle}
+                                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1.5 transition-all bg-white hover:bg-slate-50 border border-slate-200 px-2 py-1 rounded"
+                                      >
+                                          <div className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 transition-all ${
+                                              allEligibleSelected 
+                                                  ? 'bg-indigo-600 border-indigo-600 text-white' 
+                                                  : 'border-slate-300 bg-white'
+                                          }`}>
+                                              {allEligibleSelected && (
+                                                  <svg className="w-2 h-2 fill-current text-white" viewBox="0 0 20 20">
+                                                      <path d="M0 11l2-2 5 5L18 3l2 2L7 18z" />
+                                                  </svg>
+                                              )}
+                                          </div>
+                                          {allEligibleSelected ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                                      </button>
+                                  )}
                               </div>
                               <div className="flex-1 overflow-y-auto divide-y custom-scrollbar">
                                   {displayedTransactions.map((tx) => {
                                       const matches = getMatchCount(tx);
-                                      const isSelected = selectedTransaction?.id === tx.id;
+                                      const isSelected = selectedTxs.some(t => t.id === tx.id);
                                       const isTxCharge = tx.amount < 0;
+                                      
+                                      const isSelectingCharges = selectedTxs.length > 0 ? selectedTxs[0].amount < 0 : null;
+                                      const isDifferentType = isSelectingCharges !== null && (tx.amount < 0) !== isSelectingCharges;
+
                                       return (
                                           <div 
                                               key={tx.id}
-                                              onClick={() => setSelectedTransaction(tx)}
-                                              className={`p-3.5 cursor-pointer hover:bg-slate-100/55 transition-all flex flex-col gap-1 border-l-4 ${
+                                              onClick={() => {
+                                                  if (isDifferentType) return;
+                                                  if (isSelected) {
+                                                      setSelectedTxs(prev => prev.filter(t => t.id !== tx.id));
+                                                  } else {
+                                                      setSelectedTxs(prev => [...prev, tx]);
+                                                  }
+                                              }}
+                                              className={`p-3.5 cursor-pointer hover:bg-slate-100/55 transition-all flex flex-row items-center gap-3 border-l-4 ${
                                                   isSelected 
                                                       ? 'bg-indigo-50/40 border-l-indigo-600' 
                                                       : 'border-l-transparent'
-                                              }`}
+                                              } ${isDifferentType ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
                                           >
-                                              <div className="flex justify-between items-start">
-                                                  <span className="text-[10px] font-semibold font-mono text-slate-400">{tx.date}</span>
-                                                  <span className={`text-sm font-bold ${isTxCharge ? 'text-red-600' : 'text-emerald-700'}`}>
-                                                      {isTxCharge ? '-' : '+'}${Math.abs(tx.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                                                  </span>
-                                              </div>
-                                              
-                                              <p className="text-xs font-bold text-slate-700 leading-tight line-clamp-2">{tx.concept}</p>
-                                              
-                                              <div className="flex justify-between items-center pt-1">
-                                                  <span className="text-[10px] text-slate-400 font-mono">Ref: {tx.reference || "S/R"}</span>
-                                                  {matches > 0 && (
-                                                      <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-0.5 border border-emerald-200">
-                                                          <Sparkles className="w-2.5 h-2.5 text-emerald-700" />
-                                                          Coincidencia
-                                                      </span>
+                                              {/* Checkbox wrapper */}
+                                              <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${
+                                                  isSelected 
+                                                      ? 'bg-indigo-600 border-indigo-600 text-white' 
+                                                      : 'border-slate-300 bg-white'
+                                              }`}>
+                                                  {isSelected && (
+                                                      <svg className="w-2.5 h-2.5 fill-current text-white" viewBox="0 0 20 20">
+                                                          <path d="M0 11l2-2 5 5L18 3l2 2L7 18z" />
+                                                      </svg>
                                                   )}
+                                              </div>
+
+                                              <div className="flex-1 flex flex-col gap-1">
+                                                  <div className="flex justify-between items-start">
+                                                      <span className="text-[10px] font-semibold font-mono text-slate-400">{tx.date}</span>
+                                                      <span className={`text-sm font-bold ${isTxCharge ? 'text-red-600' : 'text-emerald-700'}`}>
+                                                          {isTxCharge ? '-' : '+'}${Math.abs(tx.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                                      </span>
+                                                  </div>
+                                                  
+                                                  <p className="text-xs font-bold text-slate-700 leading-tight line-clamp-2">{tx.concept}</p>
+                                                  
+                                                  <div className="flex justify-between items-center pt-1">
+                                                      <span className="text-[10px] text-slate-400 font-mono">Ref: {tx.reference || "S/R"}</span>
+                                                      {matches > 0 && (
+                                                          <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-0.5 border border-emerald-200">
+                                                              <Sparkles className="w-2.5 h-2.5 text-emerald-700" />
+                                                              Coincidencia
+                                                          </span>
+                                                      )}
+                                                  </div>
                                               </div>
                                           </div>
                                       );
@@ -368,33 +445,38 @@ export default function BancosPage() {
 
                           {/* Right pane: reconciliation details */}
                           <div className="lg:w-[60%] h-full overflow-hidden">
-                              {selectedTransaction && selectedAccountId ? (
+                              {selectedTxs.length > 0 && selectedAccountId ? (
                                   <ReconcilePanel 
-                                      transaction={selectedTransaction}
+                                      transactions={selectedTxs}
                                       accountId={selectedAccountId}
-                                      unpaidDocs={selectedTransaction.amount < 0 ? unpaidExpenses : unpaidSales}
+                                      unpaidDocs={selectedTxs[0].amount < 0 ? unpaidExpenses : unpaidSales}
                                       accountingAccounts={
-                                          selectedTransaction.amount < 0 
+                                          selectedTxs[0].amount < 0 
                                               ? accountingAccountsAll.filter(a => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2)
                                               : accountingAccountsAll.filter(a => a.type === "INGRESOS" && a.level >= 2)
                                       }
                                       accountingAccountsAll={accountingAccountsAll}
-                                      onDeselect={() => setSelectedTransaction(null)}
+                                      onDeselect={() => setSelectedTxs([])}
                                       onSuccess={() => {
                                           // 1. Trigger state reload for invoices/expenses
                                           setReconcileTrigger(prev => prev + 1);
 
                                           // 2. Select next pending transaction for seamless workflow
-                                          const currentIndex = displayedTransactions.findIndex(t => t.id === selectedTransaction.id);
-                                          const nextTx = displayedTransactions.find((t, idx) => idx > currentIndex && t.id !== selectedTransaction.id);
-                                          const prevTx = displayedTransactions.find((t, idx) => idx < currentIndex && t.id !== selectedTransaction.id);
+                                          if (selectedTxs.length === 1) {
+                                              const currentTx = selectedTxs[0];
+                                              const currentIndex = displayedTransactions.findIndex(t => t.id === currentTx.id);
+                                              const nextTx = displayedTransactions.find((t, idx) => idx > currentIndex && t.id !== currentTx.id);
+                                              const prevTx = displayedTransactions.find((t, idx) => idx < currentIndex && t.id !== currentTx.id);
 
-                                          if (nextTx) {
-                                              setSelectedTransaction(nextTx);
-                                          } else if (prevTx) {
-                                              setSelectedTransaction(prevTx);
+                                              if (nextTx) {
+                                                  setSelectedTxs([nextTx]);
+                                              } else if (prevTx) {
+                                                  setSelectedTxs([prevTx]);
+                                              } else {
+                                                  setSelectedTxs([]);
+                                              }
                                           } else {
-                                              setSelectedTransaction(null);
+                                              setSelectedTxs([]);
                                           }
                                       }}
                                   />

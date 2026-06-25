@@ -185,12 +185,14 @@ export function ReconcilePanel({
     }
 
     const q = query(
-      collection(db, "companies", companyId, "bankAccounts", selectedTargetAccountId, "transactions"),
-      where("reconciled", "==", false)
+      collection(db, "companies", companyId, "bankAccounts", selectedTargetAccountId, "transactions")
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const txs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      const txs = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .filter(tx => !tx.reconciled); // Filter in memory to include undefined/null reconciled fields
+      
       // Sort by date descending in memory to avoid Firestore index requirement
       txs.sort((a, b) => {
         const dateA = a.date || "";

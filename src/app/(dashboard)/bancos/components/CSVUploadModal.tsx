@@ -10,13 +10,14 @@ import { Loader2, UploadCloud, X, ArrowRight, CheckCircle2, FileText } from "luc
 import { BankTransaction } from "@/types/bank";
 
 interface CSVUploadModalProps {
-  accountId: string;
-  accountCurrency: string;
+  accounts: any[];
+  initialAccountId: string;
   onClose: () => void;
 }
 
-export function CSVUploadModal({ accountId, accountCurrency, onClose }: CSVUploadModalProps) {
+export function CSVUploadModal({ accounts, initialAccountId, onClose }: CSVUploadModalProps) {
   const { companyId } = useAuth();
+  const [targetAccountId, setTargetAccountId] = useState(initialAccountId);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1); // 1: Upload, 2: Map, 3: Preview, 4: Success
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -148,7 +149,7 @@ export function CSVUploadModal({ accountId, accountCurrency, onClose }: CSVUploa
   };
 
   const handleImport = async () => {
-    if (!companyId || !accountId) return;
+    if (!companyId || !targetAccountId) return;
     setLoading(true);
     try {
       // Batch write limits to 500 ops per batch
@@ -159,7 +160,7 @@ export function CSVUploadModal({ accountId, accountCurrency, onClose }: CSVUploa
         const batch = writeBatch(db);
         
         chunk.forEach(tx => {
-            const txRef = doc(collection(db, "companies", companyId, "bankAccounts", accountId, "transactions"));
+            const txRef = doc(collection(db, "companies", companyId, "bankAccounts", targetAccountId, "transactions"));
             batch.set(txRef, { ...tx, id: txRef.id }); // replace temp ID with firestore ID
         });
 
@@ -197,23 +198,42 @@ export function CSVUploadModal({ accountId, accountCurrency, onClose }: CSVUploa
           )}
 
           {step === 1 && (
-            <div className="space-y-6 text-center py-8">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FileText className="w-8 h-8 text-primary" />
+            <div className="space-y-6 py-4">
+              <div className="bg-slate-50 border rounded-xl p-5 space-y-3.5 max-w-md mx-auto text-left shadow-sm">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider font-semibold text-slate-600">Cuenta Bancaria de Destino *</label>
+                  <select
+                    value={targetAccountId}
+                    onChange={(e) => setTargetAccountId(e.target.value)}
+                    className="h-11 w-full px-3 rounded-md border bg-background text-sm font-bold focus:ring-2 focus:ring-primary outline-none text-indigo-700"
+                  >
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xl font-bold mb-2">Sube tu archivo CSV</h3>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
-                  Descarga los movimientos desde el portal de tu banco en formato CSV y súbelo aquí. En el siguiente paso te ayudaremos a identificar las columnas automáticamente.
-                </p>
-                <div className="relative inline-block">
-                   <Button size="lg" className="cursor-pointer">Seleccionar Archivo .csv</Button>
-                   <input 
-                     type="file" 
-                     accept=".csv" 
-                     onChange={handleFileUpload} 
-                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                   />
+
+              <div className="text-center space-y-4 pt-4">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2">
+                  <FileText className="w-8 h-8 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold mb-2">Sube tu archivo CSV</h3>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
+                    Descarga los movimientos desde el portal de tu banco en formato CSV y súbelo aquí. En el siguiente paso te ayudaremos a identificar las columnas automáticamente.
+                  </p>
+                  <div className="relative inline-block">
+                     <Button size="lg" className="cursor-pointer">Seleccionar Archivo .csv</Button>
+                     <input 
+                       type="file" 
+                       accept=".csv" 
+                       onChange={handleFileUpload} 
+                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                     />
+                  </div>
                 </div>
               </div>
             </div>
@@ -338,7 +358,12 @@ export function CSVUploadModal({ accountId, accountCurrency, onClose }: CSVUploa
                      <CheckCircle2 className="w-8 h-8" />
                  </div>
                  <h3 className="text-2xl font-bold text-green-600">Importación Exitosa</h3>
-                 <p className="text-muted-foreground">Se importaron {parsedTransactions.length} movimientos a la cuenta.</p>
+                 <p className="text-muted-foreground">
+                   Se importaron {parsedTransactions.length} movimientos a la cuenta: <br />
+                   <strong className="text-slate-800">
+                     {accounts.find(a => a.id === targetAccountId)?.Name || accounts.find(a => a.id === targetAccountId)?.name || ""}
+                   </strong>
+                 </p>
                  <div className="pt-6">
                     <Button onClick={onClose} size="lg">Ir a Movimientos</Button>
                  </div>

@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, increment } from "firebase/firestore";
+import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, increment, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Receipt, DollarSign, Calendar, CreditCard, BookOpen, FileText, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, ArrowLeft, Receipt, DollarSign, Calendar, CreditCard, BookOpen, FileText, CheckCircle2, AlertCircle, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -40,6 +40,8 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
   const [bankAccountId, setBankAccountId] = useState("");
   const [expenseAccountId, setExpenseAccountId] = useState("");
   const [vatRate, setVatRate] = useState<number>(0.16);
+  const [unreconciledTransactions, setUnreconciledTransactions] = useState<any[]>([]);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string>("manual");
 
   // Firestore lists
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
@@ -201,6 +203,41 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
     };
   }, [companyId]);
 
+  // Load unreconciled transactions for the selected bank account
+  useEffect(() => {
+    setSelectedTransactionId("manual");
+    if (!companyId || !bankAccountId) {
+      setUnreconciledTransactions([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions"),
+      orderBy("date", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const filtered = txs.filter(t => t.amount < 0 && !t.reconciled);
+      setUnreconciledTransactions(filtered);
+    }, (error) => {
+      console.error("Error loading transactions:", error);
+    });
+
+    return () => unsubscribe();
+  }, [companyId, bankAccountId]);
+
+  // Auto-fill when a transaction is selected
+  useEffect(() => {
+    if (selectedTransactionId && selectedTransactionId !== "manual") {
+      const matchedTx = unreconciledTransactions.find(t => t.id === selectedTransactionId);
+      if (matchedTx) {
+        if (matchedTx.reference) setReference(matchedTx.reference);
+        if (matchedTx.date) setDate(matchedTx.date);
+      }
+    }
+  }, [selectedTransactionId, unreconciledTransactions]);
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
   }
@@ -236,6 +273,32 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       const providerName = invoice.emisorName || "Proveedor";
       const documentNumber = invoice.invoiceNumber || invoice.uuid || invoice.id;
 
+      let finalBankTransactionId = "";
+      if (selectedTransactionId && selectedTransactionId !== "manual") {
+        finalBankTransactionId = selectedTransactionId;
+        await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", selectedTransactionId), {
+          reconciled: true,
+          matchedAt: new Date().toISOString(),
+          reconcileType: "match",
+          matchedDocumentId: invoice.id
+        });
+      } else {
+        // Register manually: create a transaction in the bank subcollection
+        const txData = {
+          amount: -amount,
+          date,
+          concept: `Pago CFDI: ${providerName} - Ref: ${reference || "Sin Ref"}`,
+          reference: reference || "",
+          reconciled: true,
+          matchedAt: new Date().toISOString(),
+          reconcileType: "direct",
+          matchedDocumentId: invoice.id,
+          createdAt: new Date().toISOString(),
+        };
+        const txRef = await addDoc(collection(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions"), txData);
+        finalBankTransactionId = txRef.id;
+      }
+
       // 1. Create payment record in outflows
       const paymentData = {
         amount,
@@ -249,6 +312,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         bankAccountId,
         expenseAccountId: finalExpenseAccountId,
         createdAt: new Date().toISOString(),
+        bankTransactionId: finalBankTransactionId
       };
 
       const paymentRef = await addDoc(collection(db, "companies", companyId, "outflows"), paymentData);
@@ -497,6 +561,27 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                   ))}
                 </select>
               </div>
+
+              {bankAccountId && (
+                <div className="space-y-1 sm:col-span-2 md:col-span-2 animate-in fade-in duration-200">
+                  <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                    <Landmark className="w-3.5 h-3.5 text-slate-400" />
+                    Vincular a Egreso Bancario Existente
+                  </label>
+                  <select
+                    value={selectedTransactionId}
+                    onChange={e => setSelectedTransactionId(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-[11px] shadow-sm focus-visible:outline-none font-semibold text-indigo-700"
+                  >
+                    <option value="manual">-- Registrar nuevo egreso manualmente --</option>
+                    {unreconciledTransactions.map(tx => (
+                      <option key={tx.id} value={tx.id}>
+                        {tx.date} - {tx.concept} (${Math.abs(tx.amount).toLocaleString('es-MX', {minimumFractionDigits:2})} {tx.reference ? `| Ref: ${tx.reference}` : ''})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">

@@ -186,6 +186,24 @@ export default function TesoreriaPage() {
         }
     };
 
+    const handleAuthorizeRequest = async (id: string) => {
+        if (!companyId) return;
+        try {
+            const code = await generateUniqueCode();
+            const ref = doc(db, "companies", companyId, "cash_withdrawals", id);
+            await updateDoc(ref, {
+                code,
+                status: "pending",
+                authorizedAt: serverTimestamp(),
+                authorizedBy: user?.email || "Tesorero"
+            });
+            alert(`Retiro autorizado correctamente. Código generado: ${code}`);
+        } catch (err: any) {
+            console.error("Error authorizing request:", err);
+            alert(err.message || "Error al autorizar la solicitud.");
+        }
+    };
+
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!companyId) return;
@@ -605,6 +623,9 @@ export default function TesoreriaPage() {
         );
     }
 
+    const pendingRequests = withdrawals.filter((w: any) => w.status === 'requested');
+    const authorizedWithdrawals = withdrawals.filter((w: any) => w.status !== 'requested');
+
     return (
         <div className="p-6 max-w-6xl mx-auto space-y-8 animate-in fade-in">
             <div className="flex justify-between items-center">
@@ -935,6 +956,63 @@ export default function TesoreriaPage() {
                         </div>
                     )}
 
+                    {pendingRequests.length > 0 && (
+                        <div className="space-y-4 pt-6 border-t">
+                            <h3 className="text-lg font-bold text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                                <ShieldAlert className="w-5 h-5" />
+                                Solicitudes de Retiro por Autorizar
+                            </h3>
+                            <div className="border border-amber-200 dark:border-amber-900/50 rounded-xl overflow-hidden bg-amber-500/5">
+                                <table className="w-full border-collapse text-left text-sm text-muted-foreground">
+                                    <thead className="bg-amber-500/10 text-amber-800 dark:text-amber-300 font-semibold text-xs uppercase border-b border-amber-200 dark:border-amber-900/50">
+                                        <tr>
+                                            <th className="px-4 py-3">Sucursal</th>
+                                            <th className="px-4 py-3">Monto</th>
+                                            <th className="px-4 py-3">Referencia</th>
+                                            <th className="px-4 py-3">Solicitado por</th>
+                                            <th className="px-4 py-3">Fecha</th>
+                                            <th className="px-4 py-3 text-right">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-amber-200/50 dark:divide-amber-900/30">
+                                        {pendingRequests.map((req) => {
+                                            const dateStr = req.createdAt?.toDate 
+                                                ? req.createdAt.toDate().toLocaleString('es-MX') 
+                                                : "...";
+                                            return (
+                                                <tr key={req.id} className="hover:bg-amber-500/10">
+                                                    <td className="px-4 py-3 font-medium text-foreground">{req.locationName}</td>
+                                                    <td className="px-4 py-3 font-bold text-foreground">{formatMoney(req.amount)}</td>
+                                                    <td className="px-4 py-3 text-foreground">{req.reference || "Devolución"}</td>
+                                                    <td className="px-4 py-3 text-xs">{req.createdBy?.split('@')[0] || "Cajero"}</td>
+                                                    <td className="px-4 py-3 text-xs">{dateStr}</td>
+                                                    <td className="px-4 py-3 text-right space-x-2">
+                                                        <Button
+                                                            variant="default"
+                                                            size="sm"
+                                                            onClick={() => handleAuthorizeRequest(req.id)}
+                                                            className="h-8 px-3 bg-amber-600 hover:bg-amber-700 text-white"
+                                                        >
+                                                            Autorizar
+                                                        </Button>
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={() => handleCancelWithdrawal(req.id)}
+                                                            className="h-8 px-3"
+                                                        >
+                                                            Rechazar
+                                                        </Button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="space-y-4">
                         <h3 className="text-lg font-bold flex items-center gap-2">
                             <History className="w-4 h-4 text-muted-foreground" />
@@ -954,13 +1032,13 @@ export default function TesoreriaPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y">
-                                    {withdrawals.map((withdrawal) => {
+                                    {authorizedWithdrawals.map((withdrawal) => {
                                         const dateStr = withdrawal.createdAt?.toDate 
                                             ? withdrawal.createdAt.toDate().toLocaleString('es-MX') 
                                             : "...";
                                         return (
                                             <tr key={withdrawal.id} className="hover:bg-muted/30">
-                                                <td className="px-4 py-3 font-mono font-bold text-foreground">{withdrawal.code}</td>
+                                                <td className="px-4 py-3 font-mono font-bold text-foreground">{withdrawal.code || "—"}</td>
                                                 <td className="px-4 py-3 font-medium text-foreground">{withdrawal.locationName}</td>
                                                 <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">{formatMoney(withdrawal.amount)}</td>
                                                 <td className="px-4 py-3">
@@ -998,7 +1076,7 @@ export default function TesoreriaPage() {
                                             </tr>
                                         );
                                     })}
-                                    {withdrawals.length === 0 && (
+                                    {authorizedWithdrawals.length === 0 && (
                                         <tr>
                                             <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                                                 No hay retiros autorizados registrados.

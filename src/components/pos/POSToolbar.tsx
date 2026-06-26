@@ -129,7 +129,7 @@ export function POSToolbar() {
           <div className="relative">
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-all shadow-sm focus:outline-none"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white rounded-lg transition-all shadow-sm focus:outline-none"
             >
               <span>Acciones POS</span>
               <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />

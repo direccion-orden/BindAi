@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { usePOS } from "@/context/POSContext";
@@ -17,15 +17,38 @@ export function RetiroCodigoModal({ onClose }: RetiroCodigoModalProps) {
   const { user, companyId } = useAuth();
   const { branchId, cashMode } = usePOS();
 
-  const [step, setStep] = useState<"input" | "confirm" | "dispensing" | "success">("input");
+  const [step, setStep] = useState<"input" | "confirm" | "dispensing" | "success" | "request_form" | "request_success">("input");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [withdrawalData, setWithdrawalData] = useState<any>(null);
+  const [reqAmount, setReqAmount] = useState("");
+  const [reqDescription, setReqDescription] = useState("");
   
   // Active shift cash session
   const [activeSession, setActiveSession] = useState<any>(null);
   const [checkingSession, setCheckingSession] = useState(false);
+  const [availableCodes, setAvailableCodes] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!companyId || !branchId) return;
+
+    const q = query(
+      collection(db, "companies", companyId, "cash_withdrawals"),
+      where("locationId", "==", branchId),
+      where("status", "==", "pending")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      docs.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setAvailableCodes(docs);
+    }, (err) => {
+      console.error("Error listening to available codes:", err);
+    });
+
+    return () => unsubscribe();
+  }, [companyId, branchId]);
 
   // Recycler session polling states
   const [dispenseProgress, setDispenseProgress] = useState("");
@@ -198,13 +221,17 @@ export function RetiroCodigoModal({ onClose }: RetiroCodigoModalProps) {
     if (!withdrawalData || !companyId || !activeSession) return;
 
     try {
+      const isDevolucion = withdrawalData.type === "devolucion";
+      const category = isDevolucion ? "RETIRO_CANCELACION" : "RETIRO_FONDO";
+      const reference = withdrawalData.reference || `Retiro Autorizado (Código: ${withdrawalData.code})`;
+
       // 1. Create cash transaction expense
       const txRef = await addDoc(collection(db, "companies", companyId, "cash_transactions"), {
         sessionId: activeSession.id,
         type: "EXPENSE",
-        category: "RETIRO_FONDO",
+        category,
         amount: withdrawalData.amount,
-        reference: `Retiro Autorizado (Código: ${withdrawalData.code})`,
+        reference,
         paymentMethod: "CASH",
         createdAt: serverTimestamp(),
         createdBy: user?.email || "Cajero"
@@ -225,6 +252,41 @@ export function RetiroCodigoModal({ onClose }: RetiroCodigoModalProps) {
       console.error("Error completing withdrawal record:", err);
       setError("El dinero fue entregado pero ocurrió un error al registrar el movimiento en el sistema.");
       setStep("confirm");
+    }
+  };
+
+  const handleCreateRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(reqAmount);
+    if (isNaN(amount) || amount <= 0) {
+      alert("Por favor ingrese un monto válido.");
+      return;
+    }
+    if (!reqDescription.trim()) {
+      alert("Por favor proporcione un motivo o descripción.");
+      return;
+    }
+    if (!companyId) return;
+
+    setLoading(true);
+    try {
+      await addDoc(collection(db, "companies", companyId, "cash_withdrawals"), {
+        amount,
+        locationId: branchId || "",
+        locationName: activeSession?.locationName || "Sucursal",
+        status: "requested",
+        type: "retiro_caja",
+        reference: reqDescription.trim(),
+        createdAt: serverTimestamp(),
+        createdBy: user?.email || "Cajero",
+        code: null
+      });
+      setStep("request_success");
+    } catch (err: any) {
+      console.error("Error creating withdrawal request from POS:", err);
+      alert(err.message || "Error al enviar la solicitud.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -282,10 +344,61 @@ export function RetiroCodigoModal({ onClose }: RetiroCodigoModalProps) {
                 </div>
               )}
 
-              <Button type="submit" className="w-full h-12 text-sm font-semibold" disabled={loading || code.length !== 6}>
+              <Button type="submit" className="w-full h-12 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white" disabled={loading || code.length !== 6}>
                 {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Validar Código"}
               </Button>
             </form>
+
+            {availableCodes.length > 0 && (
+              <div className="space-y-3 pt-4 border-t">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider text-left">Códigos Disponibles en Sucursal</p>
+                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar">
+                  {availableCodes.map((c) => (
+                    <div 
+                      key={c.id} 
+                      onClick={() => {
+                        setCode(c.code);
+                        setError("");
+                      }}
+                      className="flex items-center justify-between p-2.5 border rounded-lg hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all group"
+                    >
+                      <div className="space-y-0.5 text-left">
+                        <p className="font-mono text-sm font-bold text-primary flex items-center gap-1.5">
+                          {c.code}
+                          {c.type === "devolucion" && (
+                            <span className="inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px] font-semibold uppercase">
+                              Devolución
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate max-w-[200px]" title={c.reference}>
+                          {c.reference || "Retiro"}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-extrabold text-foreground text-sm">{formatMoney(c.amount)}</p>
+                        <p className="text-[9px] text-muted-foreground">Clic para usar</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full text-xs font-semibold h-9"
+                onClick={() => {
+                  setStep("request_form");
+                  setReqAmount("");
+                  setReqDescription("");
+                }}
+              >
+                Solicitar Retiro
+              </Button>
+            </div>
           </div>
         )}
 
@@ -349,7 +462,7 @@ export function RetiroCodigoModal({ onClose }: RetiroCodigoModalProps) {
               </Button>
               <Button 
                 onClick={handleStartDispense} 
-                className="w-1/2 h-12 bg-green-600 hover:bg-green-700 text-white font-semibold"
+                className="w-1/2 h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold hover:text-white"
                 disabled={!activeSession || checkingSession}
               >
                 Confirmar y Dispensar
@@ -388,8 +501,101 @@ export function RetiroCodigoModal({ onClose }: RetiroCodigoModalProps) {
               </p>
             </div>
 
-            <Button onClick={onClose} className="w-full h-12 text-sm font-semibold">
+            <Button onClick={onClose} className="w-full h-12 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white">
               Terminar
+            </Button>
+          </div>
+        )}
+
+        {step === "request_form" && (
+          <div className="space-y-6 animate-in fade-in">
+            <div className="flex flex-col items-center text-center space-y-2">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-2">
+                <Lock className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-foreground">Solicitar Retiro a Tesorería</h3>
+              <p className="text-sm text-muted-foreground">
+                Proporcione el monto y el motivo para que el tesorero lo autorice.
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateRequest} className="space-y-4">
+              <div className="space-y-1 text-left">
+                <label className="text-xs font-semibold text-muted-foreground uppercase">Monto a Retirar (MXN)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-muted-foreground font-medium">$</span>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={reqAmount}
+                    onChange={(e) => setReqAmount(e.target.value)}
+                    className="pl-7 h-10 bg-background"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1 text-left">
+                <label className="text-xs font-semibold text-muted-foreground uppercase">Descripción / Motivo</label>
+                <Input
+                  type="text"
+                  placeholder="Ej: Pago de proveedores, caja chica..."
+                  value={reqDescription}
+                  onChange={(e) => setReqDescription(e.target.value)}
+                  className="h-10 bg-background"
+                  required
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  onClick={() => {
+                    setStep("input");
+                    setError("");
+                  }} 
+                  className="w-1/2 h-11"
+                  disabled={loading}
+                >
+                  Volver
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="w-1/2 h-11 font-semibold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white"
+                  disabled={loading || !reqAmount || !reqDescription}
+                >
+                  {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Enviar Solicitud"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {step === "request_success" && (
+          <div className="space-y-6 animate-in fade-in">
+            <div className="flex flex-col items-center text-center space-y-2">
+              <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center text-green-600 dark:text-green-400 mb-2">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-2xl font-bold text-foreground">Solicitud Enviada</h3>
+              <p className="text-sm text-muted-foreground">
+                La solicitud de retiro por <strong>{formatMoney(parseFloat(reqAmount) || 0)}</strong> ha sido enviada al tesorero.
+              </p>
+              <p className="text-xs text-muted-foreground bg-muted p-3 rounded-lg border mt-2">
+                Una vez autorizada, el código correspondiente aparecerá en la pantalla principal de "Retirar con Código".
+              </p>
+            </div>
+
+            <Button 
+              onClick={() => setStep("input")} 
+              className="w-full h-12 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white"
+            >
+              Volver al Inicio
             </Button>
           </div>
         )}

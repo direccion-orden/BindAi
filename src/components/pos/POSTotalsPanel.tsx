@@ -173,7 +173,7 @@ export function POSTotalsPanel() {
         <button 
           disabled={activeAccount.items.length === 0}
           onClick={() => setIsCheckoutOpen(true)}
-          className="w-full mt-2 bg-primary text-primary-foreground font-bold text-base h-10 rounded-md shadow hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base h-10 rounded-md shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cobrar Ticket
         </button>

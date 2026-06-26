@@ -4,10 +4,11 @@ import { useState } from "react";
 import { collection, doc, getDoc, updateDoc, increment, addDoc, serverTimestamp, query, getDocs, where, orderBy, limit, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { X, Search, Loader2, RotateCcw, CheckCircle2, Banknote, CreditCard, Wallet, User } from "lucide-react";
+import { X, Search, Loader2, RotateCcw, CheckCircle2, Banknote, CreditCard, Wallet, User, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DenominationCapture, DenominationCounts } from "@/components/pos/DenominationCapture";
+import { usePOS } from "@/context/POSContext";
 
 interface ReturnsModalProps {
   onClose: () => void;
@@ -90,6 +91,7 @@ const parseSafeDate = (createdAt: any): Date => {
 
 export function ReturnsModal({ onClose }: ReturnsModalProps) {
   const { user, companyId } = useAuth();
+  const { branchId } = usePOS();
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
   
@@ -98,7 +100,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
   const [error, setError] = useState("");
 
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
-  const [refundMethod, setRefundMethod] = useState<'efectivo' | 'tarjeta' | 'saldoFavor' | null>(null);
+  const [refundMethod, setRefundMethod] = useState<'efectivo' | 'tarjeta' | 'saldoFavor' | 'retiroReciclador' | null>(null);
   const [denominationsOut, setDenominationsOut] = useState<DenominationCounts>({});
   
   const [processing, setProcessing] = useState(false);
@@ -280,11 +282,13 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
   // Calculate refund amount
   let totalRefund = 0;
   if (sale) {
+    let subtotalRefund = 0;
     sale.items.forEach((item: any) => {
       const returning = returnQuantities[item.id] || 0;
       const finalPrice = item.unitPrice * (1 - (item.discountPercentage || 0) / 100);
-      totalRefund += returning * finalPrice;
+      subtotalRefund += returning * finalPrice;
     });
+    totalRefund = Math.round(subtotalRefund * 1.16 * 100) / 100;
   }
 
   const handleProcessReturn = async () => {
@@ -405,6 +409,18 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
         } else {
            throw new Error("No hay un turno de caja abierto para registrar la salida de efectivo.");
         }
+      } else if (refundMethod === 'retiroReciclador') {
+        await addDoc(collection(db, "companies", companyId, "cash_withdrawals"), sanitizeFirestoreData({
+          amount: totalRefund,
+          locationId: sale.locationId || branchId || "",
+          locationName: sale.locationName || "Sucursal",
+          status: "requested",
+          type: "devolucion",
+          reference: `Devolución Ticket ${sale.remissionNumber || sale.id}`,
+          createdAt: serverTimestamp(),
+          createdBy: user?.email || "Cajero",
+          code: null
+        }));
       } else if (refundMethod === 'saldoFavor' && sale.client?.id) {
         const clientRef = doc(db, "companies", companyId, "clients", sale.client.id);
         await updateDoc(clientRef, {
@@ -430,8 +446,12 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                 <CheckCircle2 className="w-10 h-10 text-green-600" />
             </div>
             <h2 className="text-2xl font-bold text-foreground">Devolución Exitosa</h2>
-            <p className="text-muted-foreground">Se ha procesado el reembolso por {formatMoney(totalRefund)}.</p>
-            <Button className="w-full mt-4" onClick={onClose}>Cerrar</Button>
+            <p className="text-muted-foreground">
+              {refundMethod === 'retiroReciclador' 
+                ? `Se ha registrado la devolución por ${formatMoney(totalRefund)} y se envió la solicitud de retiro por código al tesorero.`
+                : `Se ha procesado el reembolso por ${formatMoney(totalRefund)}.`}
+            </p>
+            <Button className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white" onClick={onClose}>Cerrar</Button>
         </div>
       </div>
     );
@@ -456,7 +476,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
               className="bg-background"
               autoFocus
             />
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             </Button>
           </form>
@@ -554,20 +574,27 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
               {totalRefund > 0 && (
                 <>
                   <h3 className="font-semibold mb-4 text-muted-foreground">Método de Reembolso</h3>
-                  <div className="grid grid-cols-3 gap-3 mb-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                       <button 
                         onClick={() => setRefundMethod('efectivo')}
                         className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${refundMethod === 'efectivo' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
                       >
                           <Banknote className="w-6 h-6 mb-2" />
-                          <span className="text-xs font-semibold">Efectivo</span>
+                          <span className="text-xs font-semibold text-center">Efectivo (Caja)</span>
+                      </button>
+                      <button 
+                        onClick={() => setRefundMethod('retiroReciclador')}
+                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${refundMethod === 'retiroReciclador' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+                      >
+                          <Lock className="w-6 h-6 mb-2" />
+                          <span className="text-xs font-semibold text-center leading-tight">Retiro Reciclador</span>
                       </button>
                       <button 
                         onClick={() => setRefundMethod('tarjeta')}
                         className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${refundMethod === 'tarjeta' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
                       >
                           <CreditCard className="w-6 h-6 mb-2" />
-                          <span className="text-xs font-semibold">Tarjeta</span>
+                          <span className="text-xs font-semibold text-center">Tarjeta</span>
                       </button>
                       {sale.client?.id && sale.client.id !== 'public' && (
                         <button 
@@ -590,6 +617,12 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                     </div>
                   )}
 
+                  {refundMethod === 'retiroReciclador' && (
+                    <p className="text-sm text-amber-700 mb-6 text-center border border-amber-200 p-4 rounded bg-amber-50 font-medium">
+                      Se solicitará una autorización de retiro de efectivo por código al tesorero por {formatMoney(totalRefund)}.
+                    </p>
+                  )}
+
                   {refundMethod === 'tarjeta' && (
                     <p className="text-sm text-muted-foreground mb-6 text-center border p-4 rounded bg-muted/20">
                       Debes procesar la devolución manualmente en tu Terminal Bancaria.
@@ -605,7 +638,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                   <div className="mt-auto pt-4">
                     <Button 
                       size="lg" 
-                      className="w-full h-14 text-lg font-bold"
+                      className="w-full h-14 text-lg font-bold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white"
                       disabled={!refundMethod || processing}
                       onClick={handleProcessReturn}
                     >

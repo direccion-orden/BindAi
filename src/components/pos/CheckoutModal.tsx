@@ -937,7 +937,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       </Button>
                   </div>
                   
-                  <Button className="w-full mt-4" onClick={finishAndClose}>Nueva Venta</Button>
+                  <Button className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white" onClick={finishAndClose}>Nueva Venta</Button>
               </div>
 
               {/* Renderizar componente de impresión oculto */}
@@ -1138,7 +1138,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                               <Button 
                                   onClick={startRecyclerPayment} 
                                   size="lg" 
-                                  className="w-full font-bold"
+                                  className="w-full font-bold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white"
                                   disabled={agentStarting || !currentAmount || (parseFloat(currentAmount) || 0) <= 0}
                               >
                                   Iniciar Cobro ({formatMoney(parseFloat(currentAmount) || Math.round(remaining))})
@@ -1279,7 +1279,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
               <div className="pt-6 mt-4 border-t flex justify-end gap-3">
                 <Button variant="outline" onClick={() => setCurrentMethod(null)}>Cancelar</Button>
-                <Button onClick={handleAddPayment} disabled={inputAmount <= 0} className="px-8">
+                <Button onClick={handleAddPayment} disabled={inputAmount <= 0} className="px-8 bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white">
                   Añadir Pago
                 </Button>
               </div>
@@ -1291,7 +1291,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             <div className="pt-6 mt-auto border-t">
               <Button 
                 size="lg" 
-                className="w-full h-14 text-lg font-bold"
+                className="w-full h-14 text-lg font-bold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white"
                 disabled={!canComplete || loading}
                 onClick={handleCheckout}
               >

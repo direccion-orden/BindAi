@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { collection, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { User, X, Loader2, UserPlus, Gift, AlignLeft } from "lucide-react";
+import { User, X, Loader2, UserPlus, Gift, AlignLeft, Wallet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePOS } from "@/context/POSContext";
 import { useAuth } from "@/context/AuthContext";
@@ -45,7 +45,19 @@ export function ClientSelector() {
     
     // Escuchar cambios en la colección de clientes en tiempo real
     const unsubscribe = onSnapshot(collection(db, "companies", companyId, "clients"), (snapshot) => {
-      setAllClients(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Client)));
+      setAllClients(snapshot.docs.map(doc => {
+        const data = doc.data() as any;
+        return {
+          id: doc.id,
+          name: data.name || data.ClientName || data.LegalName || data.CommercialName || "",
+          rfc: data.rfc || data.RFC || "XAXX010101000",
+          email: data.email || data.Email || "",
+          phone: data.phone || data.Phone || "",
+          points: data.points !== undefined ? data.points : 0,
+          walletBalance: data.walletBalance !== undefined ? data.walletBalance : 0,
+          preferences: data.preferences || ""
+        } as Client;
+      }));
     }, (error) => {
       console.error("Error cargando clientes en tiempo real:", error);
     });
@@ -133,9 +145,14 @@ export function ClientSelector() {
                 <span className="font-semibold text-sm leading-tight text-primary truncate" title={activeAccount.selectedClient.name}>
                   {activeAccount.selectedClient.name}
                 </span>
-                <span className="text-xs font-bold text-orange-600 flex items-center gap-1 shrink-0 bg-orange-100 px-1.5 py-0.5 rounded-full">
-                  <Gift className="w-3 h-3 text-orange-500"/> {activeAccount.selectedClient.points?.toFixed(0) || '0'} pts
-                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-xs font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded-full">
+                    {activeAccount.selectedClient.points?.toFixed(0) || '0'} pts
+                  </span>
+                  <span className="text-xs font-bold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full">
+                    ${activeAccount.selectedClient.walletBalance?.toFixed(2) || '0.00'}
+                  </span>
+                </div>
               </div>
 
             </div>

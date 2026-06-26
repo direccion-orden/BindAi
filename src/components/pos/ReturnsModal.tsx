@@ -100,14 +100,150 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
   const [error, setError] = useState("");
 
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
-  const [refundMethod, setRefundMethod] = useState<'efectivo' | 'tarjeta' | 'saldoFavor' | 'retiroReciclador' | null>(null);
+  const [selectedMethods, setSelectedMethods] = useState<string[]>([]);
+  const [refundAmounts, setRefundAmounts] = useState<Record<string, number>>({
+    efectivo: 0,
+    retiroReciclador: 0,
+    tarjeta: 0,
+    saldoFavor: 0
+  });
   const [denominationsOut, setDenominationsOut] = useState<DenominationCounts>({});
   
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Estados para asociar clientes a la venta si es Público en General
+  const [clientSearchTerm, setClientSearchTerm] = useState("");
+  const [clientResults, setClientResults] = useState<any[]>([]);
+  const [searchingClient, setSearchingClient] = useState(false);
+  const [showCreateClientForm, setShowCreateClientForm] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientPhone, setNewClientPhone] = useState("");
+  const [newClientEmail, setNewClientEmail] = useState("");
+
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+  };
+
+  const handleClientSearch = async (val: string) => {
+    setClientSearchTerm(val);
+    if (val.trim().length < 2) {
+      setClientResults([]);
+      return;
+    }
+    setSearchingClient(true);
+    try {
+      if (!companyId) return;
+      const lowerVal = val.toLowerCase();
+      const clientsRef = collection(db, "companies", companyId, "clients");
+      const snap = await getDocs(clientsRef);
+      const list = snap.docs.map(doc => {
+        const data = doc.data() as any;
+        return {
+          id: doc.id,
+          name: data.name || data.ClientName || data.LegalName || data.CommercialName || "",
+          phone: data.phone || data.Phone || "",
+          email: data.email || data.Email || "",
+          rfc: data.rfc || data.RFC || ""
+        };
+      });
+      const filtered = list.filter((c: any) => {
+        return (c.name || "").toLowerCase().includes(lowerVal) ||
+               (c.phone || "").includes(lowerVal) ||
+               (c.email || "").toLowerCase().includes(lowerVal) ||
+               (c.rfc || "").toLowerCase().includes(lowerVal);
+      });
+      setClientResults(filtered.slice(0, 5));
+    } catch (e) {
+      console.error("Error searching clients:", e);
+    } finally {
+      setSearchingClient(false);
+    }
+  };
+
+  const handleAssociateClient = async (client: any) => {
+    if (!sale || !companyId) return;
+    setProcessing(true);
+    try {
+      const remissionRef = doc(db, "companies", companyId, "remisiones", sale.id);
+      await updateDoc(remissionRef, {
+        clientId: client.id,
+        clientName: client.name
+      });
+      
+      setSale((prev: any) => ({
+        ...prev,
+        client: {
+          id: client.id,
+          name: client.name
+        },
+        clientId: client.id,
+        clientName: client.name
+      }));
+      
+      setSearchResults(prev => prev.map(s => {
+        if (s.id === sale.id) {
+          return {
+            ...s,
+            client: { id: client.id, name: client.name },
+            clientId: client.id,
+            clientName: client.name
+          };
+        }
+        return s;
+      }));
+      
+      setClientSearchTerm("");
+      setClientResults([]);
+      alert(`Cliente "${client.name}" asociado exitosamente a esta venta.`);
+    } catch (e) {
+      console.error("Error associating client:", e);
+      alert("Error al asociar el cliente.");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleCreateAndAssociateClient = async () => {
+    if (!newClientName.trim() || !newClientPhone.trim() || !companyId) {
+      alert("Nombre y celular son requeridos.");
+      return;
+    }
+    setProcessing(true);
+    try {
+      const newClientData = {
+        name: newClientName.trim(),
+        phone: newClientPhone.trim(),
+        email: newClientEmail.trim(),
+        rfc: "XAXX010101000",
+        points: 0,
+        walletBalance: 0,
+        preferences: "",
+        createdAt: serverTimestamp(),
+        isActive: true
+      };
+      
+      const docRef = await addDoc(collection(db, "companies", companyId, "clients"), newClientData);
+      
+      const client = {
+        id: docRef.id,
+        name: newClientData.name,
+        phone: newClientData.phone,
+        email: newClientData.email
+      };
+      
+      await handleAssociateClient(client);
+      
+      setNewClientName("");
+      setNewClientPhone("");
+      setNewClientEmail("");
+      setShowCreateClientForm(false);
+    } catch (e) {
+      console.error("Error creating and associating client:", e);
+      alert("Error al crear y asociar el cliente.");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -119,7 +255,13 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
     setSale(null);
     setSearchResults([]);
     setReturnQuantities({});
-    setRefundMethod(null);
+    setSelectedMethods([]);
+    setRefundAmounts({
+      efectivo: 0,
+      retiroReciclador: 0,
+      tarjeta: 0,
+      saldoFavor: 0
+    });
 
     try {
       const originalTerm = searchTerm.trim().toLowerCase();
@@ -291,20 +433,46 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
     totalRefund = Math.round(subtotalRefund * 1.16 * 100) / 100;
   }
 
+  const totalAssigned = selectedMethods.reduce((acc, m) => acc + (refundAmounts[m] || 0), 0);
+  const remainingRefund = Math.round((totalRefund - totalAssigned) * 100) / 100;
+  const isFullyAssigned = Math.abs(remainingRefund) < 0.01;
+
+  const toggleRefundMethod = (method: string) => {
+    if (selectedMethods.includes(method)) {
+      setSelectedMethods(prev => prev.filter(m => m !== method));
+      setRefundAmounts(prev => ({ ...prev, [method]: 0 }));
+    } else {
+      setSelectedMethods(prev => [...prev, method]);
+      const currentAssigned = selectedMethods.reduce((acc, m) => acc + (refundAmounts[m] || 0), 0);
+      const remaining = Math.max(0, Math.round((totalRefund - currentAssigned) * 100) / 100);
+      setRefundAmounts(prev => ({ ...prev, [method]: remaining }));
+    }
+  };
+
+  const handleAmountChange = (method: string, val: string) => {
+    const parsed = parseFloat(val);
+    const amount = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    setRefundAmounts(prev => ({ ...prev, [method]: amount }));
+  };
+
   const handleProcessReturn = async () => {
     if (totalRefund <= 0) {
       alert("Debes seleccionar al menos un artículo para devolver.");
       return;
     }
-    if (!refundMethod) {
-      alert("Selecciona un método de reembolso.");
+    if (selectedMethods.length === 0) {
+      alert("Selecciona al menos un método de reembolso.");
+      return;
+    }
+    if (!isFullyAssigned) {
+      alert("El monto asignado debe coincidir exactamente con el total a reembolsar.");
       return;
     }
 
-    if (refundMethod === 'efectivo') {
+    if (selectedMethods.includes('efectivo') && refundAmounts.efectivo > 0) {
       const denomSum = Object.entries(denominationsOut).reduce((acc, [k, v]) => acc + parseFloat(k) * (v || 0), 0);
-      if (Math.abs(denomSum - totalRefund) > 0.01) {
-        alert(`Las denominaciones ($${denomSum}) no coinciden con el monto a devolver ($${totalRefund}).`);
+      if (Math.abs(denomSum - refundAmounts.efectivo) > 0.01) {
+        alert(`Las denominaciones ($${denomSum}) no coinciden con el monto en efectivo a devolver ($${refundAmounts.efectivo}).`);
         return;
       }
     }
@@ -372,7 +540,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
       }
 
       // 3. Método de Reembolso
-      if (refundMethod === 'efectivo') {
+      if (selectedMethods.includes('efectivo') && refundAmounts.efectivo > 0) {
         let sessionId = null;
         
         // Buscar turno de caja abierto en la sucursal de la remisión
@@ -399,7 +567,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
             sessionId,
             type: "EXPENSE",
             category: "RETIRO_CANCELACION",
-            amount: totalRefund,
+            amount: refundAmounts.efectivo,
             reference: `Devolución Ticket ${sale.remissionNumber}`,
             paymentMethod: "CASH",
             denominations: denominationsOut,
@@ -409,9 +577,11 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
         } else {
            throw new Error("No hay un turno de caja abierto para registrar la salida de efectivo.");
         }
-      } else if (refundMethod === 'retiroReciclador') {
+      }
+
+      if (selectedMethods.includes('retiroReciclador') && refundAmounts.retiroReciclador > 0) {
         await addDoc(collection(db, "companies", companyId, "cash_withdrawals"), sanitizeFirestoreData({
-          amount: totalRefund,
+          amount: refundAmounts.retiroReciclador,
           locationId: sale.locationId || branchId || "",
           locationName: sale.locationName || "Sucursal",
           status: "requested",
@@ -421,10 +591,12 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
           createdBy: user?.email || "Cajero",
           code: null
         }));
-      } else if (refundMethod === 'saldoFavor' && sale.client?.id) {
+      }
+
+      if (selectedMethods.includes('saldoFavor') && refundAmounts.saldoFavor > 0 && sale.client?.id) {
         const clientRef = doc(db, "companies", companyId, "clients", sale.client.id);
         await updateDoc(clientRef, {
-          walletBalance: increment(totalRefund)
+          walletBalance: increment(refundAmounts.saldoFavor)
         });
       }
 
@@ -447,10 +619,19 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
             </div>
             <h2 className="text-2xl font-bold text-foreground">Devolución Exitosa</h2>
             <p className="text-muted-foreground">
-              {refundMethod === 'retiroReciclador' 
-                ? `Se ha registrado la devolución por ${formatMoney(totalRefund)} y se envió la solicitud de retiro por código al tesorero.`
-                : `Se ha procesado el reembolso por ${formatMoney(totalRefund)}.`}
+              Se ha procesado el reembolso por un total de {formatMoney(totalRefund)}:
             </p>
+            <div className="text-sm space-y-1 text-muted-foreground w-full text-left bg-muted/30 p-3 rounded border">
+              {refundAmounts.efectivo > 0 && <p className="flex justify-between"><span>Efectivo (Caja):</span> <span className="font-semibold">{formatMoney(refundAmounts.efectivo)}</span></p>}
+              {refundAmounts.retiroReciclador > 0 && <p className="flex justify-between"><span>Retiro Reciclador:</span> <span className="font-semibold">{formatMoney(refundAmounts.retiroReciclador)}</span></p>}
+              {refundAmounts.tarjeta > 0 && <p className="flex justify-between"><span>Tarjeta:</span> <span className="font-semibold">{formatMoney(refundAmounts.tarjeta)}</span></p>}
+              {refundAmounts.saldoFavor > 0 && <p className="flex justify-between"><span>Monedero:</span> <span className="font-semibold">{formatMoney(refundAmounts.saldoFavor)}</span></p>}
+            </div>
+            {refundAmounts.retiroReciclador > 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium text-center">
+                Se envió la solicitud de retiro por código al tesorero por el monto asignado al reciclador.
+              </p>
+            )}
             <Button className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white" onClick={onClose}>Cerrar</Button>
         </div>
       </div>
@@ -517,6 +698,105 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                 </div>
               </div>
 
+              {sale.client?.id === 'public' && (
+                 <div className="bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 p-4 rounded-lg space-y-3">
+                    <p className="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+                      Asociar Cliente
+                    </p>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                      Esta venta se realizó a Público en General. Para reembolsar en Monedero Electrónico, primero debe asociar un cliente.
+                    </p>
+                    
+                    {!showCreateClientForm ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input 
+                            placeholder="Buscar cliente por nombre, tel..." 
+                            value={clientSearchTerm} 
+                            onChange={(e) => handleClientSearch(e.target.value)} 
+                            className="bg-background text-xs h-9"
+                          />
+                          <Button 
+                            type="button" 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => setShowCreateClientForm(true)}
+                            className="text-xs font-semibold shrink-0"
+                          >
+                            Crear Cliente
+                          </Button>
+                        </div>
+                        
+                        {searchingClient && (
+                          <p className="text-xs text-muted-foreground animate-pulse">Buscando...</p>
+                        )}
+                        
+                        {clientResults.length > 0 && (
+                          <div className="border rounded bg-background max-h-40 overflow-y-auto divide-y z-50">
+                            {clientResults.map(c => (
+                              <div 
+                                key={c.id} 
+                                onClick={() => handleAssociateClient(c)}
+                                className="p-2 text-xs hover:bg-muted cursor-pointer flex justify-between items-center"
+                              >
+                                <div>
+                                  <p className="font-semibold">{c.name}</p>
+                                  {c.phone && <p className="text-[10px] text-muted-foreground">{c.phone}</p>}
+                                </div>
+                                <span className="text-[10px] text-indigo-600 hover:underline font-bold">Asociar</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3 border-t border-amber-500/10 pt-3">
+                        <p className="text-[11px] font-bold text-amber-800">Nuevo Cliente</p>
+                        <div className="space-y-2">
+                          <Input 
+                            placeholder="Nombre Completo *" 
+                            value={newClientName} 
+                            onChange={(e) => setNewClientName(e.target.value)} 
+                            className="bg-background text-xs h-8"
+                          />
+                          <Input 
+                            placeholder="Celular (WhatsApp) *" 
+                            value={newClientPhone} 
+                            onChange={(e) => setNewClientPhone(e.target.value)} 
+                            className="bg-background text-xs h-8"
+                          />
+                          <Input 
+                            placeholder="Correo (Opcional)" 
+                            value={newClientEmail} 
+                            onChange={(e) => setNewClientEmail(e.target.value)} 
+                            className="bg-background text-xs h-8"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            type="button" 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={() => setShowCreateClientForm(false)}
+                            className="text-xs h-7"
+                          >
+                            Cancelar
+                          </Button>
+                          <Button 
+                            type="button" 
+                            size="sm" 
+                            onClick={handleCreateAndAssociateClient}
+                            className="text-xs h-7 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                            disabled={!newClientName.trim() || !newClientPhone.trim()}
+                          >
+                            Crear y Asociar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                 </div>
+              )}
+
               <div className="space-y-2">
                 <p className="font-semibold text-sm">Artículos para Devolver</p>
                 {sale.items.map((item: any) => {
@@ -566,50 +846,148 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
             </div>
           ) : (
             <div className="flex-1 flex flex-col">
-              <div className="bg-primary/5 border border-primary/20 rounded-lg p-6 text-center mb-6">
+              <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/50 rounded-lg p-6 text-center mb-6">
                 <p className="text-sm font-semibold uppercase text-muted-foreground mb-1">Monto a Reembolsar</p>
-                <p className="text-4xl font-black text-primary">{formatMoney(totalRefund)}</p>
+                <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400">{formatMoney(totalRefund)}</p>
               </div>
 
               {totalRefund > 0 && (
                 <>
                   <h3 className="font-semibold mb-4 text-muted-foreground">Método de Reembolso</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                      <button 
-                        onClick={() => setRefundMethod('efectivo')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${refundMethod === 'efectivo' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-                      >
-                          <Banknote className="w-6 h-6 mb-2" />
-                          <span className="text-xs font-semibold text-center">Efectivo (Caja)</span>
-                      </button>
-                      <button 
-                        onClick={() => setRefundMethod('retiroReciclador')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${refundMethod === 'retiroReciclador' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-                      >
-                          <Lock className="w-6 h-6 mb-2" />
-                          <span className="text-xs font-semibold text-center leading-tight">Retiro Reciclador</span>
-                      </button>
-                      <button 
-                        onClick={() => setRefundMethod('tarjeta')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${refundMethod === 'tarjeta' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-                      >
-                          <CreditCard className="w-6 h-6 mb-2" />
-                          <span className="text-xs font-semibold text-center">Tarjeta</span>
-                      </button>
-                      {sale.client?.id && sale.client.id !== 'public' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      {/* Efectivo */}
+                      <div className="flex flex-col gap-1.5">
                         <button 
-                          onClick={() => setRefundMethod('saldoFavor')}
-                          className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${refundMethod === 'saldoFavor' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+                          type="button"
+                          onClick={() => toggleRefundMethod('efectivo')}
+                          className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all w-full min-h-[92px] ${
+                            selectedMethods.includes('efectivo') 
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-600' 
+                              : 'border-border text-muted-foreground hover:border-indigo-600/30'
+                          }`}
+                        >
+                            <Banknote className="w-6 h-6 mb-2" />
+                            <span className="text-xs font-semibold text-center">Efectivo (Caja)</span>
+                        </button>
+                        {selectedMethods.includes('efectivo') && (
+                          <Input 
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={refundAmounts.efectivo || ""}
+                            onChange={(e) => handleAmountChange('efectivo', e.target.value)}
+                            placeholder="Monto"
+                            className="h-8 text-xs text-center border-indigo-600 focus-visible:ring-indigo-600 bg-background"
+                          />
+                        )}
+                      </div>
+
+                      {/* Retiro Reciclador */}
+                      <div className="flex flex-col gap-1.5">
+                        <button 
+                          type="button"
+                          onClick={() => toggleRefundMethod('retiroReciclador')}
+                          className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all w-full min-h-[92px] ${
+                            selectedMethods.includes('retiroReciclador') 
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-600' 
+                              : 'border-border text-muted-foreground hover:border-indigo-600/30'
+                          }`}
+                        >
+                            <Lock className="w-6 h-6 mb-2" />
+                            <span className="text-xs font-semibold text-center leading-tight">Retiro Reciclador</span>
+                        </button>
+                        {selectedMethods.includes('retiroReciclador') && (
+                          <Input 
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={refundAmounts.retiroReciclador || ""}
+                            onChange={(e) => handleAmountChange('retiroReciclador', e.target.value)}
+                            placeholder="Monto"
+                            className="h-8 text-xs text-center border-indigo-600 focus-visible:ring-indigo-600 bg-background"
+                          />
+                        )}
+                      </div>
+
+                      {/* Tarjeta */}
+                      <div className="flex flex-col gap-1.5">
+                        <button 
+                          type="button"
+                          onClick={() => toggleRefundMethod('tarjeta')}
+                          className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all w-full min-h-[92px] ${
+                            selectedMethods.includes('tarjeta') 
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-600' 
+                              : 'border-border text-muted-foreground hover:border-indigo-600/30'
+                          }`}
+                        >
+                            <CreditCard className="w-6 h-6 mb-2" />
+                            <span className="text-xs font-semibold text-center">Tarjeta</span>
+                        </button>
+                        {selectedMethods.includes('tarjeta') && (
+                          <Input 
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={refundAmounts.tarjeta || ""}
+                            onChange={(e) => handleAmountChange('tarjeta', e.target.value)}
+                            placeholder="Monto"
+                            className="h-8 text-xs text-center border-indigo-600 focus-visible:ring-indigo-600 bg-background"
+                          />
+                        )}
+                      </div>
+
+                      {/* Monedero */}
+                      <div className="flex flex-col gap-1.5">
+                        <button 
+                          type="button"
+                          disabled={sale.client?.id === 'public'}
+                          onClick={() => toggleRefundMethod('saldoFavor')}
+                          className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all w-full min-h-[92px] ${
+                            selectedMethods.includes('saldoFavor') 
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-600' 
+                              : 'border-border text-muted-foreground hover:border-indigo-600/30'
+                          } ${sale.client?.id === 'public' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          title={sale.client?.id === 'public' ? "Asocie un cliente para habilitar Monedero" : ""}
                         >
                             <Wallet className="w-6 h-6 mb-2" />
-                            <span className="text-xs font-semibold text-center leading-tight">Monedero</span>
+                            <span className="text-xs font-semibold text-center leading-tight font-medium">Monedero</span>
                         </button>
-                      )}
+                        {selectedMethods.includes('saldoFavor') && (
+                          <Input 
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={refundAmounts.saldoFavor || ""}
+                            onChange={(e) => handleAmountChange('saldoFavor', e.target.value)}
+                            placeholder="Monto"
+                            className="h-8 text-xs text-center border-indigo-600 focus-visible:ring-indigo-600 bg-background"
+                          />
+                        )}
+                      </div>
                   </div>
 
-                  {refundMethod === 'efectivo' && (
+                  {/* Banner de Estado de Asignación */}
+                  <div className="mb-6 rounded-lg flex items-center justify-between text-xs font-semibold">
+                    {remainingRefund > 0.01 ? (
+                      <span className="text-amber-600 bg-amber-50 dark:bg-amber-950/20 dark:text-amber-400 p-2.5 rounded w-full text-center border border-amber-200 dark:border-amber-900/50">
+                        Pendiente de asignar: {formatMoney(remainingRefund)}
+                      </span>
+                    ) : remainingRefund < -0.01 ? (
+                      <span className="text-destructive bg-destructive/10 p-2.5 rounded w-full text-center border border-destructive/20">
+                        Monto excedido por: {formatMoney(Math.abs(remainingRefund))}
+                      </span>
+                    ) : (
+                      <span className="text-green-600 bg-green-50 dark:bg-green-950/20 dark:text-green-400 p-2.5 rounded w-full text-center flex items-center justify-center gap-1 border border-green-200 dark:border-green-900/50">
+                        <CheckCircle2 className="w-4 h-4" /> Monto totalmente asignado
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedMethods.includes('efectivo') && refundAmounts.efectivo > 0 && (
                     <div className="mb-6 animate-in fade-in zoom-in">
-                      <p className="text-xs text-muted-foreground mb-2">Captura los billetes/monedas que vas a retirar de la caja.</p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Captura los billetes/monedas que vas a retirar de la caja por {formatMoney(refundAmounts.efectivo)}.
+                      </p>
                       <DenominationCapture 
                         title="Billetes a Entregar"
                         onChange={(sum, denoms) => setDenominationsOut(denoms)}
@@ -617,21 +995,21 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                     </div>
                   )}
 
-                  {refundMethod === 'retiroReciclador' && (
-                    <p className="text-sm text-amber-700 mb-6 text-center border border-amber-200 p-4 rounded bg-amber-50 font-medium">
-                      Se solicitará una autorización de retiro de efectivo por código al tesorero por {formatMoney(totalRefund)}.
+                  {selectedMethods.includes('retiroReciclador') && refundAmounts.retiroReciclador > 0 && (
+                    <p className="text-sm text-amber-700 dark:text-amber-400 mb-6 text-center border border-amber-200 dark:border-amber-900/50 p-4 rounded bg-amber-50 dark:bg-amber-950/20 font-medium">
+                      Se solicitará una autorización de retiro de efectivo por código al tesorero por {formatMoney(refundAmounts.retiroReciclador)}.
                     </p>
                   )}
 
-                  {refundMethod === 'tarjeta' && (
+                  {selectedMethods.includes('tarjeta') && refundAmounts.tarjeta > 0 && (
                     <p className="text-sm text-muted-foreground mb-6 text-center border p-4 rounded bg-muted/20">
-                      Debes procesar la devolución manualmente en tu Terminal Bancaria.
+                      Debes procesar la devolución de {formatMoney(refundAmounts.tarjeta)} manualmente en tu Terminal Bancaria.
                     </p>
                   )}
 
-                  {refundMethod === 'saldoFavor' && (
-                    <p className="text-sm text-blue-700 mb-6 text-center border border-blue-200 p-4 rounded bg-blue-50 font-medium">
-                      El monto se añadirá como Saldo a Favor al cliente {sale.client.name}.
+                  {selectedMethods.includes('saldoFavor') && refundAmounts.saldoFavor > 0 && (
+                    <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-6 text-center border border-indigo-200 dark:border-indigo-900/50 p-4 rounded bg-indigo-50 dark:bg-indigo-950/20 font-medium">
+                      El monto de {formatMoney(refundAmounts.saldoFavor)} se añadirá como Saldo a Favor al cliente {sale.client?.name || ""}.
                     </p>
                   )}
 
@@ -639,7 +1017,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
                     <Button 
                       size="lg" 
                       className="w-full h-14 text-lg font-bold bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white"
-                      disabled={!refundMethod || processing}
+                      disabled={selectedMethods.length === 0 || !isFullyAssigned || processing}
                       onClick={handleProcessReturn}
                     >
                         {processing && <Loader2 className="w-5 h-5 animate-spin mr-2"/>}

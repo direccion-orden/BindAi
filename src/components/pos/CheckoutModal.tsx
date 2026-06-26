@@ -1032,52 +1032,52 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <button 
                     onClick={() => handleSelectMethod('Efectivo')}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-indigo-500/50 hover:bg-indigo-50 transition-all group"
                   >
-                      <Banknote className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <Banknote className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-indigo-600 transition-colors" />
                       <span className="text-sm font-semibold">
                         {cashMode === 'recycler' ? 'Efectivo (Reciclador)' : 'Efectivo'}
                       </span>
                   </button>
                   <button 
                     onClick={() => handleSelectMethod('Tarjeta de Débito')}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-indigo-500/50 hover:bg-indigo-50 transition-all group"
                   >
-                      <CreditCard className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <CreditCard className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-indigo-600 transition-colors" />
                       <span className="text-sm font-semibold">Tarjeta de Débito</span>
                   </button>
                   <button 
                     onClick={() => handleSelectMethod('Tarjeta de Crédito')}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-indigo-500/50 hover:bg-indigo-50 transition-all group"
                   >
-                      <CreditCard className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <CreditCard className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-indigo-600 transition-colors" />
                       <span className="text-sm font-semibold">Tarjeta de Crédito</span>
                   </button>
                   <button 
                     onClick={() => handleSelectMethod('Transferencia')}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-indigo-500/50 hover:bg-indigo-50 transition-all group"
                   >
-                      <Landmark className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <Landmark className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-indigo-600 transition-colors" />
                       <span className="text-sm font-semibold">Transferencia</span>
                   </button>
                   <button 
                     onClick={() => handleSelectMethod('Tarjeta de Regalo')}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-indigo-500/50 hover:bg-indigo-50 transition-all group"
                   >
-                      <Gift className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <Gift className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-indigo-600 transition-colors" />
                       <span className="text-sm font-semibold">Tarjeta de Regalo</span>
                   </button>
                   
                   <button 
                     onClick={() => handleSelectMethod('Monedero Electrónico')}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-blue-500/50 hover:bg-blue-50 transition-all group relative"
+                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-border hover:border-indigo-500/50 hover:bg-indigo-50 transition-all group relative"
                   >
                       {!isPublic && (
-                        <div className="absolute top-2 right-2 text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 rounded-full">
+                        <div className="absolute top-2 right-2 text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 rounded-full">
                           ${clientWallet.toFixed(2)}
                         </div>
                       )}
-                      <Wallet className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-blue-500 transition-colors" />
+                      <Wallet className="w-8 h-8 mb-2 text-muted-foreground group-hover:text-indigo-600 transition-colors" />
                       <span className="text-sm font-semibold">Monedero Electrónico</span>
                   </button>
               </div>

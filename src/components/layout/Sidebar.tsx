@@ -71,6 +71,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/egresos", label: "Egresos", icon: Banknote },
         { href: "/anticipos", label: "Anticipos", icon: DollarSign },
         { href: "/estado-cuenta", label: "Estados de Cuenta", icon: FileText },
+        { href: "/cuentas-cobrar", label: "Cuentas por Cobrar", icon: Receipt },
         { href: "/bancos", label: "Cuentas Bancarias", icon: Building2 },
         { href: "/caja", label: "Control de Caja", icon: Banknote },
         { href: "/tesoreria", label: "Tesorería", icon: Vault },

@@ -204,13 +204,48 @@ export default function CuentasCobrarPage() {
   const consolidatedDocs: CuentasCobrarDoc[] = useMemo(() => {
     const list: CuentasCobrarDoc[] = [];
 
+    // Helper for robust payment matching
+    const isDocumentPaymentMatch = (
+      docId: string,
+      docNumber: string,
+      docType: string,
+      pm: any
+    ): boolean => {
+      if (pm.documentType !== docType) return false;
+      if (pm.documentId === docId) return true;
+
+      const cleanDocNum = String(docNumber || "")
+        .replace(/^[A-Z]+-/, "") // remove prefixes like FAC-, REM-, PED-, ANT-
+        .split(" ")[0]
+        .trim();
+
+      const cleanPmDocId = String(pm.documentId || "")
+        .replace(/^hist-doc-/, "")
+        .replace(/^invoice-/, "")
+        .replace(/^remission-/, "")
+        .replace(/^pedido-/, "")
+        .replace(/^order-/, "")
+        .replace(/^[A-Z]+-/, "")
+        .split(" ")[0]
+        .trim();
+
+      const cleanPmDocNum = String(pm.documentNumber || "")
+        .replace(/^[A-Z]+-/, "")
+        .trim();
+
+      if (cleanDocNum && (cleanDocNum === cleanPmDocId || cleanDocNum === cleanPmDocNum)) {
+        return true;
+      }
+      return false;
+    };
+
     // 1. Pedidos (Activos)
     pedidos.forEach(p => {
       const status = String(p.status || "").trim().toLowerCase();
       // Omit canceled, delivered, remisioned or completed orders to avoid double counting
       if (status !== "cancelado" && status !== "cancelada" && status !== "surtido" && status !== "remisionado" && status !== "completado") {
         const docId = p.id;
-        const activePayments = payments.filter(pm => pm.documentId === docId && pm.documentType === "pedido" && pm.status !== "cancelado");
+        const activePayments = payments.filter(pm => pm.status !== "cancelado" && isDocumentPaymentMatch(docId, p.orderNumber || p.number || "", "pedido", pm));
         const paidAmount = activePayments.reduce((sum, pm) => sum + (parseFloat(pm.amount) || pm.amount || 0), 0);
         const total = parseFloat(p.totalAmount) || p.totalAmount || 0;
         const saldo = Math.max(0, total - paidAmount);
@@ -239,7 +274,7 @@ export default function CuentasCobrarPage() {
       // Omit canceled or already invoiced remisiones
       if (status !== "cancelada" && status !== "cancelado" && status !== "facturada") {
         const docId = r.id;
-        const activePayments = payments.filter(pm => pm.documentId === docId && pm.documentType === "remision" && pm.status !== "cancelado");
+        const activePayments = payments.filter(pm => pm.status !== "cancelado" && isDocumentPaymentMatch(docId, r.remissionNumber || r.number || "", "remision", pm));
         const paidAmount = activePayments.reduce((sum, pm) => sum + (parseFloat(pm.amount) || pm.amount || 0), 0);
         const total = parseFloat(r.totalAmount) || r.totalAmount || 0;
         const saldo = Math.max(0, total - paidAmount);
@@ -267,7 +302,7 @@ export default function CuentasCobrarPage() {
       const status = String(f.status || "").trim().toLowerCase();
       if (status !== "cancelada" && status !== "cancelado") {
         const docId = f.id;
-        const activePayments = payments.filter(pm => pm.documentId === docId && pm.documentType === "factura" && pm.status !== "cancelado");
+        const activePayments = payments.filter(pm => pm.status !== "cancelado" && isDocumentPaymentMatch(docId, f.invoiceNumber || "", "factura", pm));
         const paidAmount = activePayments.reduce((sum, pm) => sum + (parseFloat(pm.amount) || pm.amount || 0), 0);
         const total = parseFloat(f.totalAmount) || f.totalAmount || 0;
         const saldo = Math.max(0, total - paidAmount);
@@ -426,6 +461,334 @@ export default function CuentasCobrarPage() {
     setExpandedClients(newState);
   };
 
+  const isAllExpanded = useMemo(() => {
+    if (clientDebts.length === 0) return false;
+    return clientDebts.every(c => expandedClients[c.clientId] !== false);
+  }, [clientDebts, expandedClients]);
+
+  // Convert SVG logo to PNG data URL for jsPDF
+  const loadLogoAsDataUrl = (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      const svgW = 588;
+      const svgH = 135;
+      img.width = svgW;
+      img.height = svgH;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const scale = 3;
+        canvas.width = svgW * scale;
+        canvas.height = svgH * scale;
+        const ctx = canvas.getContext('2d')!;
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, svgW, svgH);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = reject;
+      img.src = '/logo.svg';
+    });
+  };
+
+  const handleDownloadPDF = async () => {
+    if (clientDebts.length === 0) return;
+
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+
+      // Brand palette
+      const TAUPE_DARK = [56, 52, 50];      // hsl(38,6%,22%) — foreground
+      const TAUPE_MID = [120, 113, 108];     // hsl(38,6%,45%) — primary
+      const TAUPE_LIGHT = [210, 206, 201];   // hsl(38,8%,85%) — border
+      const TAUPE_BG = [243, 241, 238];      // hsl(38,13%,94%) — background
+      const ACCENT = [122, 107, 140];        // hsl(266,12%,52%) — accent
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      let y = 14;
+
+      // --- Logo + Header ---
+      const logoH = 10;
+      const logoW = logoH * (293.75 / 67.31);
+      try {
+        const logoDataUrl = await loadLogoAsDataUrl();
+        doc.addImage(logoDataUrl, 'PNG', margin, y, logoW, logoH);
+      } catch (error) {
+        console.error("Error loading logo:", error);
+      }
+
+      // Title on the right, same line as logo
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      doc.text("Detalle de Cuentas por Cobrar", pageWidth - margin, y + 7, { align: "right" });
+      y += logoH + 3;
+
+      // Divider line
+      doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+      doc.setLineWidth(0.4);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 5;
+
+      // Report Info
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      
+      // Left info: Filter details
+      let filterText = "Filtros: ";
+      const activeFilters: string[] = [];
+      if (searchTerm.trim()) activeFilters.push(`Búsqueda: "${searchTerm}"`);
+      if (sucursalFilter !== "all") {
+        const locName = locations.find(l => l.id === sucursalFilter)?.name || sucursalFilter;
+        activeFilters.push(`Sucursal: ${locName}`);
+      }
+      if (dateFilterOption !== "all") {
+        if (dateFilterOption === "custom") {
+          activeFilters.push(`Fechas: ${dateFrom || "..."} a ${dateTo || "..."}`);
+        } else {
+          const dateOptionsMap: Record<string, string> = {
+            today: "Hoy",
+            yesterday: "Ayer",
+            this_month: "Este Mes",
+            last_month: "Mes Anterior",
+            last_30_days: "Últimos 30 Días",
+            this_year: "Este Año"
+          };
+          activeFilters.push(`Fecha: ${dateOptionsMap[dateFilterOption] || dateFilterOption}`);
+        }
+      }
+      filterText += activeFilters.length > 0 ? activeFilters.join(" | ") : "Ninguno";
+      
+      const filterLines = doc.splitTextToSize(filterText, pageWidth / 2 - margin);
+      doc.text(filterLines, margin, y);
+
+      // Right info: Date & Totals
+      doc.text(
+        `Generado: ${new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+        pageWidth - margin,
+        y,
+        { align: "right" }
+      );
+      
+      y += Math.max(filterLines.length * 4, 6) + 2;
+
+      // --- Summary boxes ---
+      const boxW = (pageWidth - margin * 2 - 12) / 4;
+      const boxH = 12;
+      
+      const summaryData = [
+        { label: "Total por Cobrar", value: `$${kpis.totalCuentasCobrar.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, borderColor: TAUPE_MID, textColor: TAUPE_DARK },
+        { label: "Facturas", value: `$${kpis.facturasPendientes.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, borderColor: ACCENT, textColor: ACCENT },
+        { label: "Remisiones/Pedidos", value: `$${kpis.remisionesPedidos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, borderColor: TAUPE_MID, textColor: TAUPE_DARK },
+        { label: "Anticipos", value: `$${kpis.anticiposCreditos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, borderColor: ACCENT, textColor: ACCENT },
+      ];
+
+      summaryData.forEach((item, i) => {
+        const x = margin + i * (boxW + 4);
+        doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+        doc.roundedRect(x, y, boxW, boxH, 1.5, 1.5, "F");
+        doc.setDrawColor(item.borderColor[0], item.borderColor[1], item.borderColor[2]);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(x, y, boxW, boxH, 1.5, 1.5, "S");
+        
+        doc.setFontSize(6.5);
+        doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+        doc.setFont("helvetica", "normal");
+        doc.text(item.label, x + 3, y + 4);
+        
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(item.textColor[0], item.textColor[1], item.textColor[2]);
+        doc.text(item.value, x + 3, y + 9);
+      });
+      
+      y += boxH + 6;
+
+      // --- Table Headers ---
+      const colWidths = [20, 22, 28, 32, 28, 28, 29];
+      const colHeaders = ["Fecha", "Tipo", "Folio", "Sucursal", "Monto Original", "Cobrado / Crédito", "Saldo Pendiente"];
+
+      const renderTableHeader = (yPos: number) => {
+        doc.setFillColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+        doc.rect(margin, yPos, pageWidth - margin * 2, 7, "F");
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(240, 238, 235);
+        let hx = margin + 2;
+        colHeaders.forEach((header, i) => {
+          if (i >= 4) {
+            doc.text(header, hx + colWidths[i] - 2, yPos + 5, { align: "right" });
+          } else {
+            doc.text(header, hx, yPos + 5);
+          }
+          hx += colWidths[i];
+        });
+      };
+
+      renderTableHeader(y);
+      y += 7;
+
+      // --- Table Rows ---
+      const maxY = doc.internal.pageSize.getHeight() - 14;
+
+      const truncateText = (text: string, widthLimit: number) => {
+        return doc.getStringUnitWidth(text) * 7.5 * 0.352778 > widthLimit - 4
+          ? doc.splitTextToSize(text, widthLimit - 4)[0]
+          : text;
+      };
+
+      clientDebts.forEach((client) => {
+        // Check page limits before printing client name row
+        if (y > maxY - 12) {
+          doc.addPage();
+          y = 14;
+          renderTableHeader(y);
+          y += 7;
+        }
+
+        // Print Client Header Row
+        doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+        doc.rect(margin, y, pageWidth - margin * 2, 6, "F");
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+        doc.text(client.clientName.toUpperCase(), margin + 2, y + 4.2);
+        
+        const docCountText = `${client.documents.length} ${client.documents.length === 1 ? "documento" : "documentos"}`;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+        doc.text(docCountText, pageWidth - margin - 2, y + 4.2, { align: "right" });
+        
+        y += 6;
+
+        // Print Documents
+        client.documents.forEach((docItem) => {
+          if (y > maxY - 6) {
+            doc.addPage();
+            y = 14;
+            renderTableHeader(y);
+            y += 7;
+          }
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+
+          let typeLabel = "Pedido";
+          if (docItem.type === "remision") typeLabel = "Remisión";
+          else if (docItem.type === "factura") typeLabel = "Factura";
+          else if (docItem.type === "anticipo") typeLabel = "Anticipo";
+
+          const formattedDate = new Date(docItem.date + "T12:00:00").toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const originalAmt = docItem.type === "anticipo" ? "—" : `$${docItem.monto.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+          const paidAmt = `$${docItem.pagos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+          const balanceAmt = `$${docItem.saldo.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+
+          const rowData = [
+            formattedDate,
+            typeLabel,
+            truncateText(docItem.number, colWidths[2]),
+            truncateText(docItem.locationName, colWidths[3]),
+            originalAmt,
+            paidAmt,
+            balanceAmt
+          ];
+
+          let cx = margin + 2;
+          rowData.forEach((text, i) => {
+            if (i >= 4) {
+              doc.text(text, cx + colWidths[i] - 2, y + 4, { align: "right" });
+            } else {
+              doc.text(text, cx, y + 4);
+            }
+            cx += colWidths[i];
+          });
+
+          y += 5.5;
+        });
+
+        // Print Client Subtotal
+        if (y > maxY - 6) {
+          doc.addPage();
+          y = 14;
+          renderTableHeader(y);
+          y += 7;
+        }
+
+        doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+        doc.setLineWidth(0.2);
+        doc.line(margin + 2, y, pageWidth - margin - 2, y);
+        y += 1;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7);
+        doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+
+        const originalSub = `$${client.totalMonto.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+        const paidSub = `$${client.totalPagos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+        const balanceSub = `$${client.totalSaldo.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+
+        const firstColsWidth = colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3];
+        doc.text("SUBTOTAL CLIENTE", margin + 2, y + 4);
+        
+        let cx = margin + 2 + firstColsWidth;
+        doc.text(originalSub, cx + colWidths[4] - 2, y + 4, { align: "right" });
+        cx += colWidths[4];
+        doc.text(paidSub, cx + colWidths[5] - 2, y + 4, { align: "right" });
+        cx += colWidths[5];
+        doc.text(balanceSub, cx + colWidths[6] - 2, y + 4, { align: "right" });
+
+        y += 7;
+      });
+
+      // --- Total Row ---
+      if (y > maxY - 8) {
+        doc.addPage();
+        y = 14;
+        renderTableHeader(y);
+        y += 7;
+      }
+
+      doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+      doc.setLineWidth(0.4);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 1;
+
+      doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+      doc.rect(margin, y, pageWidth - margin * 2, 7, "F");
+
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+
+      const totalOrig = clientDebts.reduce((sum, c) => sum + c.totalMonto, 0);
+      const totalPaid = clientDebts.reduce((sum, c) => sum + c.totalPagos, 0);
+      const totalBal = clientDebts.reduce((sum, c) => sum + c.totalSaldo, 0);
+
+      const firstColsWidth = colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3];
+      doc.text("TOTAL GENERAL", margin + 2, y + 4.5);
+      
+      let tcx = margin + 2 + firstColsWidth;
+      doc.text(`$${totalOrig.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, tcx + colWidths[4] - 2, y + 4.5, { align: "right" });
+      tcx += colWidths[4];
+      doc.text(`$${totalPaid.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, tcx + colWidths[5] - 2, y + 4.5, { align: "right" });
+      tcx += colWidths[5];
+      doc.text(`$${totalBal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, tcx + colWidths[6] - 2, y + 4.5, { align: "right" });
+
+      y += 7;
+
+      // Save document
+      doc.save(`detallado_cuentas_cobrar_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Hubo un error al generar el PDF.");
+    }
+  };
+
   const handleDownloadCSV = () => {
     if (clientDebts.length === 0) return;
 
@@ -513,28 +876,40 @@ export default function CuentasCobrarPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            onClick={handleExpandAll}
+            onClick={() => {
+              if (isAllExpanded) {
+                handleCollapseAll();
+              } else {
+                handleExpandAll();
+              }
+            }}
             variant="outline"
-            className="text-xs font-semibold border-slate-300 shadow-sm hover:bg-slate-50"
+            size="icon"
+            className="border-slate-300 shadow-sm hover:bg-slate-50 h-9 w-9"
             disabled={clientDebts.length === 0}
+            title={isAllExpanded ? "Colapsar Todo" : "Expandir Todo"}
           >
-            Expandir Todo
+            {isAllExpanded ? (
+              <ChevronDown className="w-4 h-4 text-slate-500" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-slate-500" />
+            )}
           </Button>
           <Button
-            onClick={handleCollapseAll}
+            onClick={handleDownloadPDF}
             variant="outline"
-            className="text-xs font-semibold border-slate-300 shadow-sm hover:bg-slate-50"
+            className="gap-2 font-semibold border-slate-300 shadow-sm hover:bg-slate-50 text-xs h-9"
             disabled={clientDebts.length === 0}
           >
-            Colapsar Todo
+            <FileDown className="w-4 h-4 text-slate-600" /> PDF
           </Button>
           <Button
             onClick={handleDownloadCSV}
             variant="outline"
-            className="gap-2 font-semibold border-slate-300 shadow-sm hover:bg-slate-50"
+            className="gap-2 font-semibold border-slate-300 shadow-sm hover:bg-slate-50 text-xs h-9"
             disabled={clientDebts.length === 0}
           >
-            <FileDown className="w-4 h-4 text-emerald-600" /> Exportar CSV
+            <FileDown className="w-4 h-4 text-emerald-600" /> CSV
           </Button>
         </div>
       </div>

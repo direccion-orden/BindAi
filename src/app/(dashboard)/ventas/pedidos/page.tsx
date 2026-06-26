@@ -463,7 +463,7 @@ export default function PedidosPage() {
         const folio = order.orderNumber || "";
         const cliente = order.clientName || "";
         const sucursal = (order as any).locationName || locations.find(l => l.id === (order as any).locationId)?.name || "N/A";
-        const fecha = new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const fecha = new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const total = (order.totalAmount || 0).toFixed(2);
         
         let estatusStr = "Activo";

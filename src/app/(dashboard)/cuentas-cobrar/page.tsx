@@ -404,6 +404,22 @@ export default function CuentasCobrarPage() {
     }));
   };
 
+  const handleExpandAll = () => {
+    const newState: Record<string, boolean> = {};
+    clientDebts.forEach(c => {
+      newState[c.clientId] = true;
+    });
+    setExpandedClients(newState);
+  };
+
+  const handleCollapseAll = () => {
+    const newState: Record<string, boolean> = {};
+    clientDebts.forEach(c => {
+      newState[c.clientId] = false;
+    });
+    setExpandedClients(newState);
+  };
+
   const handleDownloadCSV = () => {
     if (clientDebts.length === 0) return;
 
@@ -489,7 +505,23 @@ export default function CuentasCobrarPage() {
             Revisión general de saldos de clientes agrupados, incluyendo facturas, remisiones, pedidos y anticipos.
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={handleExpandAll}
+            variant="outline"
+            className="text-xs font-semibold border-slate-300 shadow-sm hover:bg-slate-50"
+            disabled={clientDebts.length === 0}
+          >
+            Expandir Todo
+          </Button>
+          <Button
+            onClick={handleCollapseAll}
+            variant="outline"
+            className="text-xs font-semibold border-slate-300 shadow-sm hover:bg-slate-50"
+            disabled={clientDebts.length === 0}
+          >
+            Colapsar Todo
+          </Button>
           <Button
             onClick={handleDownloadCSV}
             variant="outline"

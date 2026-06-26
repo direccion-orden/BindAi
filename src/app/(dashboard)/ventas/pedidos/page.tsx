@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Copy, Eye, FileDown, Ban, DollarSign } from "lucide-react";
+import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Copy, Eye, FileDown, Ban, DollarSign, FileSpreadsheet, ChevronRight, ChevronDown } from "lucide-react";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,8 @@ export default function PedidosPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [locations, setLocations] = useState<any[]>([]);
+  const [groupBy, setGroupBy] = useState<"none" | "client" | "location">("none");
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
@@ -442,6 +444,170 @@ export default function PedidosPage() {
     }
   };
 
+  const handleDownloadCSV = () => {
+    if (sortedOrders.length === 0) return;
+
+    try {
+      const headers = ["No. Pedido", "Cliente", "Sucursal", "Fecha", "Total", "Estatus"];
+      
+      const escapeCSVField = (val: any) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val);
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return `"${str}"`;
+      };
+
+      const rows = sortedOrders.map(order => {
+        const folio = order.orderNumber || "";
+        const cliente = order.clientName || "";
+        const sucursal = (order as any).locationName || locations.find(l => l.id === (order as any).locationId)?.name || "N/A";
+        const fecha = new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const total = (order.totalAmount || 0).toFixed(2);
+        
+        let estatusStr = "Activo";
+        if (order.status === "surtido") estatusStr = "Surtido";
+        else if (order.status === "remisionado") estatusStr = "Remisionado";
+        else if (order.status === "cancelado") estatusStr = "Cancelado";
+
+        return [
+          escapeCSVField(folio),
+          escapeCSVField(cliente),
+          escapeCSVField(sucursal),
+          escapeCSVField(fecha),
+          total,
+          escapeCSVField(estatusStr)
+        ].join(",");
+      });
+
+      const csvContent = "\ufeff" + [headers.join(","), ...rows].join("\n");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `pedidos_filtrados_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Error generating CSV:", error);
+      alert("Hubo un error al generar el archivo CSV.");
+    }
+  };
+
+  // Grouping logic
+  interface OrderGroup {
+    key: string;
+    orders: Order[];
+    totalAmount: number;
+  }
+
+  const groupedOrders: OrderGroup[] = React.useMemo(() => {
+    if (groupBy === "none") return [];
+
+    const groupsMap: Record<string, Order[]> = {};
+
+    sortedOrders.forEach(order => {
+      let groupKey = "N/A";
+      if (groupBy === "client") {
+        groupKey = order.clientName || "Cliente sin nombre";
+      } else if (groupBy === "location") {
+        groupKey = (order as any).locationName || locations.find(l => l.id === (order as any).locationId)?.name || "N/A";
+      }
+
+      if (!groupsMap[groupKey]) {
+        groupsMap[groupKey] = [];
+      }
+      groupsMap[groupKey].push(order);
+    });
+
+    const groups = Object.entries(groupsMap).map(([key, orders]) => {
+      const totalAmount = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+      return { key, orders, totalAmount };
+    });
+
+    return groups.sort((a, b) => a.key.localeCompare(b.key, "es"));
+  }, [sortedOrders, groupBy, locations]);
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [key]: prev[key] === false ? true : false
+    }));
+  };
+
+  const renderOrderRow = (order: Order) => (
+    <tr key={order.id} className="hover:bg-slate-50 transition-colors">
+      <td className="px-6 py-4 font-bold text-slate-900">{order.orderNumber}</td>
+      <td className="px-6 py-4 font-medium text-slate-700">
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-slate-400" />
+          {order.clientName}
+        </div>
+      </td>
+      <td className="px-6 py-4 text-slate-600 text-sm">
+        {(order as any).locationName || locations.find(l => l.id === (order as any).locationId)?.name || "N/A"}
+      </td>
+      <td className="px-6 py-4 text-muted-foreground text-xs">
+        {new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+      </td>
+      <td className="px-6 py-4 font-bold text-emerald-700">
+        ${order.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}
+      </td>
+      <td className="px-6 py-4">
+        {order.status === 'por_surtir' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">Activo</span>}
+        {order.status === 'surtido' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold">Surtido</span>}
+        {order.status === 'remisionado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">Remisionado</span>}
+        {order.status === 'cancelado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold">Cancelado</span>}
+      </td>
+      <td className="px-6 py-4 text-right">
+        <div className="flex justify-end items-center gap-1">
+          <Link href={`/ventas/pedidos/${order.id}`} target="_blank">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 shrink-0"
+              title="Abrir Detalles"
+            >
+              <Eye className="w-4 h-4" />
+            </Button>
+          </Link>
+          <Link href={`/pdf/pedido/${order.id}`} target="_blank">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0"
+              title="Descargar PDF"
+            >
+              <FileDown className="w-4 h-4" />
+            </Button>
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 shrink-0"
+            onClick={() => handleCopyOrder(order)}
+            title="Copiar"
+          >
+            <Copy className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-rose-600 hover:text-rose-800 hover:bg-rose-50 shrink-0"
+            onClick={() => handleCancelOrder(order.id)}
+            disabled={order.status === 'cancelado'}
+            title="Cancelar"
+          >
+            <Ban className="w-4 h-4" />
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+
   if (loading) {
     return <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
   }
@@ -464,6 +630,14 @@ export default function PedidosPage() {
             disabled={sortedOrders.length === 0}
           >
             <FileDown className="w-4 h-4" /> Descargar PDF
+          </Button>
+          <Button
+            onClick={handleDownloadCSV}
+            variant="outline"
+            className="gap-2 font-semibold shadow-sm border-slate-300 text-slate-700 hover:bg-slate-50"
+            disabled={sortedOrders.length === 0}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Descargar CSV
           </Button>
           <Link href="/ventas/pedidos/nuevo" target="_blank">
             <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
@@ -580,6 +754,21 @@ export default function PedidosPage() {
               </div>
             </>
           )}
+
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Agrupar por
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as any)}
+            >
+              <option value="none">Sin agrupar</option>
+              <option value="client">Cliente</option>
+              <option value="location">Sucursal</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -646,83 +835,52 @@ export default function PedidosPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {sortedOrders.length === 0 ? (
+               {sortedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                     <Package className="w-12 h-12 mx-auto mb-3 opacity-20" />
                     No se encontraron pedidos con los filtros aplicados.
                   </td>
                 </tr>
+              ) : groupBy === "none" ? (
+                sortedOrders.map((order) => renderOrderRow(order))
               ) : (
-                sortedOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-900">{order.orderNumber}</td>
-                    <td className="px-6 py-4 font-medium text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-slate-400" />
-                        {order.clientName}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 text-sm">
-                      {(order as any).locationName || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 text-muted-foreground text-xs">
-                      {new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-emerald-700">
-                      ${order.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}
-                    </td>
-                    <td className="px-6 py-4">
-                      {order.status === 'por_surtir' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">Activo</span>}
-                      {order.status === 'surtido' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold">Surtido</span>}
-                      {order.status === 'remisionado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">Remisionado</span>}
-                      {order.status === 'cancelado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold">Cancelado</span>}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end items-center gap-1">
-                        <Link href={`/ventas/pedidos/${order.id}`} target="_blank">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 shrink-0"
-                            title="Abrir Detalles"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </Link>
-                        <Link href={`/pdf/pedido/${order.id}`} target="_blank">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-600 hover:text-slate-800 hover:bg-slate-50 shrink-0"
-                            title="Descargar PDF"
-                          >
-                            <FileDown className="w-4 h-4" />
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 shrink-0"
-                          onClick={() => handleCopyOrder(order)}
-                          title="Copiar"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-rose-600 hover:text-rose-800 hover:bg-rose-50 shrink-0"
-                          onClick={() => handleCancelOrder(order.id)}
-                          disabled={order.status === 'cancelado'}
-                          title="Cancelar"
-                        >
-                          <Ban className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                groupedOrders.map((group) => {
+                  const isExpanded = expandedGroups[group.key] !== false;
+                  return (
+                    <React.Fragment key={group.key}>
+                      <tr 
+                        className="bg-indigo-50/20 hover:bg-indigo-50/40 cursor-pointer transition-colors border-y"
+                        onClick={() => toggleGroup(group.key)}
+                      >
+                        <td colSpan={7} className="px-6 py-3 select-none">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-indigo-600 shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-indigo-600 shrink-0" />
+                              )}
+                              <span className="font-bold text-slate-800 text-sm">
+                                {groupBy === "client" ? "Cliente: " : "Sucursal: "}{group.key}
+                              </span>
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                                {group.orders.length} {group.orders.length === 1 ? "pedido" : "pedidos"}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xs text-muted-foreground mr-1.5 font-medium">Subtotal del grupo:</span>
+                              <span className="font-bold text-emerald-800 text-sm">
+                                ${group.totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && group.orders.map((order) => renderOrderRow(order))}
+                    </React.Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>

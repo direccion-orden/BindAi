@@ -385,7 +385,7 @@ export default function CotizacionesCRMPage() {
   );
 
   return (
-    <div className={viewMode === "table" ? "h-[calc(100vh-8rem)] flex flex-col space-y-6" : "flex flex-col space-y-6"}>
+    <div className={viewMode === "table" ? "h-[1350px] flex flex-col space-y-6" : "flex flex-col space-y-6"}>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 border-b pb-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Cotizaciones (CRM)</h1>

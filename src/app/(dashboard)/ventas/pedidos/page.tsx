@@ -216,9 +216,236 @@ export default function PedidosPage() {
 
   const totalFilteredAmount = filteredOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
 
+  // Convert SVG logo to PNG data URL for jsPDF
+  const loadLogoAsDataUrl = (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      const svgW = 588;
+      const svgH = 135;
+      img.width = svgW;
+      img.height = svgH;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const scale = 3;
+        canvas.width = svgW * scale;
+        canvas.height = svgH * scale;
+        const ctx = canvas.getContext('2d')!;
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, svgW, svgH);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = reject;
+      img.src = '/logo.svg';
+    });
+  };
+
+  const handleDownloadPDF = async () => {
+    if (sortedOrders.length === 0) return;
+
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+
+      // Brand palette
+      const TAUPE_DARK = [56, 52, 50];      // hsl(38,6%,22%) — foreground
+      const TAUPE_MID = [120, 113, 108];     // hsl(38,6%,45%) — primary
+      const TAUPE_LIGHT = [210, 206, 201];   // hsl(38,8%,85%) — border
+      const TAUPE_BG = [243, 241, 238];      // hsl(38,13%,94%) — background
+      const ACCENT = [122, 107, 140];        // hsl(266,12%,52%) — accent
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      let y = 14;
+
+      // --- Logo + Header ---
+      const logoH = 10;
+      const logoW = logoH * (293.75 / 67.31);
+      try {
+        const logoDataUrl = await loadLogoAsDataUrl();
+        doc.addImage(logoDataUrl, 'PNG', margin, y, logoW, logoH);
+      } catch (error) {
+        console.error("Error loading logo:", error);
+      }
+
+      // Title on the right, same line as logo
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      doc.text("Reporte de Pedidos", pageWidth - margin, y + 7, { align: "right" });
+      y += logoH + 3;
+
+      // Divider line
+      doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+      doc.setLineWidth(0.4);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 5;
+
+      // Report Info
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      
+      // Left info: Filter details
+      let filterText = "Filtros: ";
+      const activeFilters: string[] = [];
+      if (searchTerm.trim()) activeFilters.push(`Búsqueda: "${searchTerm}"`);
+      if (statusFilter !== "all") {
+        const statusMap: Record<string, string> = {
+          por_surtir: "Activo",
+          surtido: "Surtido",
+          remisionado: "Remisionado",
+          cancelado: "Cancelado"
+        };
+        activeFilters.push(`Estatus: ${statusMap[statusFilter] || statusFilter}`);
+      }
+      if (sucursalFilter !== "all") {
+        const locName = locations.find(l => l.id === sucursalFilter)?.name || sucursalFilter;
+        activeFilters.push(`Sucursal: ${locName}`);
+      }
+      if (dateFilterOption !== "all") {
+        activeFilters.push(`Fecha: ${dateFilterOption}`);
+      }
+      filterText += activeFilters.length > 0 ? activeFilters.join(", ") : "Ninguno";
+      
+      const filterLines = doc.splitTextToSize(filterText, pageWidth / 2 - margin);
+      doc.text(filterLines, margin, y);
+
+      // Right info: Date & Totals
+      doc.text(
+        `Generado: ${new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+        pageWidth - margin,
+        y,
+        { align: "right" }
+      );
+      
+      y += Math.max(filterLines.length * 4, 6) + 2;
+
+      // --- Summary boxes ---
+      const boxW = (pageWidth - margin * 2 - 5) / 2;
+      const boxH = 12;
+      
+      const summaryData = [
+        { label: "Total Pedidos", value: String(sortedOrders.length), borderColor: TAUPE_MID, textColor: TAUPE_DARK },
+        { label: "Monto Total Filtrado", value: `$${totalFilteredAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, borderColor: ACCENT, textColor: ACCENT },
+      ];
+
+      summaryData.forEach((item, i) => {
+        const x = margin + i * (boxW + 5);
+        doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+        doc.roundedRect(x, y, boxW, boxH, 1.5, 1.5, "F");
+        doc.setDrawColor(item.borderColor[0], item.borderColor[1], item.borderColor[2]);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(x, y, boxW, boxH, 1.5, 1.5, "S");
+        
+        doc.setFontSize(7);
+        doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+        doc.setFont("helvetica", "normal");
+        doc.text(item.label, x + 4, y + 4.5);
+        
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(item.textColor[0], item.textColor[1], item.textColor[2]);
+        doc.text(item.value, x + 4, y + 9.5);
+      });
+      
+      y += boxH + 6;
+
+      // --- Table Headers ---
+      const colWidths = [22, 63, 33, 27, 25, 18];
+      const colHeaders = ["Folio", "Cliente", "Sucursal", "Fecha", "Total", "Estatus"];
+
+      const renderTableHeader = (yPos: number) => {
+        doc.setFillColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+        doc.rect(margin, yPos, pageWidth - margin * 2, 7, "F");
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(240, 238, 235);
+        let hx = margin + 2;
+        colHeaders.forEach((header, i) => {
+          if (i === 4) {
+            doc.text(header, hx + colWidths[i] - 4, yPos + 5, { align: "right" });
+          } else {
+            doc.text(header, hx, yPos + 5);
+          }
+          hx += colWidths[i];
+        });
+      };
+
+      renderTableHeader(y);
+      y += 7;
+
+      // --- Table Rows ---
+      const maxY = doc.internal.pageSize.getHeight() - 14;
+
+      sortedOrders.forEach((order, rowIdx) => {
+        if (y > maxY - 6) {
+          doc.addPage();
+          y = 14;
+          renderTableHeader(y);
+          y += 7;
+        }
+
+        if (rowIdx % 2 === 0) {
+          doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+          doc.rect(margin, y, pageWidth - margin * 2, 6, "F");
+        }
+
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+
+        let cx = margin + 2;
+
+        const folio = String(order.orderNumber || "");
+        const cliente = String(order.clientName || "");
+        const sucursal = String((order as any).locationName || locations.find(l => l.id === (order as any).locationId)?.name || "N/A");
+        const fecha = new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const total = `$${(order.totalAmount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+        
+        let estatusStr = "Activo";
+        if (order.status === "surtido") estatusStr = "Surtido";
+        else if (order.status === "remisionado") estatusStr = "Remisionado";
+        else if (order.status === "cancelado") estatusStr = "Cancelado";
+
+        const truncateText = (text: string, widthLimit: number) => {
+          return doc.getStringUnitWidth(text) * 7 * 0.352778 > widthLimit - 4
+            ? doc.splitTextToSize(text, widthLimit - 4)[0]
+            : text;
+        };
+
+        const rowData = [
+          truncateText(folio, colWidths[0]),
+          truncateText(cliente, colWidths[1]),
+          truncateText(sucursal, colWidths[2]),
+          fecha,
+          total,
+          estatusStr
+        ];
+
+        rowData.forEach((text, i) => {
+          if (i === 4) {
+            doc.text(text, cx + colWidths[i] - 4, y + 4, { align: "right" });
+          } else {
+            doc.text(text, cx, y + 4);
+          }
+          cx += colWidths[i];
+        });
+
+        y += 6;
+      });
+
+      doc.save(`pedidos_filtrados_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Hubo un error al generar el PDF.");
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
   }
+
 
   return (
     <div className="flex flex-col space-y-6">
@@ -229,11 +456,21 @@ export default function PedidosPage() {
             Gestiona el surtido, empaque y preparación de envíos.
           </p>
         </div>
-        <Link href="/ventas/pedidos/nuevo" target="_blank">
-          <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
-            <Plus className="w-4 h-4" /> Nuevo Pedido Directo
+        <div className="flex flex-wrap gap-3">
+          <Button
+            onClick={handleDownloadPDF}
+            variant="outline"
+            className="gap-2 font-semibold shadow-sm border-slate-300 text-slate-700 hover:bg-slate-50"
+            disabled={sortedOrders.length === 0}
+          >
+            <FileDown className="w-4 h-4" /> Descargar PDF
           </Button>
-        </Link>
+          <Link href="/ventas/pedidos/nuevo" target="_blank">
+            <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
+              <Plus className="w-4 h-4" /> Nuevo Pedido Directo
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Summary Metrics Banner */}

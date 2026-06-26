@@ -40,6 +40,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
 
   useEffect(() => {
     if (!companyId || !params.id) return;
@@ -81,6 +82,16 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
       });
       getDocs(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active"))).then(snap => {
         setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
+      });
+      getDocs(collection(db, "companies", companyId, "clients")).then(snap => {
+        setClients(snap.docs.map(d => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: data.LegalName || data.CommercialName || data.ClientName || data.legalName || data.name || data.razonSocial || "Cliente sin nombre",
+            rfc: data.rfc || data.Rfc || ""
+          };
+        }).sort((a, b) => a.name.localeCompare(b.name, "es")));
       });
     }
   }, [isEditing, companyId, products.length]);
@@ -455,8 +466,32 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-start">
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase">Cliente</label>
-            <p className="font-bold text-slate-900 mt-1">{order.clientName || 'Sin Cliente'}</p>
-            {order.rfc && <p className="text-[10px] text-slate-500 mt-0.5">RFC: {order.rfc}</p>}
+            {isEditing ? (
+              <select
+                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold text-slate-900"
+                value={order.clientId || ""}
+                onChange={e => {
+                  const selectedId = e.target.value;
+                  const selectedClient = clients.find(c => c.id === selectedId);
+                  setOrder({
+                    ...order,
+                    clientId: selectedId,
+                    clientName: selectedClient ? selectedClient.name : "",
+                    rfc: selectedClient ? selectedClient.rfc : ""
+                  });
+                }}
+              >
+                <option value="">Seleccionar Cliente</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <p className="font-bold text-slate-900 mt-1">{order.clientName || 'Sin Cliente'}</p>
+                {order.rfc && <p className="text-[10px] text-slate-500 mt-0.5">RFC: {order.rfc}</p>}
+              </>
+            )}
           </div>
 
           <div>

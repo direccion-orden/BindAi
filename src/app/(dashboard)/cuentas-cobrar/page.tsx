@@ -215,19 +215,21 @@ export default function CuentasCobrarPage() {
         const total = parseFloat(p.totalAmount) || p.totalAmount || 0;
         const saldo = Math.max(0, total - paidAmount);
 
-        list.push({
-          id: docId,
-          clientId: p.clientId || "",
-          type: "pedido",
-          number: p.orderNumber || p.number || `PED-${docId.substring(0, 6)}`,
-          date: extractDate(p.createdAt),
-          monto: total,
-          pagos: paidAmount,
-          saldo: saldo,
-          status: p.status || "por_surtir",
-          locationId: p.locationId || "",
-          locationName: p.locationName || locations.find(l => l.id === p.locationId)?.name || "N/A"
-        });
+        if (saldo >= 1.00) {
+          list.push({
+            id: docId,
+            clientId: p.clientId || "",
+            type: "pedido",
+            number: p.orderNumber || p.number || `PED-${docId.substring(0, 6)}`,
+            date: extractDate(p.createdAt),
+            monto: total,
+            pagos: paidAmount,
+            saldo: saldo,
+            status: p.status || "por_surtir",
+            locationId: p.locationId || "",
+            locationName: p.locationName || locations.find(l => l.id === p.locationId)?.name || "N/A"
+          });
+        }
       }
     });
 
@@ -242,19 +244,21 @@ export default function CuentasCobrarPage() {
         const total = parseFloat(r.totalAmount) || r.totalAmount || 0;
         const saldo = Math.max(0, total - paidAmount);
 
-        list.push({
-          id: docId,
-          clientId: r.clientId || "",
-          type: "remision",
-          number: r.remissionNumber || r.number || `REM-${docId.substring(0, 6)}`,
-          date: extractDate(r.createdAt),
-          monto: total,
-          pagos: paidAmount,
-          saldo: saldo,
-          status: r.status || "activo",
-          locationId: r.locationId || "",
-          locationName: r.locationName || locations.find(l => l.id === r.locationId)?.name || "N/A"
-        });
+        if (saldo >= 1.00) {
+          list.push({
+            id: docId,
+            clientId: r.clientId || "",
+            type: "remision",
+            number: r.remissionNumber || r.number || `REM-${docId.substring(0, 6)}`,
+            date: extractDate(r.createdAt),
+            monto: total,
+            pagos: paidAmount,
+            saldo: saldo,
+            status: r.status || "activo",
+            locationId: r.locationId || "",
+            locationName: r.locationName || locations.find(l => l.id === r.locationId)?.name || "N/A"
+          });
+        }
       }
     });
 
@@ -268,19 +272,21 @@ export default function CuentasCobrarPage() {
         const total = parseFloat(f.totalAmount) || f.totalAmount || 0;
         const saldo = Math.max(0, total - paidAmount);
 
-        list.push({
-          id: docId,
-          clientId: f.clientId || "",
-          type: "factura",
-          number: f.invoiceNumber ? `FAC-${f.invoiceNumber}` : `FAC-${docId.substring(0, 6)}`,
-          date: extractDate(f.createdAt),
-          monto: total,
-          pagos: paidAmount,
-          saldo: saldo,
-          status: f.status || "timbrada",
-          locationId: f.locationId || "",
-          locationName: f.locationName || locations.find(l => l.id === f.locationId)?.name || "N/A"
-        });
+        if (saldo >= 1.00) {
+          list.push({
+            id: docId,
+            clientId: f.clientId || "",
+            type: "factura",
+            number: f.invoiceNumber ? `FAC-${f.invoiceNumber}` : `FAC-${docId.substring(0, 6)}`,
+            date: extractDate(f.createdAt),
+            monto: total,
+            pagos: paidAmount,
+            saldo: saldo,
+            status: f.status || "timbrada",
+            locationId: f.locationId || "",
+            locationName: f.locationName || locations.find(l => l.id === f.locationId)?.name || "N/A"
+          });
+        }
       }
     });
 
@@ -293,7 +299,7 @@ export default function CuentasCobrarPage() {
         const totalAmount = parseFloat(a.amount) || a.amount || 0;
         const remaining = Math.max(0, totalAmount - totalApplied);
 
-        if (remaining > 0.01) {
+        if (remaining >= 1.00) {
           const docId = a.id;
           const numberStr = a.folio ? `ANT-${String(a.folio).padStart(4, "0")}` : `ANT-${docId.substring(0, 5).toUpperCase()}`;
           list.push({
@@ -364,8 +370,8 @@ export default function CuentasCobrarPage() {
     return list
       .filter(item => {
         const matchesClient = item.clientName.toLowerCase().includes(searchTerm.toLowerCase());
-        // Only show client if they match search AND have a significant remaining debt/credit
-        return matchesClient && Math.abs(item.totalSaldo) > 0.01;
+        // Only show client if they match search AND have a significant remaining debt/credit (at least $1.00)
+        return matchesClient && Math.abs(item.totalSaldo) >= 1.00;
       })
       .sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
   }, [consolidatedDocs, clients, searchTerm]);

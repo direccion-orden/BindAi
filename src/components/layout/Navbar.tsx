@@ -2,8 +2,9 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { LogOut, Menu } from "lucide-react";
+import { LogOut, Menu, Smartphone } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
 export function Navbar({ onToggleMobileMenu }: { onToggleMobileMenu?: () => void }) {
   const { user, logOut } = useAuth();
@@ -32,6 +33,12 @@ export function Navbar({ onToggleMobileMenu }: { onToggleMobileMenu?: () => void
             <span className="text-sm font-medium text-muted-foreground hidden md:inline-block">
               {user.email}
             </span>
+            <Link href="/movil">
+              <Button variant="outline" size="sm" className="gap-2 text-indigo-600 dark:text-indigo-400 border-indigo-200/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/20">
+                <Smartphone className="h-4 w-4" />
+                <span className="hidden sm:inline-block">Vista Móvil</span>
+              </Button>
+            </Link>
             <Button variant="outline" size="sm" onClick={logOut} className="gap-2">
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline-block">Cerrar Sesión</span>

@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { doc, collection, getDocs, updateDoc, addDoc, increment, setDoc, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft } from "lucide-react";
+import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft, ChevronDown } from "lucide-react";
 import { BankTransaction } from "@/types/bank";
 
 interface ReconcilePanelProps {
@@ -17,6 +17,128 @@ interface ReconcilePanelProps {
   accountingAccountsAll: any[]; // All accounting accounts
   onSuccess: () => void;
   onDeselect: () => void;
+}
+
+interface SearchableSelectProps {
+  label: string;
+  placeholder: string;
+  items: { id: string; name: string; subtitle?: string }[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  required?: boolean;
+}
+
+function SearchableSelect({
+  label,
+  placeholder,
+  items,
+  selectedId,
+  onSelect,
+  required = false
+}: SearchableSelectProps) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedItem = items.find(item => item.id === selectedId);
+
+  useEffect(() => {
+    if (!open) {
+      setSearch(selectedItem ? selectedItem.name : "");
+    }
+  }, [selectedId, selectedItem, open]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredItems = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return items;
+    return items.filter(item => 
+      item.name.toLowerCase().includes(q) || 
+      (item.subtitle && item.subtitle.toLowerCase().includes(q))
+    );
+  }, [items, search]);
+
+  return (
+    <div className="space-y-1.5 relative w-full" ref={containerRef}>
+      <label className="text-xs font-bold text-slate-600 flex justify-between">
+        <span>{label} {required && <span className="text-red-500">*</span>}</span>
+        {selectedItem && (
+          <button 
+            type="button" 
+            onClick={() => {
+              onSelect("");
+              setSearch("");
+            }} 
+            className="text-[10px] text-slate-400 hover:text-slate-600 font-semibold"
+          >
+            Limpiar
+          </button>
+        )}
+      </label>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder={placeholder}
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setOpen(true);
+            if (!e.target.value) {
+              onSelect("");
+            }
+          }}
+          onFocus={() => setOpen(true)}
+          className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none font-semibold text-slate-800"
+        />
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+        >
+          <ChevronDown className="w-4 h-4" />
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute z-[100] left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-52 overflow-y-auto custom-scrollbar animate-in fade-in duration-100">
+          {filteredItems.length === 0 ? (
+            <div className="p-3 text-xs text-slate-500 text-center">
+              No se encontraron resultados
+            </div>
+          ) : (
+            filteredItems.map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  onSelect(item.id);
+                  setSearch(item.name);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2.5 text-xs hover:bg-slate-50 flex flex-col border-b last:border-b-0 transition-colors ${
+                  item.id === selectedId ? "bg-indigo-50/50 font-bold" : ""
+                }`}
+              >
+                <span className="text-slate-800 font-medium">{item.name}</span>
+                {item.subtitle && (
+                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">{item.subtitle}</span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ReconcilePanel({
@@ -58,6 +180,52 @@ export function ReconcilePanel({
   const transaction = transactions[0];
   const isCharge = transaction ? transaction.amount < 0 : true;
   const absAmount = transactions.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
+  const sortedVendors = useMemo(() => {
+    return [...vendors].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [vendors]);
+
+  const searchableVendors = useMemo(() => {
+    return sortedVendors.map(v => ({
+      id: v.id,
+      name: v.name,
+      subtitle: v.rfc
+    }));
+  }, [sortedVendors]);
+
+  const sortedAccounts = useMemo(() => {
+    return [...accountingAccounts].sort((a, b) => {
+      const aLabel = `${a.code} - ${a.name}`;
+      const bLabel = `${b.code} - ${b.name}`;
+      return aLabel.localeCompare(bLabel, "es");
+    });
+  }, [accountingAccounts]);
+
+  const searchableAccounts = useMemo(() => {
+    return sortedAccounts.map(a => ({
+      id: a.id,
+      name: `${a.code} - ${a.name}`,
+      subtitle: a.type
+    }));
+  }, [sortedAccounts]);
+
+  const sortedCostCenters = useMemo(() => {
+    return [...costCenters]
+      .filter(cc => cc.isActive)
+      .sort((a, b) => {
+        const aLabel = `${a.code} - ${a.name}`;
+        const bLabel = `${b.code} - ${b.name}`;
+        return aLabel.localeCompare(bLabel, "es");
+      });
+  }, [costCenters]);
+
+  const searchableCostCenters = useMemo(() => {
+    return sortedCostCenters.map(cc => ({
+      id: cc.id,
+      name: `${cc.code} - ${cc.name}`,
+      subtitle: cc.isActive ? "Activo" : "Inactivo"
+    }));
+  }, [sortedCostCenters]);
 
   // Auto-suggest and sort exact matches
   const sortedAndMatchedDocs = useMemo(() => {
@@ -220,6 +388,25 @@ export function ReconcilePanel({
     }
   }, [transactions]);
 
+  // Pre-fill selections from selected document when selectedDocId changes (for charges in match mode)
+  useEffect(() => {
+    if (!selectedDocId || !isCharge || reconcileMode !== "match") return;
+    const selectedDoc = sortedAndMatchedDocs.find(d => d.id === selectedDocId);
+    if (selectedDoc) {
+      setSelectedExpenseOrIncomeAccountId(selectedDoc.accountId || "");
+      setSelectedLocationId(selectedDoc.locationId || "");
+      
+      const docCostCenterId = selectedDoc.costCenterId || selectedDoc.items?.[0]?.costCenterId || "";
+      setSelectedCostCenterId(docCostCenterId);
+      
+      if (selectedDoc.vatRate !== undefined) {
+        setVatRate(Number(selectedDoc.vatRate));
+      } else {
+        setVatRate(0.16);
+      }
+    }
+  }, [selectedDocId, sortedAndMatchedDocs, isCharge, reconcileMode]);
+
   // Suggestion and sorting logic for own transfer matching
   const sortedTargetTransactions = useMemo(() => {
     if (transactions.length !== 1 || targetAccountTransactions.length === 0) return [];
@@ -294,9 +481,33 @@ export function ReconcilePanel({
           return;
         }
 
+        if (isCharge) {
+          if (!selectedExpenseOrIncomeAccountId) {
+            alert("Por favor selecciona una cuenta contable.");
+            setLoading(false);
+            return;
+          }
+          if (!selectedLocationId) {
+            alert("Por favor selecciona una sucursal.");
+            setLoading(false);
+            return;
+          }
+        }
+
         const isManual = selectedDoc._type === "gasto_manual";
         const docType = isManual ? "gasto_manual" : selectedDoc._type === "gasto" ? "gasto" : "factura";
         const docCollection = isManual ? "expenses" : selectedDoc._type === "gasto" ? "expenses_inbox" : "facturas";
+
+        const selectedAccount = accountingAccountsAll.find(a => a.id === selectedExpenseOrIncomeAccountId);
+        const physicalBankAccount = bankAccounts.find(b => b.id === accountId);
+        const bankAccountingId = physicalBankAccount?.accountId;
+        const bankAccountingAccount = bankAccountingId ? accountingAccountsAll.find(a => a.id === bankAccountingId) : null;
+
+        if (isCharge && !bankAccountingAccount) {
+          alert(`La cuenta/caja "${physicalBankAccount?.Name || physicalBankAccount?.name || 'seleccionada'}" no está enlazada a una cuenta contable. Por favor configúrala.`);
+          setLoading(false);
+          return;
+        }
 
         // Loop and reconcile each transaction
         for (const tx of transactions) {
@@ -314,10 +525,77 @@ export function ReconcilePanel({
               documentNumber: selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id,
               providerName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
               bankAccountId: accountId,
-              expenseAccountId: selectedDoc.accountId || "",
+              expenseAccountId: selectedExpenseOrIncomeAccountId,
               createdAt: new Date().toISOString(),
             };
-            await addDoc(collection(db, "companies", companyId, "outflows"), outflowData);
+            const paymentRef = await addDoc(collection(db, "companies", companyId, "outflows"), outflowData);
+
+            // 2. Journal Entry (Póliza de egreso)
+            if (physicalBankAccount && selectedAccount && bankAccountingAccount) {
+              let subtotalAmount = txAbsAmount;
+              let vatAmount = 0;
+              const vatAccounts = accountingAccountsAll.filter(a => a.code?.startsWith("118") && a.level >= 2);
+              const vatAccount = vatAccounts.length > 0 ? vatAccounts[0] : null;
+
+              if (vatRate > 0) {
+                subtotalAmount = txAbsAmount / (1 + vatRate);
+                vatAmount = txAbsAmount - subtotalAmount;
+              }
+
+              const entries = [
+                {
+                  accountId: selectedExpenseOrIncomeAccountId,
+                  accountCode: selectedAccount.code,
+                  accountName: selectedAccount.name,
+                  debit: subtotalAmount,
+                  credit: 0
+                },
+                {
+                  accountId: bankAccountingId,
+                  accountCode: bankAccountingAccount.code,
+                  accountName: bankAccountingAccount.name,
+                  debit: 0,
+                  credit: txAbsAmount
+                }
+              ];
+
+              if (vatAmount > 0 && vatAccount) {
+                entries.push({
+                  accountId: vatAccount.id,
+                  accountCode: vatAccount.code,
+                  accountName: vatAccount.name,
+                  debit: vatAmount,
+                  credit: 0
+                });
+              }
+
+              await addDoc(collection(db, "companies", companyId, "journal_entries"), {
+                type: "egreso",
+                date: tx.date,
+                description: `Pago de gasto (Conciliación): ${selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id}`,
+                referenceId: paymentRef.id,
+                referenceType: "payment_outflow",
+                createdAt: new Date().toISOString(),
+                status: "activa",
+                entries
+              });
+
+              // Update Balances
+              await updateDoc(doc(db, "companies", companyId, "accounts", selectedExpenseOrIncomeAccountId), {
+                balance: increment(subtotalAmount)
+              });
+              await updateDoc(doc(db, "companies", companyId, "accounts", bankAccountingId), {
+                balance: increment(-txAbsAmount)
+              });
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", accountId), {
+                balance: increment(-txAbsAmount)
+              });
+              if (vatAmount > 0 && vatAccount) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", vatAccount.id), {
+                  balance: increment(vatAmount)
+                });
+              }
+            }
           } else {
             // 1. Create incoming payment record for each payment received
             const paymentData = {
@@ -335,7 +613,7 @@ export function ReconcilePanel({
             await addDoc(collection(db, "companies", companyId, "payments"), paymentData);
           }
 
-          // 2. Mark the Bank Transaction document as Reconciled
+          // 3. Mark the Bank Transaction document as Reconciled
           await updateDoc(doc(db, "companies", companyId, "bankAccounts", accountId, "transactions", tx.id), {
             reconciled: true,
             matchedAt: new Date().toISOString(),
@@ -344,11 +622,32 @@ export function ReconcilePanel({
           });
         }
 
-        // 3. Update document paidAmount by incrementing it with total amount
+        // 4. Update document paidAmount by incrementing it with total amount and save classification
         const totalAbsAmount = transactions.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
         const updates: any = {
           paidAmount: increment(totalAbsAmount)
         };
+
+        if (isCharge) {
+          const locationName = locations.find(l => l.id === selectedLocationId)?.name || "";
+          updates.accountId = selectedExpenseOrIncomeAccountId;
+          updates.accountCode = selectedAccount?.code || "";
+          updates.accountName = selectedAccount?.name || "";
+          updates.locationId = selectedLocationId;
+          updates.locationName = locationName;
+          updates.costCenterId = selectedCostCenterId || null;
+          updates.vatRate = vatRate;
+          
+          if (selectedDoc.items && selectedDoc.items.length > 0) {
+            updates.items = selectedDoc.items.map((item: any) => ({
+              ...item,
+              accountId: selectedExpenseOrIncomeAccountId,
+              locationId: selectedLocationId,
+              costCenterId: selectedCostCenterId || null
+            }));
+          }
+        }
+
         const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
         const totalAmt = selectedDoc.docTotal;
         if (newPaid >= totalAmt - 0.01) {
@@ -953,6 +1252,69 @@ export function ReconcilePanel({
                     </div>
                   </div>
                 )}
+
+                {/* Classification controls for matched charges */}
+                {isCharge && selectedDocId && (
+                  <div className="space-y-4 border-t pt-4 mt-4 animate-in fade-in duration-300">
+                    <p className="text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                      Datos de Clasificación del Gasto
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-600">
+                          Sucursal *
+                        </label>
+                        <select
+                          value={selectedLocationId}
+                          onChange={(e) => setSelectedLocationId(e.target.value)}
+                          className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
+                          required
+                        >
+                          <option value="" disabled>Selecciona sucursal...</option>
+                          {locations.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-600">
+                          IVA Incluido *
+                        </label>
+                        <select
+                          value={vatRate}
+                          onChange={(e) => setVatRate(Number(e.target.value))}
+                          className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
+                          required
+                        >
+                          <option value={0.16}>16% (General)</option>
+                          <option value={0.08}>8% (Frontera)</option>
+                          <option value={0}>0% / Exento</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <SearchableSelect
+                      label="Cuenta Contable"
+                      placeholder="Selecciona cuenta..."
+                      items={searchableAccounts}
+                      selectedId={selectedExpenseOrIncomeAccountId}
+                      onSelect={setSelectedExpenseOrIncomeAccountId}
+                      required
+                    />
+
+                    <SearchableSelect
+                      label="Centro de Costos"
+                      placeholder="Ninguno / General"
+                      items={searchableCostCenters}
+                      selectedId={selectedCostCenterId}
+                      onSelect={setSelectedCostCenterId}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -994,44 +1356,24 @@ export function ReconcilePanel({
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600">
-                    Proveedor *
-                  </label>
-                  <select
-                    value={selectedVendorId}
-                    onChange={(e) => setSelectedVendorId(e.target.value)}
-                    className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
-                    required
-                  >
-                    <option value="" disabled>Selecciona proveedor...</option>
-                    {vendors.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name} {v.rfc ? `(${v.rfc})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <SearchableSelect
+                  label="Proveedor"
+                  placeholder="Selecciona proveedor..."
+                  items={searchableVendors}
+                  selectedId={selectedVendorId}
+                  onSelect={setSelectedVendorId}
+                  required
+                />
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600">
-                      Cuenta Contable *
-                    </label>
-                    <select
-                      value={selectedExpenseOrIncomeAccountId}
-                      onChange={(e) => setSelectedExpenseOrIncomeAccountId(e.target.value)}
-                      className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
-                      required
-                    >
-                      <option value="" disabled>Selecciona cuenta...</option>
-                      {accountingAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.code} - {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <SearchableSelect
+                    label="Cuenta Contable"
+                    placeholder="Selecciona cuenta..."
+                    items={searchableAccounts}
+                    selectedId={selectedExpenseOrIncomeAccountId}
+                    onSelect={setSelectedExpenseOrIncomeAccountId}
+                    required
+                  />
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-600">
@@ -1050,23 +1392,13 @@ export function ReconcilePanel({
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600">
-                    Centro de Costos
-                  </label>
-                  <select
-                    value={selectedCostCenterId}
-                    onChange={(e) => setSelectedCostCenterId(e.target.value)}
-                    className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
-                  >
-                    <option value="">Ninguno / General</option>
-                    {costCenters.filter(cc => cc.isActive).map((cc) => (
-                      <option key={cc.id} value={cc.id}>
-                        {cc.code} - {cc.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <SearchableSelect
+                  label="Centro de Costos"
+                  placeholder="Ninguno / General"
+                  items={searchableCostCenters}
+                  selectedId={selectedCostCenterId}
+                  onSelect={setSelectedCostCenterId}
+                />
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-600">
@@ -1084,25 +1416,14 @@ export function ReconcilePanel({
               </>
             ) : (
               <>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                    <BookOpen className="w-4 h-4 text-indigo-600" />
-                    Clasificación Contable *
-                  </label>
-                  <select
-                    value={selectedExpenseOrIncomeAccountId}
-                    onChange={(e) => setSelectedExpenseOrIncomeAccountId(e.target.value)}
-                    className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
-                    required
-                  >
-                    <option value="" disabled>Selecciona la cuenta de clasificación...</option>
-                    {accountingAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.code} - {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <SearchableSelect
+                  label="Clasificación Contable"
+                  placeholder="Selecciona la cuenta de clasificación..."
+                  items={searchableAccounts}
+                  selectedId={selectedExpenseOrIncomeAccountId}
+                  onSelect={setSelectedExpenseOrIncomeAccountId}
+                  required
+                />
               </>
             )}
 

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { doc, collection, getDocs, setDoc, query, where, updateDoc, addDoc, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Loader2, Landmark, CheckCircle, X, DollarSign, BookOpen, AlertCircle } from "lucide-react";
@@ -16,7 +17,7 @@ interface QuickReconcileModalProps {
 }
 
 export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess }: QuickReconcileModalProps) {
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [reconcileMode, setReconcileMode] = useState<"match" | "direct">("match");
 
@@ -118,15 +119,85 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
           const docType = isManual ? "gasto_manual" : "gasto";
           const docCollection = isManual ? "expenses" : "expenses_inbox";
 
+          let targetDocId = selectedDoc.id;
+          let targetDocType = docType;
+          let targetDocNumber = selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id;
+
+          if (!isManual) {
+            // Create the main expense record in "expenses" from SAT XML
+            const newExpenseId = crypto.randomUUID();
+            const sequenceNum = await getNextSequence(companyId, "gastos");
+            const numericVal = parseInt(sequenceNum.split("-")[1]) || 0;
+
+            const newPaid = (selectedDoc.paidAmount || 0) + absAmount;
+            const totalAmt = selectedDoc.total || 0;
+            const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
+
+            let mappedItems = [];
+            if (selectedDoc.items && selectedDoc.items.length > 0) {
+              mappedItems = selectedDoc.items.map((item: any) => ({
+                ...item,
+                accountId: selectedDoc.accountId || null,
+                locationId: selectedDoc.locationId || null,
+                costCenterId: selectedDoc.costCenterId || null
+              }));
+            } else {
+              mappedItems = [
+                {
+                  productId: null,
+                  variantId: null,
+                  productName: selectedDoc.concept || "Gasto desde XML",
+                  variantTitle: "",
+                  quantity: 1,
+                  unitCost: totalAmt,
+                  lineKey: "",
+                  costCenterId: selectedDoc.costCenterId || null,
+                  accountId: selectedDoc.accountId || null,
+                  locationId: selectedDoc.locationId || null
+                }
+              ];
+            }
+
+            const expenseDoc = {
+              id: newExpenseId,
+              number: numericVal,
+              documentNumber: sequenceNum,
+              date: selectedDoc.date || transaction.date || new Date().toISOString().split("T")[0],
+              vendorId: selectedDoc.vendorId || null,
+              vendorName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
+              concept: selectedDoc.concept || "Gasto desde XML " + (selectedDoc.invoiceNumber || selectedDoc.uuid || ""),
+              amount: totalAmt,
+              vatRate: selectedDoc.vatRate !== undefined ? selectedDoc.vatRate : 0.16,
+              locationId: selectedDoc.locationId || null,
+              locationName: selectedDoc.locationName || "",
+              accountId: selectedDoc.accountId || "",
+              accountCode: selectedDoc.accountCode || "",
+              accountName: selectedDoc.accountName || "",
+              paidAmount: absAmount,
+              status: status,
+              items: mappedItems,
+              satInvoiceId: selectedDoc.id,
+              createdAt: new Date().toISOString(),
+              createdBy: user?.email || "Sistema (Conciliación Rápida)",
+              _type: "gasto_manual"
+            };
+
+            await setDoc(doc(db, "companies", companyId, "expenses", newExpenseId), expenseDoc);
+
+            targetDocId = newExpenseId;
+            targetDocType = "gasto_manual";
+            targetDocNumber = sequenceNum;
+          }
+
           // 1. Create outflow record
           const outflowData = {
             amount: absAmount,
             date: transaction.date,
             method: "Transferencia",
             reference: transaction.reference || "CONCILIACION",
-            documentId: selectedDoc.id,
-            documentType: docType,
-            documentNumber: selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id,
+            documentId: targetDocId,
+            documentType: targetDocType,
+            documentNumber: targetDocNumber,
             providerName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
             bankAccountId: accountId,
             expenseAccountId: selectedDoc.accountId || "",
@@ -142,6 +213,9 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
           const totalAmt = isManual ? (selectedDoc.amount || 0) : (selectedDoc.total || 0);
           if (newPaid >= totalAmt - 0.01) {
             updates.status = "paid";
+          }
+          if (!isManual) {
+            updates.expenseId = targetDocId;
           }
           await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
         } else {

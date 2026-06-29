@@ -546,6 +546,78 @@ export function ReconcilePanel({
           return;
         }
 
+        let targetDocId = selectedDoc.id;
+        let targetDocType = docType;
+        let targetDocNumber = selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id;
+
+        if (isCharge && selectedDoc._type === "gasto") {
+          // Create the main expense record in the "expenses" collection from XML
+          const newExpenseId = crypto.randomUUID();
+          const sequenceNum = await getNextSequence(companyId, "gastos");
+          const numericVal = parseInt(sequenceNum.split("-")[1]) || 0;
+          const locationName = locations.find(l => l.id === selectedLocationId)?.name || "";
+
+          const totalAbsAmount = transactions.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+          const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
+          const totalAmt = selectedDoc.docTotal || selectedDoc.total || 0;
+          const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
+
+          let mappedItems = [];
+          if (selectedDoc.items && selectedDoc.items.length > 0) {
+            mappedItems = selectedDoc.items.map((item: any) => ({
+              ...item,
+              accountId: selectedExpenseOrIncomeAccountId,
+              locationId: selectedLocationId,
+              costCenterId: selectedCostCenterId || null
+            }));
+          } else {
+            mappedItems = [
+              {
+                productId: null,
+                variantId: null,
+                productName: selectedDoc.concept || "Gasto desde XML",
+                variantTitle: "",
+                quantity: 1,
+                unitCost: totalAmt,
+                lineKey: "",
+                costCenterId: selectedCostCenterId || null,
+                accountId: selectedExpenseOrIncomeAccountId,
+                locationId: selectedLocationId
+              }
+            ];
+          }
+
+          const expenseDoc = {
+            id: newExpenseId,
+            number: numericVal,
+            documentNumber: sequenceNum,
+            date: expenseDate || selectedDoc.date || new Date().toISOString().split("T")[0],
+            vendorId: selectedDoc.vendorId || null,
+            vendorName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
+            concept: selectedDoc.concept || "Gasto desde XML " + (selectedDoc.invoiceNumber || selectedDoc.uuid || ""),
+            amount: totalAmt,
+            vatRate: vatRate !== undefined ? vatRate : (selectedDoc.vatRate || 0.16),
+            locationId: selectedLocationId,
+            locationName,
+            accountId: selectedExpenseOrIncomeAccountId,
+            accountCode: selectedAccount?.code || "",
+            accountName: selectedAccount?.name || "",
+            paidAmount: totalAbsAmount,
+            status: status,
+            items: mappedItems,
+            satInvoiceId: selectedDoc.id,
+            createdAt: new Date().toISOString(),
+            createdBy: user?.email || "Sistema (Conciliación)",
+            _type: "gasto_manual"
+          };
+
+          await setDoc(doc(db, "companies", companyId, "expenses", newExpenseId), expenseDoc);
+
+          targetDocId = newExpenseId;
+          targetDocType = "gasto_manual";
+          targetDocNumber = sequenceNum;
+        }
+
         // Loop and reconcile each transaction
         for (const tx of transactions) {
           const txAbsAmount = Math.abs(tx.amount);
@@ -557,9 +629,9 @@ export function ReconcilePanel({
               date: tx.date,
               method: "Transferencia",
               reference: tx.reference || "CONCILIACION",
-              documentId: selectedDoc.id,
-              documentType: docType,
-              documentNumber: selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id,
+              documentId: targetDocId,
+              documentType: targetDocType,
+              documentNumber: targetDocNumber,
               providerName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
               bankAccountId: accountId,
               expenseAccountId: selectedExpenseOrIncomeAccountId,
@@ -609,7 +681,7 @@ export function ReconcilePanel({
               await addDoc(collection(db, "companies", companyId, "journal_entries"), {
                 type: "egreso",
                 date: tx.date,
-                description: `Pago de gasto (Conciliación): ${selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id}`,
+                description: `Pago de gasto (Conciliación): ${targetDocNumber}`,
                 referenceId: paymentRef.id,
                 referenceType: "payment_outflow",
                 createdAt: new Date().toISOString(),
@@ -683,6 +755,10 @@ export function ReconcilePanel({
               locationId: selectedLocationId,
               costCenterId: selectedCostCenterId || null
             }));
+          }
+
+          if (selectedDoc._type === "gasto") {
+            updates.expenseId = targetDocId;
           }
         }
 

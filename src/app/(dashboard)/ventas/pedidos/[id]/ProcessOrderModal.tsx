@@ -162,6 +162,11 @@ export function ProcessOrderModal({
       }
     } catch (e: any) {
       console.error(e);
+      if (e.message?.includes("was not found on the server") || e.message?.includes("Failed to find Server Action")) {
+        alert("El sistema ha sido actualizado recientemente. La página se recargará automáticamente para aplicar los cambios.");
+        window.location.reload();
+        return;
+      }
       alert(e.message || "Error al procesar el pedido.");
     } finally {
       setLoading(false);

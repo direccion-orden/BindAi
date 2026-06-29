@@ -234,8 +234,13 @@ export function InvoiceModal({
         console.error(result.details);
       }
 
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      if (e.message?.includes("was not found on the server") || e.message?.includes("Failed to find Server Action")) {
+        alert("El sistema ha sido actualizado recientemente. La página se recargará automáticamente para aplicar los cambios.");
+        window.location.reload();
+        return;
+      }
       alert("Error al intentar facturar.");
     } finally {
       setLoading(false);

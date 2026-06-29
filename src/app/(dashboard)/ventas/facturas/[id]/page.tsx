@@ -117,8 +117,13 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
         alert("Error de Facturama: " + result.error + "\n\nDetalles: " + JSON.stringify(result.details, null, 2));
         console.error("Facturama Error Details:", result.details);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      if (error?.message?.includes("was not found on the server") || error?.message?.includes("Failed to find Server Action")) {
+        alert("El sistema ha sido actualizado recientemente. La página se recargará automáticamente para aplicar los cambios.");
+        window.location.reload();
+        return;
+      }
       alert("Error al intentar timbrar.");
     } finally {
       setTimbrando(false);
@@ -150,8 +155,13 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
         alert("Error al cancelar en Facturama: " + result.error);
         console.error("Facturama Cancel Details:", result.details);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      if (error?.message?.includes("was not found on the server") || error?.message?.includes("Failed to find Server Action")) {
+        alert("El sistema ha sido actualizado recientemente. La página se recargará automáticamente para aplicar los cambios.");
+        window.location.reload();
+        return;
+      }
       alert("Error inesperado al cancelar la factura.");
     } finally {
       setCanceling(false);

@@ -527,9 +527,9 @@ export async function createAutofactura(companyId: string, remissionId: string, 
     const result = await createCfdi(facturamaPayload);
 
     if (result.success) {
-      const invoiceId = result.data.Id;
-      const invoiceUuid = result.data.Uuid || result.data.Complement?.TaxStamp?.Uuid || "";
-      const invoiceDate = result.data.Date || new Date().toISOString();
+      const invoiceId = result.data?.Id || result.data?.id || "";
+      const invoiceUuid = result.data?.Complement?.TaxStamp?.Uuid || result.data?.Uuid || result.data?.uuid || "";
+      const invoiceDate = result.data?.Date || result.data?.date || new Date().toISOString();
       const remissionNumber = remission.remissionNumber || "";
 
       // Update remission

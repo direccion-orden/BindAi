@@ -370,6 +370,9 @@ export function ProcessOrderModal({
       const invId = crypto.randomUUID();
       const invNumber = await getNextSequence(companyId, 'facturas');
 
+      const facturamaId = result.data?.Id || result.data?.id || null;
+      const facturamaUuid = result.data?.Complement?.TaxStamp?.Uuid || result.data?.Uuid || result.data?.uuid || null;
+
       await setDoc(doc(db, "companies", companyId, "facturas", invId), {
         id: invId,
         invoiceNumber: invNumber,
@@ -385,8 +388,8 @@ export function ProcessOrderModal({
         projectId: order.projectId || null,
         projectName: order.projectName || null,
         cfdiPayload: payload,
-        facturamaId: result.data.Id,
-        facturamaUuid: result.data.Uuid,
+        facturamaId: facturamaId,
+        facturamaUuid: facturamaUuid,
         status: "timbrada",
         createdAt: new Date().toISOString(),
         createdBy: order.createdBy
@@ -397,7 +400,7 @@ export function ProcessOrderModal({
         invoiceId: invId
       });
 
-      alert("Factura timbrada exitosamente (Folio Fiscal: " + (result.data.Uuid || 'Pendiente') + ")");
+      alert("Factura timbrada exitosamente (Folio Fiscal: " + (facturamaUuid || 'Pendiente') + ")");
       window.location.reload();
     } else {
       throw new Error("Error de Facturama: " + result.error);

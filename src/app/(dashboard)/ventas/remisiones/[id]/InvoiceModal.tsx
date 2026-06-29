@@ -212,12 +212,16 @@ export function InvoiceModal({
       const result = await createCfdi(facturamaPayload);
 
       if (result.success) {
+        const invoiceId = result.data?.Id || result.data?.id || null;
+        const invoiceUuid = result.data?.Complement?.TaxStamp?.Uuid || result.data?.Uuid || result.data?.uuid || null;
+        const invoiceDate = result.data?.Date || result.data?.date || new Date().toISOString();
+
         // Save invoice relation to remission document
         await updateDoc(doc(db, "companies", companyId, "remisiones", remission.id), {
           status: "facturada",
-          invoiceId: result.data.Id,
-          invoiceUuid: result.data.Uuid,
-          invoiceDate: result.data.Date
+          invoiceId: invoiceId,
+          invoiceUuid: invoiceUuid,
+          invoiceDate: invoiceDate
         });
         
         // Also update order to facturado if needed (optional)
@@ -227,7 +231,7 @@ export function InvoiceModal({
           });
         }
 
-        alert("Factura timbrada exitosamente (Folio Fiscal: " + (result.data.Uuid || 'Pendiente') + ")");
+        alert("Factura timbrada exitosamente (Folio Fiscal: " + (invoiceUuid || 'Pendiente') + ")");
         window.location.reload();
       } else {
         alert("Error de Facturama: " + result.error);

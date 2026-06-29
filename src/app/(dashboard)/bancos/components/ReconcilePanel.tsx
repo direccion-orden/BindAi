@@ -404,8 +404,17 @@ export function ReconcilePanel({
       } else {
         setVatRate(0.16);
       }
+
+      // Pre-fill expenseDate with document date if available, otherwise fallback to transaction date
+      if (selectedDoc.date) {
+        setExpenseDate(selectedDoc.date.substring(0, 10));
+      } else if (selectedDoc.createdAt) {
+        setExpenseDate(selectedDoc.createdAt.substring(0, 10));
+      } else if (transactions.length > 0) {
+        setExpenseDate(transactions[0].date || new Date().toISOString().split("T")[0]);
+      }
     }
-  }, [selectedDocId, sortedAndMatchedDocs, isCharge, reconcileMode]);
+  }, [selectedDocId, sortedAndMatchedDocs, isCharge, reconcileMode, transactions]);
 
   // Suggestion and sorting logic for own transfer matching
   const sortedTargetTransactions = useMemo(() => {
@@ -637,6 +646,7 @@ export function ReconcilePanel({
           updates.locationName = locationName;
           updates.costCenterId = selectedCostCenterId || null;
           updates.vatRate = vatRate;
+          updates.date = expenseDate;
           
           if (selectedDoc.items && selectedDoc.items.length > 0) {
             updates.items = selectedDoc.items.map((item: any) => ({
@@ -1263,6 +1273,19 @@ export function ReconcilePanel({
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-600">
+                          Fecha del Gasto *
+                        </label>
+                        <input
+                          type="date"
+                          value={expenseDate}
+                          onChange={(e) => setExpenseDate(e.target.value)}
+                          className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-600">
                           Sucursal *
                         </label>
                         <select
@@ -1279,7 +1302,9 @@ export function ReconcilePanel({
                           ))}
                         </select>
                       </div>
+                    </div>
 
+                    <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-600">
                           IVA Incluido *

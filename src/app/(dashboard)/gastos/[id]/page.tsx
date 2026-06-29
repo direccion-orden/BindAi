@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect, use, useRef } from "react";
 import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, increment, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Receipt, DollarSign, Calendar, CreditCard, BookOpen, FileText, CheckCircle2, AlertCircle, Landmark } from "lucide-react";
+import { Loader2, ArrowLeft, Receipt, DollarSign, Calendar, CreditCard, BookOpen, FileText, CheckCircle2, AlertCircle, Landmark, User, Building2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -48,6 +48,25 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
   const [expenseAccounts, setExpenseAccounts] = useState<any[]>([]);
   const [vatAccounts, setVatAccounts] = useState<any[]>([]);
   const [accountingAccounts, setAccountingAccounts] = useState<any[]>([]);
+
+  // Catalogs for manual expenses
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [costCenters, setCostCenters] = useState<any[]>([]);
+
+  // States for manual expense editing
+  const [editDate, setEditDate] = useState("");
+  const [editVendorId, setEditVendorId] = useState("");
+  const [editVendorSearchQuery, setEditVendorSearchQuery] = useState("");
+  const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+  const [editConcept, setEditConcept] = useState("");
+  const [editAmount, setEditAmount] = useState<number>(0);
+  const [editVatRate, setEditVatRate] = useState<number>(0.16);
+  const [editLocationId, setEditLocationId] = useState("");
+  const [editAccountId, setEditAccountId] = useState("");
+  const [editCostCenterId, setEditCostCenterId] = useState("");
+
+  const vendorSelectorRef = useRef<HTMLDivElement>(null);
 
   // Helper for UTF-8 Base64 decoding
   const decodeBase64Utf8 = (str: string) => {
@@ -141,6 +160,12 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
             invoiceNumber: invData.invoiceNumber || invData.documentNumber || "",
             xmlBase64: invData.xmlBase64 || null,
             accountId: invData.accountId || "",
+            costCenterId: invData.costCenterId || "",
+            locationId: invData.locationId || "",
+            vatRate: invData.vatRate !== undefined ? invData.vatRate : 0.16,
+            concept: invData.concept || "",
+            vendorId: invData.vendorId || "",
+            items: invData.items || []
           };
 
           setInvoice(normalizedInvoice);
@@ -152,6 +177,19 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
           setAmount(Number(outstanding.toFixed(2)));
           setDate(new Date().toISOString().split("T")[0]);
           setExpenseAccountId(normalizedInvoice.accountId || "");
+
+          // Pre-fill edit fields if manual
+          if (manual) {
+            setEditDate(normalizedInvoice.date);
+            setEditVendorId(normalizedInvoice.vendorId || "");
+            setEditVendorSearchQuery(normalizedInvoice.emisorName);
+            setEditConcept(normalizedInvoice.concept);
+            setEditAmount(normalizedInvoice.total);
+            setEditVatRate(normalizedInvoice.vatRate);
+            setEditLocationId(normalizedInvoice.locationId);
+            setEditAccountId(normalizedInvoice.accountId);
+            setEditCostCenterId(normalizedInvoice.costCenterId);
+          }
 
           // Parse XML base64 if present, else map manual items
           if (invData.xmlBase64) {
@@ -197,9 +235,39 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       setBankAccounts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
 
+    const unsubV = onSnapshot(query(collection(db, "companies", companyId, "vendors")), (snap) => {
+      setVendors(snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.LegalName || data.name || data.CommercialName || "Proveedor sin nombre",
+          rfc: data.rfc || data.RFC || ""
+        };
+      }));
+    });
+
+    const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
+      setLocations(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || d.data().Name || "Sucursal sin nombre"
+      })));
+    });
+
+    const unsubCC = onSnapshot(query(collection(db, "companies", companyId, "cost_centers"), orderBy("code", "asc")), (snap) => {
+      setCostCenters(snap.docs.map(d => ({
+        id: d.id,
+        code: d.data().code || "",
+        name: d.data().name || "",
+        isActive: d.data().isActive ?? true
+      })));
+    });
+
     return () => {
       unsubAcc();
       unsubBank();
+      unsubV();
+      unsubLoc();
+      unsubCC();
     };
   }, [companyId]);
 
@@ -237,6 +305,105 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       }
     }
   }, [selectedTransactionId, unreconciledTransactions]);
+
+  // Click outside for vendor dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (vendorSelectorRef.current && !vendorSelectorRef.current.contains(event.target as Node)) {
+        setShowVendorDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleUpdateManualExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!companyId || !invoice) return;
+
+    if (!editVendorId) {
+      alert("Debes seleccionar un proveedor.");
+      return;
+    }
+    if (!editAccountId) {
+      alert("Debes seleccionar una cuenta contable.");
+      return;
+    }
+    if (!editLocationId) {
+      alert("Debes seleccionar una sucursal.");
+      return;
+    }
+    if (editAmount <= 0) {
+      alert("El monto debe ser mayor a 0.");
+      return;
+    }
+    if (editAmount < (invoice.paidAmount || 0)) {
+      alert(`El monto total no puede ser menor al monto ya pagado ($${(invoice.paidAmount || 0).toLocaleString("es-MX")}).`);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const selectedVendor = vendors.find(v => v.id === editVendorId);
+      const vendorName = selectedVendor?.name || editVendorSearchQuery || "Proveedor";
+
+      const selectedAccount = expenseAccounts.find(a => a.id === editAccountId);
+      const selectedLocation = locations.find(l => l.id === editLocationId);
+      const locationName = selectedLocation?.name || "";
+
+      const subtotal = editAmount / (1 + editVatRate);
+      
+      const lineKey = invoice.items?.[0]?.lineKey || invoice.items?.[0]?.variantId || crypto.randomUUID();
+      const items = [{
+        productId: "custom",
+        variantId: lineKey,
+        productName: editConcept || "Gasto",
+        variantTitle: "SAT-XML",
+        quantity: 1,
+        unitCost: subtotal,
+        lineKey,
+        costCenterId: editCostCenterId || null,
+        accountId: editAccountId,
+        locationId: editLocationId
+      }];
+
+      let newStatus = invoice.status || "pending";
+      if (newStatus !== "cancelado") {
+        if (editAmount <= (invoice.paidAmount || 0) + 0.01) {
+          newStatus = "paid";
+        } else {
+          newStatus = "pending";
+        }
+      }
+
+      const expenseUpdates = {
+        date: editDate,
+        vendorId: editVendorId,
+        vendorName,
+        concept: editConcept,
+        amount: editAmount,
+        vatRate: editVatRate,
+        locationId: editLocationId,
+        locationName,
+        accountId: editAccountId,
+        accountCode: selectedAccount?.code || "",
+        accountName: selectedAccount?.name || "",
+        costCenterId: editCostCenterId || null,
+        status: newStatus,
+        items
+      };
+
+      await updateDoc(doc(db, "companies", companyId, "expenses", invoice.id), expenseUpdates);
+
+      alert("Gasto operativo actualizado exitosamente.");
+      window.location.reload();
+    } catch (error) {
+      console.error("Error updating manual expense:", error);
+      alert("Hubo un error al actualizar el gasto operativo.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
@@ -439,9 +606,15 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Detalles de Factura Recibida</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {isManual ? "Detalle de Gasto Operativo" : "Detalles de Factura Recibida"}
+            </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              RFC Emisor: <span className="font-bold text-slate-800">{invoice.emisorRfc}</span> | UUID: <span className="font-mono text-slate-500">{invoice.uuid}</span>
+              {isManual ? (
+                <>Número de Gasto: <span className="font-bold text-slate-800">{invoice.invoiceNumber || invoice.id}</span></>
+              ) : (
+                <>RFC Emisor: <span className="font-bold text-slate-800">{invoice.emisorRfc}</span> | UUID: <span className="font-mono text-slate-500">{invoice.uuid}</span></>
+              )}
             </p>
           </div>
         </div>
@@ -449,6 +622,10 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
           {invoice.status === "paid" ? (
             <div className="px-4 py-2 bg-emerald-50 text-emerald-700 font-bold rounded-lg flex items-center gap-2 border border-emerald-200 text-sm">
               <CheckCircle2 className="w-5 h-5" /> Gasto Pagado
+            </div>
+          ) : invoice.status === "cancelado" ? (
+            <div className="px-4 py-2 bg-rose-50 text-rose-700 font-bold rounded-lg flex items-center gap-2 border border-rose-200 text-sm">
+              <X className="w-5 h-5 text-rose-600 font-bold" /> Gasto Cancelado
             </div>
           ) : (
             <div className="px-4 py-2 bg-rose-50 text-rose-700 font-bold rounded-lg flex items-center gap-2 border border-rose-200 text-sm">
@@ -458,275 +635,655 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         </div>
       </div>
 
-      {/* Datos Generales y Configuración (Encabezado) */}
-      <div className="bg-card border rounded-xl p-5 shadow-sm space-y-6">
-        <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
-          <Receipt className="w-4 h-4 text-indigo-600" />
-          Datos Generales de la Factura y Asignación de Gasto
-        </h3>
-        
-        {/* Fila Horizontal de Metadatos */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 bg-slate-50 p-4 rounded-lg border border-slate-200 overflow-hidden text-sm">
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Proveedor (Emisor)</p>
-            <p className="font-bold text-slate-900 truncate" title={invoice.emisorName}>{invoice.emisorName}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">RFC</p>
-            <p className="font-bold text-slate-900">{invoice.emisorRfc}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Fecha Emisión</p>
-            <p className="font-bold text-slate-900">{invoice.date}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Total Facturado</p>
-            <p className="font-black text-rose-600">${(invoice.total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Folio Fiscal (UUID)</p>
-            <p className="font-mono text-xs text-slate-500 truncate" title={invoice.uuid}>{invoice.uuid}</p>
-          </div>
-        </div>
-
-        {/* Campos de Asignación / Registro de Pago */}
-        {saldoPendiente > 0.01 ? (
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+      {isManual ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Columna Izquierda: Formulario de Edición (Col 7) */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="bg-card border rounded-xl p-6 shadow-sm space-y-6 bg-white">
+              <h3 className="font-semibold text-base text-slate-800 flex items-center gap-2 border-b pb-2">
+                <Receipt className="w-5 h-5 text-indigo-600" />
+                Editar Datos del Gasto Operativo
+              </h3>
               
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                  <DollarSign className="w-3.5 h-3.5 text-slate-400" />
-                  Monto a Pagar *
-                </label>
-                <Input 
-                  type="number" 
-                  step="0.01" 
-                  min="0.01" 
-                  max={saldoPendiente + 0.01}
-                  value={amount} 
-                  onChange={e => setAmount(parseFloat(e.target.value) || 0)} 
-                  className="font-bold text-sm h-9 bg-background"
-                  required 
-                />
-              </div>
+              <form onSubmit={handleUpdateManualExpense} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Fecha */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      Fecha del Gasto *
+                    </label>
+                    <Input 
+                      type="date" 
+                      value={editDate} 
+                      onChange={e => setEditDate(e.target.value)} 
+                      className="text-sm h-10 bg-background"
+                      required 
+                    />
+                  </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  Fecha *
-                </label>
-                <Input 
-                  type="date" 
-                  value={date} 
-                  onChange={e => setDate(e.target.value)} 
-                  className="text-xs h-9 bg-background"
-                  required 
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5 text-slate-400" />
-                  Método *
-                </label>
-                <select 
-                  value={method} 
-                  onChange={e => setMethod(e.target.value)} 
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
-                  required
-                >
-                  {methods.map(m => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-slate-400" />
-                  Cuenta Origen *
-                </label>
-                <select
-                  value={bankAccountId}
-                  onChange={e => setBankAccountId(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
-                  required
-                >
-                  <option value="" disabled>Selecciona la cuenta origen...</option>
-                  {bankAccounts.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {(a.Name || a.name || 'Cuenta sin nombre')} ({(a.CurrencyCode || a.currency || 'MXN')})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {bankAccountId && (
-                <div className="space-y-1 sm:col-span-2 md:col-span-2 animate-in fade-in duration-200">
-                  <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                    <Landmark className="w-3.5 h-3.5 text-slate-400" />
-                    Vincular a Egreso Bancario Existente
-                  </label>
-                  <select
-                    value={selectedTransactionId}
-                    onChange={e => setSelectedTransactionId(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-[11px] shadow-sm focus-visible:outline-none font-semibold text-indigo-700"
-                  >
-                    <option value="manual">-- Registrar nuevo egreso manualmente --</option>
-                    {unreconciledTransactions.map(tx => (
-                      <option key={tx.id} value={tx.id}>
-                        {tx.date} - {tx.concept} (${Math.abs(tx.amount).toLocaleString('es-MX', {minimumFractionDigits:2})} {tx.reference ? `| Ref: ${tx.reference}` : ''})
-                      </option>
-                    ))}
-                  </select>
+                  {/* Proveedor */}
+                  <div className="space-y-1 relative" ref={vendorSelectorRef}>
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-slate-400" />
+                      Proveedor *
+                    </label>
+                    <div className="relative">
+                      <Input
+                        placeholder="Buscar o escribir proveedor..."
+                        value={editVendorSearchQuery}
+                        onChange={e => {
+                          setEditVendorSearchQuery(e.target.value);
+                          setEditVendorId("");
+                          setShowVendorDropdown(true);
+                        }}
+                        onFocus={() => setShowVendorDropdown(true)}
+                        className="text-sm h-10 bg-background pr-8 font-semibold text-slate-900"
+                        required
+                      />
+                      {editVendorSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditVendorId("");
+                            setEditVendorSearchQuery("");
+                            setShowVendorDropdown(true);
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {showVendorDropdown && (
+                      <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {vendors.filter(v => {
+                          const q = editVendorSearchQuery.toLowerCase();
+                          return v.name.toLowerCase().includes(q) || (v.rfc || "").toLowerCase().includes(q);
+                        }).length === 0 ? (
+                          <div className="p-3 text-xs text-slate-500 text-center">
+                            No se encontraron proveedores
+                          </div>
+                        ) : (
+                          vendors.filter(v => {
+                            const q = editVendorSearchQuery.toLowerCase();
+                            return v.name.toLowerCase().includes(q) || (v.rfc || "").toLowerCase().includes(q);
+                          }).map(vendor => (
+                            <button
+                              key={vendor.id}
+                              type="button"
+                              onClick={() => {
+                                setEditVendorId(vendor.id);
+                                setEditVendorSearchQuery(vendor.name);
+                                setShowVendorDropdown(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex flex-col border-b last:border-b-0"
+                            >
+                              <span className="font-semibold text-slate-800">{vendor.name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">{vendor.rfc}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                  <DollarSign className="w-3.5 h-3.5 text-slate-400" />
-                  IVA Incluido *
-                </label>
-                <select
-                  value={vatRate}
-                  onChange={e => setVatRate(Number(e.target.value))}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
-                  required
-                >
-                  <option value={0.16}>16% (General)</option>
-                  <option value={0.08}>8% (Frontera)</option>
-                  <option value={0}>0% / Exento</option>
-                </select>
-              </div>
-
-              {!invoice.accountId && (
+                {/* Concepto */}
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                    <BookOpen className="w-3.5 h-3.5 text-slate-400" />
-                    Clasificación de Gasto *
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                    Concepto General / Descripción *
                   </label>
-                  <select
-                    value={expenseAccountId}
-                    onChange={e => setExpenseAccountId(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
-                    required
+                  <Input 
+                    placeholder="Ej. Papelería oficina, compra de insumos..."
+                    value={editConcept} 
+                    onChange={e => setEditConcept(e.target.value)} 
+                    className="text-sm h-10 bg-background font-medium"
+                    required 
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Sucursal */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      Sucursal *
+                    </label>
+                    <select
+                      value={editLocationId}
+                      onChange={e => setEditLocationId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
+                      required
+                    >
+                      <option value="" disabled>Selecciona sucursal...</option>
+                      {locations.map(l => (
+                        <option key={l.id} value={l.id}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Cuenta Contable */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                      Cuenta Contable *
+                    </label>
+                    <select
+                      value={editAccountId}
+                      onChange={e => setEditAccountId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
+                      required
+                    >
+                      <option value="" disabled>Selecciona cuenta...</option>
+                      {expenseAccounts.map(a => (
+                        <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Centro de Costos */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                      Centro de Costos
+                    </label>
+                    <select
+                      value={editCostCenterId}
+                      onChange={e => setEditCostCenterId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
+                    >
+                      <option value="">Ninguno</option>
+                      {costCenters.map(cc => (
+                        <option key={cc.id} value={cc.id}>{cc.code} - {cc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Monto Total */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+                      Monto Total ($ MXN) *
+                    </label>
+                    <Input 
+                      type="number" 
+                      step="0.01" 
+                      min="0.01"
+                      value={editAmount} 
+                      onChange={e => setEditAmount(parseFloat(e.target.value) || 0)} 
+                      className="font-bold text-sm h-10 bg-background text-indigo-950"
+                      required 
+                    />
+                  </div>
+
+                  {/* Tasa de IVA */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+                      Tasa de IVA *
+                    </label>
+                    <select
+                      value={editVatRate}
+                      onChange={e => setEditVatRate(Number(e.target.value))}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
+                      required
+                    >
+                      <option value={0.16}>16% (General)</option>
+                      <option value={0.08}>8% (Frontera)</option>
+                      <option value={0}>0% / Exento</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t flex justify-end">
+                  <Button 
+                    type="submit" 
+                    disabled={saving} 
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2 px-6 h-10 shadow-sm"
                   >
-                    <option value="" disabled>Clasifica este egreso...</option>
-                    {expenseAccounts.map(a => (
-                      <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                    ))}
-                  </select>
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Guardar Cambios
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          {/* Columna Derecha: Saldo y Egresos (Col 5) */}
+          <div className="lg:col-span-5 space-y-6">
+            {/* Saldo de Pago y Formulario de Egreso */}
+            <div className="bg-card border rounded-xl p-6 shadow-sm space-y-6 bg-white">
+              <h3 className="font-semibold text-base text-slate-800 flex items-center gap-2 border-b pb-2">
+                <DollarSign className="w-5 h-5 text-emerald-600" />
+                Estatus de Liquidación y Pagos
+              </h3>
+
+              {/* Métricas rápidas */}
+              <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="text-center border-r border-slate-200 last:border-none">
+                  <p className="text-[10px] text-slate-500 font-semibold uppercase">Total</p>
+                  <p className="font-bold text-sm text-slate-900">${(invoice.total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="text-center border-r border-slate-200 last:border-none">
+                  <p className="text-[10px] text-slate-500 font-semibold uppercase">Pagado</p>
+                  <p className="font-bold text-sm text-emerald-600">${(invoice.paidAmount || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="text-center last:border-none">
+                  <p className="text-[10px] text-slate-500 font-semibold uppercase">Saldo</p>
+                  <p className="font-bold text-sm text-rose-600">${(saldoPendiente).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+
+              {saldoPendiente > 0.01 && invoice.status !== "cancelado" ? (
+                <form onSubmit={handleSave} className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                        <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+                        Monto a Pagar *
+                      </label>
+                      <Input 
+                        type="number" 
+                        step="0.01" 
+                        min="0.01" 
+                        max={saldoPendiente + 0.01}
+                        value={amount} 
+                        onChange={e => setAmount(parseFloat(e.target.value) || 0)} 
+                        className="font-bold text-sm h-9 bg-background text-indigo-950"
+                        required 
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        Fecha de Pago *
+                      </label>
+                      <Input 
+                        type="date" 
+                        value={date} 
+                        onChange={e => setDate(e.target.value)} 
+                        className="text-xs h-9 bg-background"
+                        required 
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+                        Método de Pago *
+                      </label>
+                      <select 
+                        value={method} 
+                        onChange={e => setMethod(e.target.value)} 
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
+                        required
+                      >
+                        {methods.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                        Cuenta de Banco (Origen) *
+                      </label>
+                      <select
+                        value={bankAccountId}
+                        onChange={e => setBankAccountId(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none font-semibold text-slate-800"
+                        required
+                      >
+                        <option value="" disabled>Selecciona la cuenta origen...</option>
+                        {bankAccounts.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {(a.Name || a.name || 'Cuenta sin nombre')} ({(a.CurrencyCode || a.currency || 'MXN')})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {bankAccountId && (
+                      <div className="space-y-1 animate-in fade-in duration-200">
+                        <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                          <Landmark className="w-3.5 h-3.5 text-slate-400" />
+                          Vincular a Egreso Bancario Existente
+                        </label>
+                        <select
+                          value={selectedTransactionId}
+                          onChange={e => setSelectedTransactionId(e.target.value)}
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-[11px] shadow-sm focus-visible:outline-none font-semibold text-indigo-700"
+                        >
+                          <option value="manual">-- Registrar nuevo egreso manualmente --</option>
+                          {unreconciledTransactions.map(tx => (
+                            <option key={tx.id} value={tx.id}>
+                              {tx.date} - {tx.concept} (${Math.abs(tx.amount).toLocaleString('es-MX', {minimumFractionDigits:2})} {tx.reference ? `| Ref: ${tx.reference}` : ''})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-slate-400" />
+                        Referencia / Notas de Pago
+                      </label>
+                      <Input 
+                        placeholder="Ej. SPEI 123456"
+                        value={reference} 
+                        onChange={e => setReference(e.target.value)} 
+                        className="h-9 text-xs bg-background"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <Button 
+                      type="submit" 
+                      disabled={saving} 
+                      className="w-full bg-rose-600 hover:bg-rose-700 text-white gap-2 h-10 font-bold text-xs shadow-sm animate-in fade-in"
+                    >
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
+                      Confirmar Pago / Egreso
+                    </Button>
+                  </div>
+                </form>
+              ) : invoice.status === "cancelado" ? (
+                <div className="p-4 bg-rose-50 text-rose-800 border border-rose-100 rounded-lg text-sm text-center font-bold shadow-sm">
+                  ✕ Este gasto operativo está cancelado.
+                </div>
+              ) : (
+                <div className="p-4 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-lg text-sm text-center font-bold shadow-sm">
+                  ✓ Este gasto operativo ya está totalmente liquidado.
                 </div>
               )}
-
-              <div className={invoice.accountId ? "space-y-1 md:col-span-2" : "space-y-1 md:col-span-1"}>
-                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-slate-400" />
-                  Referencia / Notas
-                </label>
-                <Input 
-                  placeholder="Ej. SPEI 123456"
-                  value={reference} 
-                  onChange={e => setReference(e.target.value)} 
-                  className="h-9 text-xs bg-background"
-                />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Datos Generales y Configuración (Encabezado) */}
+          <div className="bg-card border rounded-xl p-5 shadow-sm space-y-6">
+            <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
+              <Receipt className="w-4 h-4 text-indigo-600" />
+              Datos Generales de la Factura y Asignación de Gasto
+            </h3>
+            
+            {/* Fila Horizontal de Metadatos */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 bg-slate-50 p-4 rounded-lg border border-slate-200 overflow-hidden text-sm">
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Proveedor (Emisor)</p>
+                <p className="font-bold text-slate-900 truncate" title={invoice.emisorName}>{invoice.emisorName}</p>
               </div>
-
-              <div className="flex justify-end">
-                <Button 
-                  type="submit" 
-                  disabled={saving} 
-                  className="w-full bg-rose-600 hover:bg-rose-700 text-white gap-2 h-9 font-bold text-xs shadow-sm animate-in fade-in"
-                >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
-                  Confirmar Egreso
-                </Button>
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase mb-1">RFC</p>
+                <p className="font-bold text-slate-900">{invoice.emisorRfc}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Fecha Emisión</p>
+                <p className="font-bold text-slate-900">{invoice.date}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Total Facturado</p>
+                <p className="font-black text-rose-600">${(invoice.total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Folio Fiscal (UUID)</p>
+                <p className="font-mono text-xs text-slate-500 truncate" title={invoice.uuid}>{invoice.uuid}</p>
               </div>
             </div>
-            {vatRate > 0 && vatAccounts.length === 0 && (
-              <p className="text-[10px] text-rose-600 mt-1">Advertencia: No tienes una cuenta de IVA Acreditable Pagado (118) configurada.</p>
+
+            {/* Campos de Asignación / Registro de Pago */}
+            {saldoPendiente > 0.01 && invoice.status !== "cancelado" ? (
+              <form onSubmit={handleSave} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                  
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+                      Monto a Pagar *
+                    </label>
+                    <Input 
+                      type="number" 
+                      step="0.01" 
+                      min="0.01" 
+                      max={saldoPendiente + 0.01}
+                      value={amount} 
+                      onChange={e => setAmount(parseFloat(e.target.value) || 0)} 
+                      className="font-bold text-sm h-9 bg-background"
+                      required 
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      Fecha *
+                    </label>
+                    <Input 
+                      type="date" 
+                      value={date} 
+                      onChange={e => setDate(e.target.value)} 
+                      className="text-xs h-9 bg-background"
+                      required 
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+                      Método *
+                    </label>
+                    <select 
+                      value={method} 
+                      onChange={e => setMethod(e.target.value)} 
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
+                      required
+                    >
+                      {methods.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                      Cuenta Origen *
+                    </label>
+                    <select
+                      value={bankAccountId}
+                      onChange={e => setBankAccountId(e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none font-semibold text-slate-800"
+                      required
+                    >
+                      <option value="" disabled>Selecciona la cuenta origen...</option>
+                      {bankAccounts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {(a.Name || a.name || 'Cuenta sin nombre')} ({(a.CurrencyCode || a.currency || 'MXN')})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {bankAccountId && (
+                    <div className="space-y-1 sm:col-span-2 md:col-span-2 animate-in fade-in duration-200">
+                      <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                        <Landmark className="w-3.5 h-3.5 text-slate-400" />
+                        Vincular a Egreso Bancario Existente
+                      </label>
+                      <select
+                        value={selectedTransactionId}
+                        onChange={e => setSelectedTransactionId(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-[11px] shadow-sm focus-visible:outline-none font-semibold text-indigo-700"
+                      >
+                        <option value="manual">-- Registrar nuevo egreso manualmente --</option>
+                        {unreconciledTransactions.map(tx => (
+                          <option key={tx.id} value={tx.id}>
+                            {tx.date} - {tx.concept} (${Math.abs(tx.amount).toLocaleString('es-MX', {minimumFractionDigits:2})} {tx.reference ? `| Ref: ${tx.reference}` : ''})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+                      IVA Incluido *
+                    </label>
+                    <select
+                      value={vatRate}
+                      onChange={e => setVatRate(Number(e.target.value))}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
+                      required
+                    >
+                      <option value={0.16}>16% (General)</option>
+                      <option value={0.08}>8% (Frontera)</option>
+                      <option value={0}>0% / Exento</option>
+                    </select>
+                  </div>
+
+                  {!invoice.accountId && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                        Clasificación de Gasto *
+                      </label>
+                      <select
+                        value={expenseAccountId}
+                        onChange={e => setExpenseAccountId(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
+                        required
+                      >
+                        <option value="" disabled>Clasifica este egreso...</option>
+                        {expenseAccounts.map(a => (
+                          <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className={invoice.accountId ? "space-y-1 md:col-span-2" : "space-y-1 md:col-span-1"}>
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-slate-400" />
+                      Referencia / Notas
+                    </label>
+                    <Input 
+                      placeholder="Ej. SPEI 123456"
+                      value={reference} 
+                      onChange={e => setReference(e.target.value)} 
+                      className="h-9 text-xs bg-background"
+                    />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button 
+                      type="submit" 
+                      disabled={saving} 
+                      className="w-full bg-rose-600 hover:bg-rose-700 text-white gap-2 h-9 font-bold text-xs shadow-sm animate-in fade-in"
+                    >
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
+                      Confirmar Egreso
+                    </Button>
+                  </div>
+                </div>
+                {vatRate > 0 && vatAccounts.length === 0 && (
+                  <p className="text-[10px] text-rose-600 mt-1">Advertencia: No tienes una cuenta de IVA Acreditable Pagado (118) configurada.</p>
+                )}
+              </form>
+            ) : invoice.status === "cancelado" ? (
+              <div className="p-4 bg-rose-50 text-rose-800 border border-rose-100 rounded-lg text-sm text-center font-bold shadow-sm">
+                ✕ Este gasto operativo está cancelado y no admite nuevos egresos.
+              </div>
+            ) : (
+              <div className="p-4 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-lg text-sm text-center font-bold shadow-sm">
+                ✓ Esta factura ya está totalmente liquidada.
+              </div>
             )}
-          </form>
-        ) : (
-          <div className="p-4 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-lg text-sm text-center font-bold shadow-sm">
-            ✓ Esta factura ya está totalmente liquidada.
           </div>
-        )}
-      </div>
 
-      {/* 3. Concepts Table (Full Width) */}
-      <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b bg-slate-50/50 flex justify-between items-center">
-          <h3 className="font-semibold text-base flex items-center gap-2 text-slate-800">
-            <FileText className="w-4 h-4 text-indigo-500" />
-            Partidas y Conceptos
-          </h3>
-          <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 border text-slate-600 rounded">
-            {conceptos.length > 0 ? `${conceptos.length} Conceptos` : "1 Partida General"}
-          </span>
-        </div>
+          {/* 3. Concepts Table (Full Width) */}
+          <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b bg-slate-50/50 flex justify-between items-center">
+              <h3 className="font-semibold text-base flex items-center gap-2 text-slate-800">
+                <FileText className="w-4 h-4 text-indigo-500" />
+                Partidas y Conceptos
+              </h3>
+              <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 border text-slate-600 rounded">
+                {conceptos.length > 0 ? `${conceptos.length} Conceptos` : "1 Partida General"}
+              </span>
+            </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 border-b text-xs font-bold text-slate-500 uppercase">
-              <tr>
-                <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">Clave SAT</th>
-                <th className="px-4 py-3">Descripción</th>
-                <th className="px-4 py-3 text-right">Cant.</th>
-                <th className="px-4 py-3 text-right">Precio U.</th>
-                <th className="px-4 py-3 text-right">Importe</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {conceptos.length > 0 ? (
-                conceptos.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-3 font-medium text-slate-400">{idx + 1}</td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs bg-slate-100 border px-1.5 py-0.5 rounded text-slate-600">
-                        {item.claveProdServ || "N/A"}
-                      </span>
-                      {item.noIdentificacion && (
-                        <span className="block text-[10px] text-slate-400 font-mono mt-0.5">SKU: {item.noIdentificacion}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-slate-800 max-w-xs truncate" title={item.descripcion}>
-                      {item.descripcion}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-700">{item.cantidad} {item.unidad || "PZA"}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">${item.valorUnitario.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-900">${item.importe.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 border-b text-xs font-bold text-slate-500 uppercase">
+                  <tr>
+                    <th className="px-4 py-3">#</th>
+                    <th className="px-4 py-3">Clave SAT</th>
+                    <th className="px-4 py-3">Descripción</th>
+                    <th className="px-4 py-3 text-right">Cant.</th>
+                    <th className="px-4 py-3 text-right">Precio U.</th>
+                    <th className="px-4 py-3 text-right">Importe</th>
                   </tr>
-                ))
-              ) : (
-                <tr className="hover:bg-slate-50/50">
-                  <td className="px-4 py-3 text-slate-400">1</td>
-                  <td className="px-4 py-3 font-mono text-slate-400">-</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-700">Gasto General / Concepto Global</div>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">No se importaron conceptos individuales (Carga Metadatos)</span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-semibold text-slate-700">1.00 PZA</td>
-                  <td className="px-4 py-3 text-right text-slate-600">${(invoice.total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-900">${(invoice.total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y">
+                  {conceptos.length > 0 ? (
+                    conceptos.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3 font-medium text-slate-400">{idx + 1}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs bg-slate-100 border px-1.5 py-0.5 rounded text-slate-600">
+                            {item.claveProdServ || "N/A"}
+                          </span>
+                          {item.noIdentificacion && (
+                            <span className="block text-[10px] text-slate-400 font-mono mt-0.5">SKU: {item.noIdentificacion}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-800 max-w-xs truncate" title={item.descripcion}>
+                          {item.descripcion}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-700">{item.cantidad} {item.unidad || "PZA"}</td>
+                        <td className="px-4 py-3 text-right text-slate-600">${item.valorUnitario.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-3 text-right font-bold text-slate-900">${item.importe.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="hover:bg-slate-50/50">
+                      <td className="px-4 py-3 text-slate-400">1</td>
+                      <td className="px-4 py-3 font-mono text-slate-400">-</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-700">Gasto General / Concepto Global</div>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">No se importaron conceptos individuales (Carga Metadatos)</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-700">1.00 PZA</td>
+                      <td className="px-4 py-3 text-right text-slate-600">${(invoice.total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-900">${(invoice.total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-        {/* Warning if metadata only */}
-        {conceptos.length === 0 && (
-          <div className="p-4 bg-amber-50 text-amber-800 text-xs border-t border-amber-100 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
-            <p>
-              <strong>Detalle de partidas no disponible:</strong> Esta factura fue sincronizada desde los metadatos globales del SAT sin el archivo XML adjunto. Se muestra la partida global por el importe total.
-            </p>
+            {/* Warning if metadata only */}
+            {conceptos.length === 0 && (
+              <div className="p-4 bg-amber-50 text-amber-800 text-xs border-t border-amber-100 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                <p>
+                  <strong>Detalle de partidas no disponible:</strong> Esta factura fue sincronizada desde los metadatos globales del SAT sin el archivo XML adjunto. Se muestra la partida global por el importe total.
+                </p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
 
     </div>
   );

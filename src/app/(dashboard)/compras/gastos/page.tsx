@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, onSnapshot, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye } from "lucide-react";
+import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X } from "lucide-react";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 import Link from "next/link";
 
@@ -107,6 +107,28 @@ export default function GastosManualesPage() {
     }
   };
 
+  const handleCancelExpense = async (expenseId: string, currentStatus: string) => {
+    if (!companyId) return;
+
+    const confirmCancel = window.confirm(
+      currentStatus === "paid"
+        ? "¿Estás seguro de que deseas cancelar este gasto? Ya tiene egresos registrados."
+        : "¿Estás seguro de que deseas cancelar este gasto operativo?"
+    );
+
+    if (!confirmCancel) return;
+
+    try {
+      await updateDoc(doc(db, "companies", companyId, "expenses", expenseId), {
+        status: "cancelado"
+      });
+      alert("Gasto cancelado exitosamente.");
+    } catch (error) {
+      console.error("Error canceling expense:", error);
+      alert("Hubo un error al cancelar el gasto.");
+    }
+  };
+
   const renderSortIcon = (field: string) => {
     if (sortField !== field) {
       return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 ml-1.5 inline shrink-0" />;
@@ -132,6 +154,7 @@ export default function GastosManualesPage() {
     if (statusFilter !== "all") {
       if (statusFilter === "paid" && exp.status !== "paid") return false;
       if (statusFilter === "pending" && exp.status !== "pending") return false;
+      if (statusFilter === "cancelado" && exp.status !== "cancelado") return false;
     }
     // 3. Date range filter
     if (dateFrom || dateTo) {
@@ -258,6 +281,7 @@ export default function GastosManualesPage() {
               <option value="all">Todos</option>
               <option value="paid">Pagados</option>
               <option value="pending">Pendientes</option>
+              <option value="cancelado">Cancelados</option>
             </select>
           </div>
 
@@ -366,6 +390,10 @@ export default function GastosManualesPage() {
                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
                              Pagado
                            </span>
+                         ) : exp.status === "cancelado" ? (
+                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-200">
+                             Cancelado
+                           </span>
                          ) : (
                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200">
                              Pendiente
@@ -378,7 +406,7 @@ export default function GastosManualesPage() {
                        <td className="px-4 py-3 text-right text-emerald-600 font-semibold">
                          {formatMoney(exp.paidAmount || 0)}
                        </td>
-                       <td className={`px-4 py-3 text-right font-bold ${saldo > 0 ? "text-amber-600" : "text-slate-400"}`}>
+                       <td className={`px-4 py-3 text-right font-bold ${saldo > 0 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
                          {formatMoney(saldo)}
                        </td>
                        <td className="px-4 py-3 text-center">
@@ -393,7 +421,7 @@ export default function GastosManualesPage() {
                                <Eye className="w-4 h-4 text-indigo-600" />
                              </Button>
                            </Link>
-                           {saldo > 0.01 && (
+                           {saldo > 0.01 && exp.status !== "cancelado" && (
                              <Button 
                                variant="outline" 
                                size="icon" 
@@ -405,6 +433,17 @@ export default function GastosManualesPage() {
                                title="Registrar Pago"
                              >
                                <DollarSign className="w-4 h-4 font-bold" />
+                             </Button>
+                           )}
+                           {exp.status !== "cancelado" && (
+                             <Button 
+                               variant="outline" 
+                               size="icon" 
+                               onClick={() => handleCancelExpense(exp.id, exp.status)}
+                               className="h-8 w-8 bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 hover:text-rose-800 shrink-0"
+                               title="Cancelar Gasto"
+                             >
+                               <X className="w-4 h-4 font-bold" />
                              </Button>
                            )}
                          </div>

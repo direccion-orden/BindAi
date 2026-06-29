@@ -336,7 +336,11 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
           const engineItem = totals.processedItems?.find(ei => ei.id === (item.lineKey || item.variantId));
           const discountAmt = engineItem ? engineItem.finalDiscountAmt : 0;
           const itemUnitPriceExVAT = engineItem ? engineItem.unitPrice : (Number(item.unitPrice) || 0);
-          const subtotalItem = (item.quantity * itemUnitPriceExVAT) - discountAmt;
+          
+          const subtotalItem = engineItem ? engineItem.finalSubtotal : Number(((item.quantity * itemUnitPriceExVAT) - discountAmt).toFixed(4));
+          const taxTotalVal = engineItem ? engineItem.tax : Number((subtotalItem * 0.16).toFixed(4));
+          const totalVal = engineItem ? engineItem.total : Number((subtotalItem + taxTotalVal).toFixed(4));
+          
           return {
             ProductCode: "01010101",
             IdentificationNumber: item.variantId || "SKU",
@@ -350,14 +354,14 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
             TaxObject: "02",
             Taxes: [
               {
-                Total: Number((subtotalItem * 0.16).toFixed(4)),
+                Total: Number(taxTotalVal.toFixed(4)),
                 Name: "IVA",
                 Base: Number(subtotalItem.toFixed(4)),
                 Rate: 0.16,
                 IsRetention: false
               }
             ],
-            Total: Number((subtotalItem * 1.16).toFixed(4))
+            Total: Number(totalVal.toFixed(4))
           };
         })
       };

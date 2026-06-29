@@ -11,6 +11,7 @@ import { db } from "@/lib/firebase/client";
 
 // Re-use utility for sequence
 import { getNextSequence } from "@/lib/firebase/counters";
+import { distributeDiscountAndTax } from "@/lib/utils/discountEngine";
 
 export function ProcessOrderModal({ 
   isOpen, 
@@ -269,23 +270,15 @@ export function ProcessOrderModal({
 
   const buildFacturamaPayload = () => {
     const totalDocDiscount = Number(order.totalDiscount) || 0;
-    
-    // First calculate manual discounts per item
-    const itemsWithManual = order.items.map((item: any) => {
-      const itemGross = item.quantity * item.unitPrice;
-      const itemManualDiscount = itemGross * ((item.discountPercentage || 0) / 100);
-      const netBeforeGlobal = itemGross - itemManualDiscount;
-      return {
-        ...item,
-        itemGross,
-        itemManualDiscount,
-        netBeforeGlobal
-      };
-    });
+    const targetTax = Number(order.tax) || 0;
+    const targetTotal = Number(order.totalAmount) || 0;
 
-    const subtotalAfterItemDiscounts = itemsWithManual.reduce((sum: number, i: any) => sum + i.netBeforeGlobal, 0);
-    const totalManualDiscounts = itemsWithManual.reduce((sum: number, i: any) => sum + i.itemManualDiscount, 0);
-    const extraDiscount = Math.max(0, totalDocDiscount - totalManualDiscounts);
+    const distributedItems = distributeDiscountAndTax(
+      order.items || [],
+      totalDocDiscount,
+      targetTax,
+      targetTotal
+    );
 
     const payload: any = {
       Receiver: {
@@ -301,19 +294,15 @@ export function ProcessOrderModal({
       PaymentMethod: paymentMethod,
       Currency: "MXN",
       ExpeditionPlace: companyZipCode,
-      Items: itemsWithManual.map((item: any) => {
+      Items: distributedItems.map((item: any) => {
         const itemUnitPriceExVAT = item.unitPrice;
         const unitPriceRounded = Number(itemUnitPriceExVAT.toFixed(4));
         const subtotalVal = Number((item.quantity * unitPriceRounded).toFixed(4));
         
-        const ratio = subtotalAfterItemDiscounts > 0 ? (item.netBeforeGlobal / subtotalAfterItemDiscounts) : 0;
-        const itemExtraDiscount = extraDiscount * ratio;
-        const totalItemDiscount = item.itemManualDiscount + itemExtraDiscount;
-        const discountVal = Number(totalItemDiscount.toFixed(4));
-        
-        const baseVal = Number((subtotalVal - discountVal).toFixed(4));
-        const taxTotalVal = Number((baseVal * 0.16).toFixed(4));
-        const totalVal = Number((subtotalVal - discountVal + taxTotalVal).toFixed(4));
+        const discountVal = Number(item.finalDiscountAmt.toFixed(4));
+        const baseVal = Number(item.finalSubtotal.toFixed(4));
+        const taxTotalVal = Number(item.tax.toFixed(4));
+        const totalVal = Number(item.total.toFixed(4));
 
         return {
           ProductCode: item.satProductCode || "01010101",

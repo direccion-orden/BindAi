@@ -33,7 +33,7 @@ export interface DiscountEngineResult {
   total: number; // taxableSubtotal + tax
   appliedPromo?: EngineDiscount | null; // The promo that was effectively applied
   error?: string; // If a code was provided but invalid
-  processedItems?: (EngineItem & { finalDiscountAmt: number, finalSubtotal: number })[];
+  processedItems?: (EngineItem & { finalDiscountAmt: number; finalSubtotal: number; tax: number; total: number })[];
 }
 
 /**
@@ -176,8 +176,8 @@ export function calculateOrderTotals(
   const tax = round2(taxableSubtotal * 0.16); // 16% IVA
   const total = round2(taxableSubtotal + tax);
 
-  // 4. Distribute discounts to items for CFDI/Invoice generation
-  const processedItems = itemsExVAT.map(item => {
+  // 4. Distribute discounts and taxes to items for CFDI/Invoice generation with cent-by-cent adjustments
+  const rawItems = itemsExVAT.map(item => {
     const itemGross = item.unitPrice * item.quantity;
     const itemManualDiscount = itemGross * ((item.manualDiscountPercentage || 0) / 100);
     const itemNetBeforeGlobal = itemGross - itemManualDiscount;
@@ -213,10 +213,69 @@ export function calculateOrderTotals(
       }
     }
 
+    const rawDiscount = itemManualDiscount + itemGlobalDiscount + itemPromoDiscount;
     return {
-      ...item,
-      finalDiscountAmt: round2(itemManualDiscount + itemGlobalDiscount + itemPromoDiscount),
-      finalSubtotal: round2(itemGross - (itemManualDiscount + itemGlobalDiscount + itemPromoDiscount))
+      item,
+      itemGross,
+      rawDiscount
+    };
+  });
+
+  // Step 1: Assign and adjust rounded discounts to ensure Sum(discount) === totalDiscount exactly
+  let assignedDiscounts = rawItems.map(ri => round2(ri.rawDiscount));
+  let sumAssignedDiscounts = assignedDiscounts.reduce((s, v) => s + v, 0);
+  let discountDiff = round2(totalDiscount - sumAssignedDiscounts);
+
+  if (discountDiff !== 0 && rawItems.length > 0) {
+    const step = discountDiff > 0 ? 0.01 : -0.01;
+    let iterations = Math.round(Math.abs(discountDiff) * 100);
+    
+    for (let i = 0; i < rawItems.length && iterations > 0; i++) {
+      const idx = rawItems.length - 1 - i; // Adjust from last items
+      const target = round2(assignedDiscounts[idx] + step);
+      if (target >= 0 && target <= rawItems[idx].itemGross) {
+        assignedDiscounts[idx] = target;
+        iterations--;
+      }
+    }
+  }
+
+  // Step 2: Calculate item-level bases and unadjusted taxes
+  const itemBases = rawItems.map((ri, idx) => round2(ri.itemGross - assignedDiscounts[idx]));
+  let assignedTaxes = itemBases.map(base => round2(base * 0.16));
+  let sumAssignedTaxes = assignedTaxes.reduce((s, v) => s + v, 0);
+  let taxDiff = round2(tax - sumAssignedTaxes);
+
+  // Step 3: Adjust taxes to ensure Sum(tax) === tax exactly and keep within SAT tolerance
+  if (taxDiff !== 0 && rawItems.length > 0) {
+    const step = taxDiff > 0 ? 0.01 : -0.01;
+    let iterations = Math.round(Math.abs(taxDiff) * 100);
+
+    for (let i = 0; i < rawItems.length && iterations > 0; i++) {
+      const idx = rawItems.length - 1 - i;
+      const base = itemBases[idx];
+      const unadjusted = round2(base * 0.16);
+      const target = round2(assignedTaxes[idx] + step);
+      if (Math.abs(target - unadjusted) <= 0.015) {
+        assignedTaxes[idx] = target;
+        iterations--;
+      }
+    }
+  }
+
+  // Step 4: Map back to processedItems
+  const processedItems = rawItems.map((ri, idx) => {
+    const finalDiscountAmt = assignedDiscounts[idx];
+    const finalSubtotal = itemBases[idx];
+    const itemTax = assignedTaxes[idx];
+    const itemTotal = round2(finalSubtotal + itemTax);
+
+    return {
+      ...ri.item,
+      finalDiscountAmt,
+      finalSubtotal,
+      tax: itemTax,
+      total: itemTotal
     };
   });
 
@@ -238,4 +297,114 @@ export function calculateOrderTotals(
     error: codeError,
     processedItems
   };
+}
+
+export interface DistributeItemInput {
+  quantity: number;
+  unitPrice: number;
+  discountPercentage?: number;
+  manualDiscountPercentage?: number;
+  [key: string]: any;
+}
+
+/**
+ * Distributes a pre-calculated discount and tax among a set of items proportionally,
+ * adjusting for rounding differences (centavo a centavo) to match target totals exactly.
+ */
+export function distributeDiscountAndTax<T extends DistributeItemInput>(
+  items: T[],
+  totalDiscount: number,
+  targetTax: number,
+  targetTotal: number
+): (T & { finalDiscountAmt: number; finalSubtotal: number; tax: number; total: number })[] {
+  const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+
+  let subtotal = 0;
+  let itemDiscountsTotal = 0;
+
+  items.forEach(item => {
+    const pct = item.manualDiscountPercentage !== undefined ? item.manualDiscountPercentage : (item.discountPercentage || 0);
+    const itemGross = item.unitPrice * item.quantity;
+    const itemDiscount = itemGross * (pct / 100);
+    subtotal += itemGross;
+    itemDiscountsTotal += itemDiscount;
+  });
+
+  subtotal = round2(subtotal);
+  itemDiscountsTotal = round2(itemDiscountsTotal);
+  const subtotalAfterItemDiscounts = round2(subtotal - itemDiscountsTotal);
+  const extraDiscount = Math.max(0, totalDiscount - itemDiscountsTotal);
+
+  const rawItems = items.map(item => {
+    const pct = item.manualDiscountPercentage !== undefined ? item.manualDiscountPercentage : (item.discountPercentage || 0);
+    const itemGross = item.unitPrice * item.quantity;
+    const itemManualDiscount = itemGross * (pct / 100);
+    const itemNetBeforeGlobal = itemGross - itemManualDiscount;
+    const itemGlobalDiscount = subtotalAfterItemDiscounts > 0 ? extraDiscount * (itemNetBeforeGlobal / subtotalAfterItemDiscounts) : 0;
+    const rawDiscount = itemManualDiscount + itemGlobalDiscount;
+
+    return {
+      item,
+      itemGross,
+      rawDiscount
+    };
+  });
+
+  // Step 1: Assign and adjust rounded discounts to ensure Sum(discount) === totalDiscount exactly
+  let assignedDiscounts = rawItems.map(ri => round2(ri.rawDiscount));
+  let sumAssignedDiscounts = assignedDiscounts.reduce((s, v) => s + v, 0);
+  let discountDiff = round2(totalDiscount - sumAssignedDiscounts);
+
+  if (discountDiff !== 0 && rawItems.length > 0) {
+    const step = discountDiff > 0 ? 0.01 : -0.01;
+    let iterations = Math.round(Math.abs(discountDiff) * 100);
+    
+    for (let i = 0; i < rawItems.length && iterations > 0; i++) {
+      const idx = rawItems.length - 1 - i;
+      const target = round2(assignedDiscounts[idx] + step);
+      if (target >= 0 && target <= rawItems[idx].itemGross) {
+        assignedDiscounts[idx] = target;
+        iterations--;
+      }
+    }
+  }
+
+  // Step 2: Calculate item-level bases and unadjusted taxes
+  const itemBases = rawItems.map((ri, idx) => round2(ri.itemGross - assignedDiscounts[idx]));
+  let assignedTaxes = itemBases.map(base => round2(base * 0.16));
+  let sumAssignedTaxes = assignedTaxes.reduce((s, v) => s + v, 0);
+  let taxDiff = round2(targetTax - sumAssignedTaxes);
+
+  // Step 3: Adjust taxes to ensure Sum(tax) === targetTax and keep within SAT tolerance
+  if (taxDiff !== 0 && rawItems.length > 0) {
+    const step = taxDiff > 0 ? 0.01 : -0.01;
+    let iterations = Math.round(Math.abs(taxDiff) * 100);
+
+    for (let i = 0; i < rawItems.length && iterations > 0; i++) {
+      const idx = rawItems.length - 1 - i;
+      const base = itemBases[idx];
+      const unadjusted = round2(base * 0.16);
+      const target = round2(assignedTaxes[idx] + step);
+      if (Math.abs(target - unadjusted) <= 0.015) {
+        assignedTaxes[idx] = target;
+        iterations--;
+      }
+    }
+  }
+
+  // Step 4: Map back to T with extra fields
+  return rawItems.map((ri, idx) => {
+    const finalDiscountAmt = assignedDiscounts[idx];
+    const finalSubtotal = itemBases[idx];
+    const itemTax = assignedTaxes[idx];
+    const itemTotal = round2(finalSubtotal + itemTax);
+
+    return {
+      ...ri.item,
+      finalDiscountAmt,
+      finalSubtotal,
+      tax: itemTax,
+      total: itemTotal
+    };
+  });
 }

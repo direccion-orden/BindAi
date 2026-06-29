@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, use, useRef } from "react";
-import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, increment, orderBy } from "firebase/firestore";
+import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, increment, orderBy, where, deleteDoc, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Receipt, DollarSign, Calendar, CreditCard, BookOpen, FileText, CheckCircle2, AlertCircle, Landmark, User, Building2, Save, X } from "lucide-react";
+import { Loader2, ArrowLeft, Receipt, DollarSign, Calendar, CreditCard, BookOpen, FileText, CheckCircle2, AlertCircle, Landmark, User, Building2, Save, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -48,6 +48,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
   const [expenseAccounts, setExpenseAccounts] = useState<any[]>([]);
   const [vatAccounts, setVatAccounts] = useState<any[]>([]);
   const [accountingAccounts, setAccountingAccounts] = useState<any[]>([]);
+  const [associatedPayments, setAssociatedPayments] = useState<any[]>([]);
 
   // Catalogs for manual expenses
   const [vendors, setVendors] = useState<any[]>([]);
@@ -270,6 +271,24 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       unsubCC();
     };
   }, [companyId]);
+
+  // Fetch associated payments/outflows
+  useEffect(() => {
+    if (!companyId || !params.id) return;
+
+    const q = query(
+      collection(db, "companies", companyId, "outflows"),
+      where("documentId", "==", params.id)
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setAssociatedPayments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+      console.error("Error loading associated payments:", error);
+    });
+
+    return () => unsubscribe();
+  }, [companyId, params.id]);
 
   // Load unreconciled transactions for the selected bank account
   useEffect(() => {
@@ -590,6 +609,178 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeletePayment = async (payment: any) => {
+    if (!companyId) return;
+
+    const confirmCancel = window.confirm(
+      "¿Estás seguro de que deseas eliminar este egreso? Esta acción es irreversible y revertirá los saldos contables, el estatus de la factura y desvinculará el movimiento bancario."
+    );
+
+    if (!confirmCancel) return;
+
+    setSaving(true);
+    try {
+      // 1. Revert Bank Transaction reconciliation if exists
+      if (payment.bankTransactionId && payment.bankAccountId) {
+        try {
+          const txRef = doc(db, "companies", companyId, "bankAccounts", payment.bankAccountId, "transactions", payment.bankTransactionId);
+          await updateDoc(txRef, {
+            reconciled: false,
+            matchedAt: null,
+            reconcileType: null,
+            matchedDocumentId: null
+          });
+
+          // Add amount back to bank physical balance
+          await updateDoc(doc(db, "companies", companyId, "bankAccounts", payment.bankAccountId), {
+            balance: increment(payment.amount)
+          });
+
+          // Add amount back to bank accounting account balance
+          const bankAccount = bankAccounts.find(a => a.id === payment.bankAccountId);
+          const bankAccountingId = bankAccount?.accountId;
+          if (bankAccountingId) {
+            await updateDoc(doc(db, "companies", companyId, "accounts", bankAccountingId), {
+              balance: increment(payment.amount)
+            });
+          }
+        } catch (err) {
+          console.warn("Failed to revert bank transaction:", err);
+        }
+      }
+
+      // 2. Revert Journal Entries
+      try {
+        const jeSnap = await getDocs(
+          query(
+            collection(db, "companies", companyId, "journal_entries"),
+            where("referenceId", "==", payment.id),
+            where("referenceType", "==", "payment_outflow")
+          )
+        );
+
+        for (const jeDoc of jeSnap.docs) {
+          const jeData = jeDoc.data();
+          if (jeData.entries && jeData.entries.length > 0) {
+            for (const entry of jeData.entries) {
+              const debitAmt = entry.debit || 0;
+              const creditAmt = entry.credit || 0;
+              // Revert balance change: subtract debit, add credit
+              const diff = creditAmt - debitAmt;
+              if (diff !== 0) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", entry.accountId), {
+                  balance: increment(diff)
+                });
+              }
+            }
+          }
+          // Delete journal entry document
+          await deleteDoc(doc(db, "companies", companyId, "journal_entries", jeDoc.id));
+        }
+      } catch (err) {
+        console.warn("Failed to revert journal entries:", err);
+      }
+
+      // 3. Revert Manual Expense status and paidAmount
+      const diffPaidAmount = -payment.amount;
+      if (isManual) {
+        await updateDoc(doc(db, "companies", companyId, "expenses", invoice.id), {
+          paidAmount: increment(diffPaidAmount),
+          status: "pending"
+        });
+
+        // Also update linked SAT XML if exists
+        if (invoice.satInvoiceId) {
+          try {
+            await updateDoc(doc(db, "companies", companyId, "expenses_inbox", invoice.satInvoiceId), {
+              paidAmount: increment(diffPaidAmount),
+              status: "pending"
+            });
+          } catch (err) {
+            console.warn("Failed to update related SAT invoice:", err);
+          }
+        }
+      } else {
+        // XML directly
+        await updateDoc(doc(db, "companies", companyId, "expenses_inbox", invoice.id), {
+          paidAmount: increment(diffPaidAmount),
+          status: "pending"
+        });
+
+        // Also update linked manual expense if it exists
+        if (invoice.expenseId) {
+          try {
+            await updateDoc(doc(db, "companies", companyId, "expenses", invoice.expenseId), {
+              paidAmount: increment(diffPaidAmount),
+              status: "pending"
+            });
+          } catch (err) {
+            console.warn("Failed to update related manual expense:", err);
+          }
+        }
+      }
+
+      // 4. Delete the outflow document
+      await deleteDoc(doc(db, "companies", companyId, "outflows", payment.id));
+
+      alert("Pago revertido exitosamente.");
+      window.location.reload();
+    } catch (error) {
+      console.error("Error deleting payment:", error);
+      alert("Hubo un error al eliminar el egreso.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderPaymentsList = () => {
+    if (associatedPayments.length === 0) return null;
+
+    return (
+      <div className="bg-card border rounded-xl p-6 shadow-sm space-y-4 bg-white mt-6">
+        <h3 className="font-semibold text-base text-slate-800 flex items-center gap-2 border-b pb-2">
+          <Landmark className="w-5 h-5 text-indigo-600" />
+          Historial de Pagos y Egresos
+        </h3>
+        <div className="space-y-3">
+          {associatedPayments.map((payment) => (
+            <div key={payment.id} className="flex justify-between items-center p-3 bg-slate-50 border rounded-lg hover:bg-slate-100/70 transition-colors">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700">{payment.date}</span>
+                  <span className="text-[10px] px-2 py-0.5 bg-slate-200 border rounded-full font-medium text-slate-600 uppercase">{payment.method}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium truncate max-w-xs" title={payment.reference}>
+                  {payment.reference ? `Ref: ${payment.reference}` : "Sin referencia"}
+                </p>
+                {payment.bankTransactionId && (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded mt-0.5">
+                    Conciliado con Banco
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-sm text-rose-600">
+                  -${(payment.amount || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handleDeletePayment(payment)}
+                  disabled={saving}
+                  className="h-8 w-8 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 shrink-0"
+                  title="Eliminar y Revertir Pago"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   const methods = ["Efectivo", "Transferencia", "Tarjeta de Crédito", "Tarjeta de Débito", "Cheque", "Otro"];
@@ -1005,6 +1196,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                 </div>
               )}
             </div>
+            {renderPaymentsList()}
           </div>
         </div>
       ) : (
@@ -1209,6 +1401,8 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
               </div>
             )}
           </div>
+
+          {renderPaymentsList()}
 
           {/* 3. Concepts Table (Full Width) */}
           <div className="bg-card border rounded-xl shadow-sm overflow-hidden">

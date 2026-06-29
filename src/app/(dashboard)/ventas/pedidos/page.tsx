@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Copy, Eye, FileDown, Ban, DollarSign, FileSpreadsheet, ChevronRight, ChevronDown } from "lucide-react";
@@ -53,7 +53,23 @@ export default function PedidosPage() {
     const confirm = window.confirm("¿Estás seguro de que deseas cancelar este pedido?");
     if (!confirm) return;
     try {
-      await updateDoc(doc(db, "companies", companyId, "pedidos", orderId), {
+      const orderRef = doc(db, "companies", companyId, "pedidos", orderId);
+      const orderSnap = await getDoc(orderRef);
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data();
+        if (orderData.quoteId) {
+          try {
+            await updateDoc(doc(db, "companies", companyId, "quotes", orderData.quoteId), {
+              status: "negociacion",
+              orderId: null
+            });
+          } catch (e) {
+            console.warn("Failed to release related quote:", e);
+          }
+        }
+      }
+
+      await updateDoc(orderRef, {
         status: 'cancelado'
       });
       alert("Pedido cancelado con éxito");

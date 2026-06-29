@@ -281,6 +281,18 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     
     setCanceling(true);
     try {
+      // Release related quote if it exists
+      if (order.quoteId) {
+        try {
+          await updateDoc(doc(db, "companies", companyId, "quotes", order.quoteId), {
+            status: "negociacion",
+            orderId: null
+          });
+        } catch (e) {
+          console.warn("Failed to release related quote:", e);
+        }
+      }
+
       await updateDoc(doc(db, "companies", companyId, "pedidos", order.id), {
         status: "cancelado"
       });

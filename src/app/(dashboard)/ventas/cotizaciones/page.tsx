@@ -41,6 +41,11 @@ interface Quote {
   clientId?: string | null;
   warehouseId?: string | null;
   warehouseName?: string | null;
+  totalDiscount?: number;
+  globalDiscountType?: string;
+  globalDiscountValue?: number;
+  globalDiscountAmount?: number;
+  promoCode?: string | null;
 }
 
 const CRM_STAGES = [
@@ -282,6 +287,11 @@ export default function CotizacionesCRMPage() {
             clientName: quote.clientName,
             items: quote.items || [],
             subtotal: quote.subtotal || 0,
+            totalDiscount: quote.totalDiscount || 0,
+            globalDiscountType: quote.globalDiscountType || "none",
+            globalDiscountValue: quote.globalDiscountValue || 0,
+            globalDiscountAmount: quote.globalDiscountAmount || 0,
+            promoCode: quote.promoCode || null,
             tax: quote.tax || 0,
             totalAmount: quote.totalAmount,
             projectId: quote.projectId || null,

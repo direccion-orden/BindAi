@@ -448,8 +448,27 @@ export async function createAutofactura(companyId: string, remissionId: string, 
       else if (method === "puntos" || method === "saldofavor") paymentForm = "99"; // Por definir / Otros
     }
 
+    const totalDocDiscount = Number(remission.totalDiscount) || 0;
+    
+    // First calculate manual discounts per item
+    const itemsWithManual = remission.items.map((item: any) => {
+      const itemGross = item.quantity * item.unitPrice;
+      const itemManualDiscount = itemGross * ((item.discountPercentage || 0) / 100);
+      const netBeforeGlobal = itemGross - itemManualDiscount;
+      return {
+        ...item,
+        itemGross,
+        itemManualDiscount,
+        netBeforeGlobal
+      };
+    });
+
+    const subtotalAfterItemDiscounts = itemsWithManual.reduce((sum: number, i: any) => sum + i.netBeforeGlobal, 0);
+    const totalManualDiscounts = itemsWithManual.reduce((sum: number, i: any) => sum + i.itemManualDiscount, 0);
+    const extraDiscount = Math.max(0, totalDocDiscount - totalManualDiscounts);
+
     // Transform products and look up SAT codes if missing on remission
-    const items = await Promise.all(remission.items.map(async (item: any) => {
+    const items = await Promise.all(itemsWithManual.map(async (item: any) => {
       let satProductCode = item.satProductCode || "01010101";
       let satUnitCode = item.satUnitCode || "H87";
       let satUnitName = item.satUnitName || "PIEZA";
@@ -470,8 +489,13 @@ export async function createAutofactura(companyId: string, remissionId: string, 
         }
       }
 
-      const discountAmt = item.quantity * item.unitPrice * ((item.discountPercentage || 0) / 100);
-      const subtotalItem = (item.quantity * item.unitPrice) - discountAmt;
+      const ratio = subtotalAfterItemDiscounts > 0 ? (item.netBeforeGlobal / subtotalAfterItemDiscounts) : 0;
+      const itemExtraDiscount = extraDiscount * ratio;
+      const totalItemDiscount = item.itemManualDiscount + itemExtraDiscount;
+      const discountVal = Number(totalItemDiscount.toFixed(4));
+      
+      const subtotalItem = Number((item.quantity * item.unitPrice).toFixed(4));
+      const baseVal = Number((subtotalItem - discountVal).toFixed(4));
       
       return {
         ProductCode: satProductCode,
@@ -481,19 +505,19 @@ export async function createAutofactura(companyId: string, remissionId: string, 
         UnitCode: satUnitCode,
         UnitPrice: Number(item.unitPrice.toFixed(4)),
         Quantity: item.quantity,
-        Subtotal: Number(subtotalItem.toFixed(4)),
-        Discount: Number(discountAmt.toFixed(4)),
+        Subtotal: subtotalItem,
+        Discount: discountVal,
         TaxObject: "02",
         Taxes: [
           {
-            Total: Number((subtotalItem * 0.16).toFixed(4)),
+            Total: Number((baseVal * 0.16).toFixed(4)),
             Name: "IVA",
-            Base: Number(subtotalItem.toFixed(4)),
+            Base: baseVal,
             Rate: 0.16,
             IsRetention: false
           }
         ],
-        Total: Number((subtotalItem * 1.16).toFixed(4))
+        Total: Number((baseVal * 1.16).toFixed(4))
       };
     }));
 

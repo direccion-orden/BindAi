@@ -151,6 +151,25 @@ export function InvoiceModal({
   const handleGenerateInvoice = async () => {
     setLoading(true);
     try {
+      const totalDocDiscount = Number(remission.totalDiscount) || 0;
+      
+      // First calculate manual discounts per item
+      const itemsWithManual = remission.items.map((item: any) => {
+        const itemGross = item.quantity * item.unitPrice;
+        const itemManualDiscount = itemGross * ((item.discountPercentage || 0) / 100);
+        const netBeforeGlobal = itemGross - itemManualDiscount;
+        return {
+          ...item,
+          itemGross,
+          itemManualDiscount,
+          netBeforeGlobal
+        };
+      });
+
+      const subtotalAfterItemDiscounts = itemsWithManual.reduce((sum: number, i: any) => sum + i.netBeforeGlobal, 0);
+      const totalManualDiscounts = itemsWithManual.reduce((sum: number, i: any) => sum + i.itemManualDiscount, 0);
+      const extraDiscount = Math.max(0, totalDocDiscount - totalManualDiscounts);
+
       // Build Facturama CFDI 4.0 Payload
       const facturamaPayload: any = {
         Receiver: {
@@ -166,12 +185,16 @@ export function InvoiceModal({
         PaymentMethod: paymentMethod,
         Currency: "MXN",
         ExpeditionPlace: companyZipCode,
-        Items: remission.items.map((item: any) => {
+        Items: itemsWithManual.map((item: any) => {
           const itemUnitPriceExVAT = item.unitPrice;
-          const discountAmt = item.quantity * itemUnitPriceExVAT * ((item.discountPercentage || 0) / 100);
           const unitPriceRounded = Number(itemUnitPriceExVAT.toFixed(4));
           const subtotalVal = Number((item.quantity * unitPriceRounded).toFixed(4));
-          const discountVal = Number(discountAmt.toFixed(4));
+          
+          const ratio = subtotalAfterItemDiscounts > 0 ? (item.netBeforeGlobal / subtotalAfterItemDiscounts) : 0;
+          const itemExtraDiscount = extraDiscount * ratio;
+          const totalItemDiscount = item.itemManualDiscount + itemExtraDiscount;
+          const discountVal = Number(totalItemDiscount.toFixed(4));
+          
           const baseVal = Number((subtotalVal - discountVal).toFixed(4));
           const taxTotalVal = Number((baseVal * 0.16).toFixed(4));
           const totalVal = Number((subtotalVal - discountVal + taxTotalVal).toFixed(4));

@@ -141,6 +141,34 @@ function SearchableSelect({
   );
 }
 
+export const findBankAccountingAccount = (physicalBankAccount: any, accountingAccountsAll: any[]) => {
+  if (!physicalBankAccount) return null;
+  const bankAccountingId = physicalBankAccount.accountId;
+  if (bankAccountingId && bankAccountingId !== "undefined") {
+    const acc = accountingAccountsAll.find(a => a.id === bankAccountingId);
+    if (acc) return acc;
+  }
+  
+  // Fallback: search by name
+  const bankName = (physicalBankAccount.Name || physicalBankAccount.name || "").toLowerCase().trim();
+  if (bankName) {
+    // Try exact match first on bank accounts (102) or cash accounts (101)
+    let matchedAcc = accountingAccountsAll.find(a => 
+      (a.code?.startsWith("102") || a.code?.startsWith("101")) && 
+      a.name.toLowerCase().trim() === bankName
+    );
+    if (matchedAcc) return matchedAcc;
+
+    // Try partial match
+    matchedAcc = accountingAccountsAll.find(a => 
+      (a.code?.startsWith("102") || a.code?.startsWith("101")) && 
+      (bankName.includes(a.name.toLowerCase().trim()) || a.name.toLowerCase().trim().includes(bankName))
+    );
+    if (matchedAcc) return matchedAcc;
+  }
+  return null;
+};
+
 export function ReconcilePanel({
   transactions,
   accountId,
@@ -509,8 +537,8 @@ export function ReconcilePanel({
 
         const selectedAccount = accountingAccountsAll.find(a => a.id === selectedExpenseOrIncomeAccountId);
         const physicalBankAccount = bankAccounts.find(b => b.id === accountId);
-        const bankAccountingId = physicalBankAccount?.accountId;
-        const bankAccountingAccount = bankAccountingId ? accountingAccountsAll.find(a => a.id === bankAccountingId) : null;
+        const bankAccountingAccount = findBankAccountingAccount(physicalBankAccount, accountingAccountsAll);
+        const bankAccountingId = bankAccountingAccount?.id;
 
         if (isCharge && !bankAccountingAccount) {
           alert(`La cuenta/caja "${physicalBankAccount?.Name || physicalBankAccount?.name || 'seleccionada'}" no está enlazada a una cuenta contable. Por favor configúrala.`);
@@ -701,8 +729,8 @@ export function ReconcilePanel({
         const bankAccountsList = bankAccountSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
         const physicalBankAccount = bankAccountsList.find(b => b.id === accountId);
         
-        const bankAccountingId = physicalBankAccount?.accountId;
-        const bankAccountingAccount = bankAccountingId ? accountingAccountsAll.find(a => a.id === bankAccountingId) : null;
+        const bankAccountingAccount = findBankAccountingAccount(physicalBankAccount, accountingAccountsAll);
+        const bankAccountingId = bankAccountingAccount?.id;
 
         let expenseId = "";
         let sequenceNum = "";
@@ -941,11 +969,10 @@ export function ReconcilePanel({
           return;
         }
 
-        const currentBankAccountingId = currentBankAccount.accountId;
-        const targetBankAccountingId = targetBankAccount.accountId;
-
-        const currentAccountingAccount = currentBankAccountingId ? accountingAccountsAll.find(a => a.id === currentBankAccountingId) : null;
-        const targetAccountingAccount = targetBankAccountingId ? accountingAccountsAll.find(a => a.id === targetBankAccountingId) : null;
+        const currentAccountingAccount = findBankAccountingAccount(currentBankAccount, accountingAccountsAll);
+        const currentBankAccountingId = currentAccountingAccount?.id;
+        const targetAccountingAccount = findBankAccountingAccount(targetBankAccount, accountingAccountsAll);
+        const targetBankAccountingId = targetAccountingAccount?.id;
 
         // Mark current transaction as reconciled
         await updateDoc(doc(db, "companies", companyId, "bankAccounts", accountId, "transactions", currentTx.id), {

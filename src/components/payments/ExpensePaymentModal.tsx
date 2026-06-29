@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { doc, collection, addDoc, updateDoc, increment, query, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { Loader2, DollarSign, Calendar, CreditCard, FileText, BookOpen } from "lucide-react";
+import { findBankAccountingAccount } from "@/app/(dashboard)/bancos/components/ReconcilePanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -127,8 +128,8 @@ export function ExpensePaymentModal({ isOpen, onClose, document, documentType, c
       const physicalBankAccount = bankAccounts.find(a => a.id === bankAccountId);
       const expenseAccount = expenseAccounts.find(a => a.id === finalExpenseAccountId);
       
-      const bankAccountingId = physicalBankAccount?.accountId;
-      const bankAccountingAccount = bankAccountingId ? accountingAccounts.find(a => a.id === bankAccountingId) : null;
+      const bankAccountingAccount = findBankAccountingAccount(physicalBankAccount, accountingAccounts);
+      const bankAccountingId = bankAccountingAccount?.id;
 
       if (!bankAccountingAccount) {
          alert(`La cuenta/caja "${physicalBankAccount?.Name || physicalBankAccount?.name || 'seleccionada'}" no está enlazada a una cuenta contable. Por favor, elimínala y vuélvela a crear en Configuración > Cuentas.`);

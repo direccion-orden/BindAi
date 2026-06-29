@@ -48,6 +48,8 @@ function NuevoGastoForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const satId = searchParams.get("satId");
+  const receiptUrl = searchParams.get("receiptUrl");
+  const pendingGastoId = searchParams.get("pendingGastoId");
 
   // Catalogs
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -860,6 +862,18 @@ function NuevoGastoForm() {
         }
       }
 
+      if (pendingGastoId) {
+        try {
+          await updateDoc(doc(db, "companies", companyId, "gastosPendientes", pendingGastoId), {
+            status: "completed",
+            completedAt: new Date().toISOString(),
+            expenseId: expenseId
+          });
+        } catch (e) {
+          console.error("Error updating pending WhatsApp expense status:", e);
+        }
+      }
+
       alert("Gasto operativo registrado exitosamente.");
       router.push("/compras/gastos");
     } catch (err) {
@@ -877,7 +891,34 @@ function NuevoGastoForm() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6">
+    <div className={`mx-auto p-4 md:p-6 ${receiptUrl ? "max-w-[1600px] grid grid-cols-1 xl:grid-cols-2 gap-6" : "max-w-7xl space-y-6"}`}>
+      {receiptUrl && (
+        <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4 xl:sticky xl:top-20 xl:max-h-[calc(100vh-8rem)] flex flex-col">
+          <div className="flex items-center justify-between border-b pb-2">
+            <h3 className="font-semibold text-base text-indigo-950 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-indigo-600" />
+              Comprobante de WhatsApp
+            </h3>
+            <a 
+              href={receiptUrl} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-xs text-indigo-600 hover:underline font-semibold"
+            >
+              Abrir en nueva pestaña
+            </a>
+          </div>
+          <div className="flex-1 overflow-auto rounded-lg bg-slate-50 flex items-center justify-center min-h-[300px] border border-slate-100 p-2">
+            <img 
+              src={receiptUrl} 
+              alt="Comprobante de WhatsApp" 
+              className="max-w-full max-h-[500px] xl:max-h-[650px] object-contain rounded-md shadow-sm"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-6">
       
       {/* Header */}
       <div className="flex items-center gap-4">
@@ -1485,6 +1526,7 @@ function NuevoGastoForm() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

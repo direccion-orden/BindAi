@@ -300,15 +300,15 @@ export default function DashboardPage() {
                         </a>
                       ) : '-'}
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">${a.amount?.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-semibold">${a.balance?.toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">${(parseFloat(a.amount) || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-semibold">${(parseFloat(a.balance) || 0).toFixed(2)}</TableCell>
                     <TableCell className="text-center hidden md:table-cell">{getStatusBadge(a.status)}</TableCell>
                     <TableCell className="text-right">
                       <Button 
                         variant="outline" 
                         size="sm" 
                         onClick={(e) => { e.stopPropagation(); openModalFor(a); }}
-                        disabled={a.balance <= 0}
+                        disabled={(parseFloat(a.balance) || 0) <= 0}
                       >
                         Aplicar
                       </Button>
@@ -330,7 +330,7 @@ export default function DashboardPage() {
                                 <span className="text-muted-foreground w-20">{dateStr}</span>
                                 <span className="w-32 truncate">• {app.erpDocumentNumber}</span>
                                 <span className="font-medium text-foreground w-24">
-                                  ${app.amount?.toFixed(2)}
+                                  ${(parseFloat(app.amount) || 0).toFixed(2)}
                                 </span>
                               </div>
                             );

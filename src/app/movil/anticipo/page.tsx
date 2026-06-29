@@ -10,10 +10,7 @@ import {
   Loader2, 
   CheckCircle2, 
   AlertCircle, 
-  X,
-  CreditCard,
-  DollarSign,
-  TrendingDown
+  X
 } from "lucide-react";
 import { collection, query, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -33,7 +30,8 @@ export default function MobileAnticipo() {
   const router = useRouter();
 
   // State
-  const [clients, setClients] = useState<any[]>([]);
+  const [allClients, setAllClients] = useState<any[]>([]);
+  const [filteredClients, setFilteredClients] = useState<any[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
@@ -47,18 +45,28 @@ export default function MobileAnticipo() {
   const [paymentTerm, setPaymentTerm] = useState("3"); // Default Transferencia
   const [receivedAt, setReceivedAt] = useState(new Date().toISOString().split("T")[0]);
 
-  // Image Upload
+  // Image Upload & AI Extraction
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiExtractedFields, setAiExtractedFields] = useState<{
+    client?: boolean;
+    amount?: boolean;
+    date?: boolean;
+    reference?: boolean;
+    paymentMethod?: boolean;
+    bankAccount?: boolean;
+  }>({});
 
   // Status
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Load physical bank accounts on mount
+  // Load bank accounts and clients on mount
   useEffect(() => {
     if (!companyId) return;
+
     const loadBankAccounts = async () => {
       try {
         const q = query(collection(db, "companies", companyId, "bankAccounts"));
@@ -73,39 +81,46 @@ export default function MobileAnticipo() {
         console.error("Error loading bank accounts:", err);
       }
     };
+
+    const loadClients = async () => {
+      setClientsLoading(true);
+      try {
+        const q = query(collection(db, "companies", companyId, "clients"));
+        const snap = await getDocs(q);
+        const list = snap.docs.map(doc => ({
+          id: doc.id,
+          name: doc.data().name || doc.data().LegalName || doc.data().CommercialName || doc.data().ClientName || "Cliente sin nombre",
+          rfc: doc.data().rfc || doc.data().RFC || ""
+        }));
+        setAllClients(list);
+      } catch (err) {
+        console.error("Error loading clients:", err);
+      } finally {
+        setClientsLoading(false);
+      }
+    };
+
     loadBankAccounts();
+    loadClients();
   }, [companyId]);
 
-  // Search clients
-  const handleClientSearch = async (val: string) => {
+  // Search clients locally
+  const handleClientSearch = (val: string) => {
     setClientSearch(val);
-    if (val.trim().length < 2 || !companyId) {
-      setClients([]);
+    setAiExtractedFields(prev => ({ ...prev, client: false }));
+    
+    if (val.trim().length < 2) {
+      setFilteredClients([]);
       setShowClientList(false);
       return;
     }
 
-    setClientsLoading(true);
-    try {
-      const q = query(collection(db, "companies", companyId, "clients"));
-      const snap = await getDocs(q);
-      const all = snap.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().LegalName || doc.data().CommercialName || doc.data().ClientName || doc.data().name || "Cliente sin nombre",
-        rfc: doc.data().RFC || doc.data().rfc || ""
-      }));
-      
-      const filtered = all.filter(c => 
-        c.name.toLowerCase().includes(val.toLowerCase()) || 
-        c.rfc.toLowerCase().includes(val.toLowerCase())
-      );
-      setClients(filtered);
-      setShowClientList(true);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setClientsLoading(false);
-    }
+    const filtered = allClients.filter(c => 
+      c.name.toLowerCase().includes(val.toLowerCase()) || 
+      c.rfc.toLowerCase().includes(val.toLowerCase())
+    );
+    setFilteredClients(filtered);
+    setShowClientList(true);
   };
 
   const handleSelectClient = (c: any) => {
@@ -114,17 +129,94 @@ export default function MobileAnticipo() {
     setShowClientList(false);
   };
 
+  // Convert File to Base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  // Analyze receipt image with Gemini
+  const analyzeReceiptWithAI = async (file: File) => {
+    setIsAnalyzing(true);
+    setAiExtractedFields({});
+    try {
+      const base64 = await fileToBase64(file);
+      
+      const response = await fetch("/api/ai/analyze-receipt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          imageBase64: base64,
+          imageType: file.type,
+          clients: allClients,
+          bankAccounts: bankAccounts,
+          companyId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Error analizando el comprobante con la API");
+      }
+
+      const result = await response.json();
+      const updatedExtracted: typeof aiExtractedFields = {};
+
+      if (result.amount) {
+        setAmount(result.amount.toString());
+        updatedExtracted.amount = true;
+      }
+      if (result.date) {
+        setReceivedAt(result.date);
+        updatedExtracted.date = true;
+      }
+      if (result.reference) {
+        setReference(result.reference);
+        updatedExtracted.reference = true;
+      }
+      if (result.paymentTermId) {
+        setPaymentTerm(result.paymentTermId);
+        updatedExtracted.paymentMethod = true;
+      }
+      if (result.matchingBankAccount && result.matchingBankAccount.id) {
+        setSelectedAccountId(result.matchingBankAccount.id);
+        updatedExtracted.bankAccount = true;
+      }
+      if (result.matchingClient && result.matchingClient.id) {
+        const matched = allClients.find(c => c.id === result.matchingClient.id);
+        if (matched) {
+          setSelectedClient(matched);
+          setClientSearch(matched.name);
+          updatedExtracted.client = true;
+        }
+      }
+
+      setAiExtractedFields(updatedExtracted);
+    } catch (err) {
+      console.error("AI Analysis error:", err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
+      analyzeReceiptWithAI(file);
     }
   };
 
   const handleClearImage = () => {
     setImageFile(null);
     setImagePreview(null);
+    setAiExtractedFields({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -205,6 +297,7 @@ export default function MobileAnticipo() {
               setImageFile(null);
               setImagePreview(null);
               setSubmitStatus("idle");
+              setAiExtractedFields({});
             }}
           >
             Registrar Otro Anticipo
@@ -236,146 +329,25 @@ export default function MobileAnticipo() {
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between overflow-y-auto p-5 space-y-6">
         <div className="space-y-5">
           
-          {/* 1. Client Search Input */}
-          <div className="space-y-1.5 relative">
-            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">Cliente</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                className="pl-9 h-11 bg-slate-800/80 border-slate-700 text-slate-200 placeholder-slate-500 rounded-xl"
-                placeholder="Buscar por nombre o RFC..."
-                value={clientSearch}
-                onChange={(e) => handleClientSearch(e.target.value)}
-                onFocus={() => { if (clients.length > 0) setShowClientList(true); }}
-              />
-              {selectedClient && (
-                <button 
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full bg-slate-700 text-slate-300 hover:text-white"
-                  onClick={() => setSelectedClient(null)}
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-
-            {/* Clients Autocomplete List */}
-            {showClientList && (
-              <div className="absolute top-[70px] left-0 right-0 max-h-60 overflow-y-auto bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-40 divide-y divide-slate-700/50">
-                {clientsLoading ? (
-                  <div className="p-4 flex items-center justify-center gap-2 text-slate-400 text-xs">
-                    <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
-                    Buscando clientes...
-                  </div>
-                ) : clients.length === 0 ? (
-                  <div className="p-4 text-slate-400 text-xs text-center">No se encontraron clientes</div>
-                ) : (
-                  clients.map(c => (
-                    <div 
-                      key={c.id}
-                      className="p-3 hover:bg-slate-700/50 cursor-pointer text-left transition-colors"
-                      onClick={() => handleSelectClient(c)}
-                    >
-                      <p className="text-xs font-bold text-slate-200">{c.name}</p>
-                      {c.rfc && <p className="text-[10px] text-slate-500 mt-0.5">RFC: {c.rfc}</p>}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 2. Amount Input */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">Monto (MXN)</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-slate-400">$</span>
-              <Input
-                type="number"
-                step="0.01"
-                inputMode="decimal"
-                className="pl-8 h-12 bg-slate-800/80 border-slate-700 text-slate-200 text-xl font-bold rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-slate-600"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          {/* 3. Bank Account Selection */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">Cuenta Bancaria Receptora</label>
-            <select
-              className="flex h-11 w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              required
-            >
-              {bankAccounts.length === 0 ? (
-                <option value="">Cargando cuentas...</option>
-              ) : (
-                bankAccounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.name}</option>
-                ))
-              )}
-            </select>
-          </div>
-
-          {/* 4. Payment Method Tabs */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">Método de Pago</label>
-            <div className="grid grid-cols-3 gap-2 bg-slate-800/50 p-1 rounded-xl border border-slate-700">
-              {PAYMENT_TERMS.map(term => (
-                <button
-                  key={term.id}
-                  type="button"
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                    paymentTerm === term.id 
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" 
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                  onClick={() => setPaymentTerm(term.id)}
-                >
-                  {term.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 5. Date & Reference */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">Fecha</label>
-              <Input
-                type="date"
-                className="h-11 bg-slate-800/80 border-slate-700 text-slate-200 rounded-xl"
-                value={receivedAt}
-                onChange={(e) => setReceivedAt(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">Referencia</label>
-              <Input
-                className="h-11 bg-slate-800/80 border-slate-700 text-slate-200 rounded-xl"
-                placeholder="Opcional"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* 6. Photo Capture */}
+          {/* TOP OPTION: Photo / Gallery Upload */}
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider block">Foto del Comprobante</label>
             {imagePreview ? (
               <div className="relative rounded-xl overflow-hidden border border-slate-700 h-44 bg-slate-950">
                 <img src={imagePreview} alt="Receipt preview" className="w-full h-full object-contain" />
+                
+                {isAnalyzing && (
+                  <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3 animate-in fade-in">
+                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                    <span className="text-xs font-semibold text-slate-200">Analizando comprobante con IA...</span>
+                  </div>
+                )}
+                
                 <button 
                   type="button" 
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-slate-900/80 text-slate-300 hover:text-white"
+                  className="absolute top-2 right-2 p-1.5 rounded-full bg-slate-900/80 text-slate-300 hover:text-white z-10"
                   onClick={handleClearImage}
+                  disabled={isAnalyzing}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -407,6 +379,198 @@ export default function MobileAnticipo() {
             )}
           </div>
 
+          {/* 1. Cliente Input */}
+          <div className="space-y-1.5 relative">
+            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Cliente</span>
+              {aiExtractedFields.client && (
+                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20 animate-pulse">
+                  Sugerido con IA
+                </span>
+              )}
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                className="pl-9 h-11 bg-slate-800/80 border-slate-700 text-slate-200 placeholder-slate-500 rounded-xl"
+                placeholder="Buscar por nombre o RFC..."
+                value={clientSearch}
+                onChange={(e) => handleClientSearch(e.target.value)}
+                onFocus={() => { if (filteredClients.length > 0) setShowClientList(true); }}
+              />
+              {selectedClient && (
+                <button 
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full bg-slate-700 text-slate-300 hover:text-white"
+                  onClick={() => {
+                    setSelectedClient(null);
+                    setClientSearch("");
+                    setFilteredClients([]);
+                    setAiExtractedFields(prev => ({ ...prev, client: false }));
+                  }}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Clients Autocomplete List */}
+            {showClientList && (
+              <div className="absolute top-[70px] left-0 right-0 max-h-60 overflow-y-auto bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-40 divide-y divide-slate-700/50">
+                {clientsLoading ? (
+                  <div className="p-4 flex items-center justify-center gap-2 text-slate-400 text-xs">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                    Buscando clientes...
+                  </div>
+                ) : filteredClients.length === 0 ? (
+                  <div className="p-4 text-slate-400 text-xs text-center">No se encontraron clientes</div>
+                ) : (
+                  filteredClients.map(c => (
+                    <div 
+                      key={c.id}
+                      className="p-3 hover:bg-slate-700/50 cursor-pointer text-left transition-colors"
+                      onClick={() => handleSelectClient(c)}
+                    >
+                      <p className="text-xs font-bold text-slate-200">{c.name}</p>
+                      {c.rfc && <p className="text-[10px] text-slate-500 mt-0.5">RFC: {c.rfc}</p>}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 2. Monto Input */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Monto (MXN)</span>
+              {aiExtractedFields.amount && (
+                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                  Extraído con IA
+                </span>
+              )}
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-slate-400">$</span>
+              <Input
+                type="number"
+                step="0.01"
+                inputMode="decimal"
+                className="pl-8 h-12 bg-slate-800/80 border-slate-700 text-slate-200 text-xl font-bold rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-slate-600"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setAiExtractedFields(prev => ({ ...prev, amount: false }));
+                }}
+                required
+              />
+            </div>
+          </div>
+
+          {/* 3. Cuenta Bancaria Selection */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Cuenta Bancaria Receptora</span>
+              {aiExtractedFields.bankAccount && (
+                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20 animate-pulse">
+                  Asociado con IA
+                </span>
+              )}
+            </label>
+            <select
+              className="flex h-11 w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
+              value={selectedAccountId}
+              onChange={(e) => {
+                setSelectedAccountId(e.target.value);
+                setAiExtractedFields(prev => ({ ...prev, bankAccount: false }));
+              }}
+              required
+            >
+              {bankAccounts.length === 0 ? (
+                <option value="">Cargando cuentas...</option>
+              ) : (
+                bankAccounts.map(acc => (
+                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+                ))
+              )}
+            </select>
+          </div>
+
+          {/* 4. Payment Method Tabs */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Método de Pago</span>
+              {aiExtractedFields.paymentMethod && (
+                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                  Extraído con IA
+                </span>
+              )}
+            </label>
+            <div className="grid grid-cols-3 gap-2 bg-slate-800/50 p-1 rounded-xl border border-slate-700">
+              {PAYMENT_TERMS.map(term => (
+                <button
+                  key={term.id}
+                  type="button"
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all ${
+                    paymentTerm === term.id 
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" 
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                  onClick={() => {
+                    setPaymentTerm(term.id);
+                    setAiExtractedFields(prev => ({ ...prev, paymentMethod: false }));
+                  }}
+                >
+                  {term.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 5. Fecha Input (un solo campo por línea) */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Fecha</span>
+              {aiExtractedFields.date && (
+                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                  Extraído con IA
+                </span>
+              )}
+            </label>
+            <Input
+              type="date"
+              className="h-11 bg-slate-800/80 border-slate-700 text-slate-200 rounded-xl"
+              value={receivedAt}
+              onChange={(e) => {
+                setReceivedAt(e.target.value);
+                setAiExtractedFields(prev => ({ ...prev, date: false }));
+              }}
+              required
+            />
+          </div>
+
+          {/* 6. Referencia Input (un solo campo por línea) */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Referencia</span>
+              {aiExtractedFields.reference && (
+                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                  Extraído con IA
+                </span>
+              )}
+            </label>
+            <Input
+              className="h-11 bg-slate-800/80 border-slate-700 text-slate-200 rounded-xl"
+              placeholder="Ej. Clave de rastreo o folio"
+              value={reference}
+              onChange={(e) => {
+                setReference(e.target.value);
+                setAiExtractedFields(prev => ({ ...prev, reference: false }));
+              }}
+            />
+          </div>
+
         </div>
 
         {/* Submit Button */}
@@ -421,7 +585,7 @@ export default function MobileAnticipo() {
           <Button 
             type="submit" 
             className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl gap-2 flex items-center justify-center shadow-lg shadow-indigo-600/15"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isAnalyzing}
           >
             {isSubmitting ? (
               <>

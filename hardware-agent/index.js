@@ -149,6 +149,26 @@ app.post('/api/denomination', async (req, res) => {
     }
 });
 
+// GET /api/systemoptions - Obtener opciones del sistema (incluye maxPayoutlevel)
+app.get('/api/systemoptions', async (req, res) => {
+    try {
+        const data = await makeRecyclerRequest('GET', '/systemoptions');
+        res.json(data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });
+    }
+});
+
+// POST /api/systemoptions - Modificar opciones del sistema
+app.post('/api/systemoptions', async (req, res) => {
+    try {
+        const data = await makeRecyclerRequest('POST', '/systemoptions', req.body);
+        res.json(data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json({ error: error.message, details: error.response?.data });
+    }
+});
+
 // Iniciar Servidor
 app.listen(PORT, () => {
     console.log(`========================================`);

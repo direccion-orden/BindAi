@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileText } from "lucide-react";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
@@ -158,6 +158,220 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
     }
   };
 
+  const loadLogoAsDataUrl = (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      const svgW = 588;
+      const svgH = 135;
+      img.width = svgW;
+      img.height = svgH;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const scale = 3;
+        canvas.width = svgW * scale;
+        canvas.height = svgH * scale;
+        const ctx = canvas.getContext('2d')!;
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, svgW, svgH);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = reject;
+      img.src = '/logo.svg';
+    });
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!anticipo) return;
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+
+      const TAUPE_DARK = [56, 52, 50];      // HSL(38, 6%, 22%)
+      const TAUPE_MID = [120, 113, 108];     // HSL(38, 6%, 45%)
+      const TAUPE_LIGHT = [210, 206, 201];   // HSL(38, 8%, 85%)
+      const TAUPE_BG = [243, 241, 238];      // HSL(38, 13%, 94%)
+      const ACCENT = [122, 107, 140];        // HSL(266, 12%, 52%)
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      let y = 20;
+
+      // --- 1. Logo + Header ---
+      const logoH = 11.5;
+      const logoW = logoH * (293.75 / 67.31); // aspect ratio from logo SVG
+      try {
+        const logoDataUrl = await loadLogoAsDataUrl();
+        doc.addImage(logoDataUrl, 'PNG', margin, y, logoW, logoH);
+      } catch (err) {
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+        doc.text("BIND AI", margin, y + 8);
+      }
+
+      // Title on the right
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      doc.text("RECIBO DE ANTICIPO", pageWidth - margin, y + 5, { align: "right" });
+      
+      const folio = anticipo.folio 
+        ? `ANT-${String(anticipo.folio).padStart(4, '0')}` 
+        : `ANT-${anticipo.id.substring(0, 5).toUpperCase()}`;
+      
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+      doc.text(folio, pageWidth - margin, y + 10, { align: "right" });
+
+      y += logoH + 5;
+
+      // Thin divider
+      doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+      doc.setLineWidth(0.4);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 8;
+
+      // --- 2. Info Box (Client & General Info) ---
+      doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+      doc.roundedRect(margin, y, pageWidth - margin * 2, 28, 2, 2, "F");
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      
+      // Fecha
+      const receivedDateStr = anticipo.receivedAt 
+        ? new Date(anticipo.receivedAt + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })
+        : (anticipo.createdAt?.toDate ? anticipo.createdAt.toDate().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" }) : '—');
+      
+      doc.text("FECHA:", margin + 5, y + 6);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      doc.text(receivedDateStr, margin + 25, y + 6);
+
+      // Cliente
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      doc.text("RECIBIDO DE:", margin + 5, y + 13);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      doc.text(anticipo.clientName || '—', margin + 25, y + 13);
+
+      // Concepto
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      doc.text("CONCEPTO:", margin + 5, y + 20);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      const referenceStr = anticipo.reference || 'Anticipo de fondos para futuras compras';
+      doc.text(referenceStr, margin + 25, y + 20, { maxWidth: pageWidth - margin * 2 - 32 });
+
+      y += 36;
+
+      // --- 3. Table desglosada ---
+      // Header
+      doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+      doc.roundedRect(margin, y, pageWidth - margin * 2, 8, 1, 1, "F");
+
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255);
+      doc.text("DESCRIPCIÓN", margin + 4, y + 5.5);
+      doc.text("FORMA DE PAGO", margin + 70, y + 5.5);
+      doc.text("CUENTA DESTINO", margin + 115, y + 5.5);
+      doc.text("MONTO ORIGINAL", pageWidth - margin - 4, y + 5.5, { align: "right" });
+
+      y += 8;
+
+      // Row background
+      doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+      doc.rect(margin, y, pageWidth - margin * 2, 9, "F");
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      doc.text("Anticipo de Cliente", margin + 4, y + 6);
+      doc.text(anticipo.paymentTermName || 'N/A', margin + 70, y + 6);
+      doc.text(anticipo.bankAccountName || 'N/A', margin + 115, y + 6);
+      
+      const amountStr = (parseFloat(anticipo.amount) || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+      doc.setFont("helvetica", "bold");
+      doc.text(amountStr, pageWidth - margin - 4, y + 6, { align: "right" });
+
+      y += 9;
+
+      // Thin border line below row
+      doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+      doc.setLineWidth(0.3);
+      doc.line(margin, y, pageWidth - margin, y);
+
+      y += 10;
+
+      // --- 4. Summary box ---
+      const totalBoxW = 75;
+      const totalBoxH = 22;
+      const totalBoxX = pageWidth - margin - totalBoxW;
+      
+      doc.setFillColor(TAUPE_BG[0], TAUPE_BG[1], TAUPE_BG[2]);
+      doc.roundedRect(totalBoxX, y, totalBoxW, totalBoxH, 1.5, 1.5, "F");
+
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      doc.text("Monto Total Recibido:", totalBoxX + 4, y + 6.5);
+      
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+      doc.text(amountStr, pageWidth - margin - 4, y + 6.5, { align: "right" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      doc.text("Saldo Disponible:", totalBoxX + 4, y + 15);
+
+      const balanceStr = (parseFloat(anticipo.balance) || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+      doc.setFontSize(10.5);
+      doc.text(balanceStr, pageWidth - margin - 4, y + 15, { align: "right" });
+
+      y += totalBoxH + 30;
+
+      // --- 5. Signatures ---
+      const sigLineW = 50;
+      const sigY = y + 15;
+      
+      // Cajero signature line
+      const sigCajeroX = margin + 15;
+      doc.setDrawColor(TAUPE_LIGHT[0], TAUPE_LIGHT[1], TAUPE_LIGHT[2]);
+      doc.setLineWidth(0.4);
+      doc.line(sigCajeroX, sigY, sigCajeroX + sigLineW, sigY);
+      
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      doc.text("Recibido por (Cajero)", sigCajeroX + sigLineW / 2, sigY + 5, { align: "center" });
+
+      // Cliente signature line
+      const sigClienteX = pageWidth - margin - 15 - sigLineW;
+      doc.line(sigClienteX, sigY, sigClienteX + sigLineW, sigY);
+      doc.text("Firma de Conformidad (Cliente)", sigClienteX + sigLineW / 2, sigY + 5, { align: "center" });
+
+      // --- 6. Footer ---
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(TAUPE_MID[0], TAUPE_MID[1], TAUPE_MID[2]);
+      const footerMsg = "Este documento es un comprobante de anticipo de fondos de control interno y no constituye un comprobante fiscal digital (CFDI) en este momento.";
+      doc.text(footerMsg, pageWidth / 2, 262, { align: "center" });
+
+      doc.save(`Recibo-Anticipo-${folio}.pdf`);
+    } catch (err: any) {
+      console.error("Error generating PDF", err);
+      alert("Hubo un error al generar el PDF del recibo.");
+    }
+  };
+
   if (!anticipo) return null;
 
   const canDelete = !anticipo.applications || anticipo.applications.length === 0;
@@ -259,7 +473,17 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
                 </Button>
             )}
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex gap-2 w-full sm:w-auto font-medium">
+            <Button 
+              variant="outline"
+              type="button"
+              className="flex-1 sm:flex-none gap-1.5" 
+              onClick={handleDownloadPDF}
+              disabled={isSaving || isUpdatingStatus}
+            >
+              <FileText className="w-4 h-4 text-indigo-600" />
+              Descargar PDF
+            </Button>
             <Button variant="ghost" className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)} disabled={isSaving || isUpdatingStatus}>
               Cerrar
             </Button>

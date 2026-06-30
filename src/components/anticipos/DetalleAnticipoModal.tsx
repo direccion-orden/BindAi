@@ -378,7 +378,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Administrar Anticipo</DialogTitle>
           <DialogDescription>

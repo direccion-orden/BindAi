@@ -639,7 +639,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         accountId,
         accountCode,
         accountName,
-        status: 'activa',
+        status: 'pagada',
         createdAt: new Date().toISOString(),
         createdBy: user?.email || "POS",
         isPosSale: true,
@@ -770,6 +770,152 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           locationName: branchName || "",
           createdAt: new Date().toISOString()
         }));
+      }
+
+      // --- ACTUALIZACIÓN DE SALDOS CONTABLES Y DE CAJA ---
+      try {
+        // Cargar cuentas físicas
+        const bankAccountsSnap = await getDocs(collection(db, "companies", companyId, "bankAccounts"));
+        const physicalBankAccounts = bankAccountsSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+
+        // Cargar catálogo contable
+        const accountsSnap = await getDocs(collection(db, "companies", companyId, "accounts"));
+        const accountingAccounts = accountsSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+
+        // Buscar caja de la sucursal en bankAccounts
+        const branchCashAccount = physicalBankAccounts.find(a => 
+          (a.LocationID === branchId || a.locationId === branchId) && 
+          (a.Name?.toLowerCase().includes("efectivo") || a.name?.toLowerCase().includes("efectivo") || a.Name?.toLowerCase().includes("caja") || a.name?.toLowerCase().includes("caja"))
+        );
+
+        // Buscar cuenta BBVA o default en bankAccounts
+        const defaultBankAccount = physicalBankAccounts.find(a => 
+          a.Name?.toLowerCase().includes("bbva") || a.name?.toLowerCase().includes("bbva")
+        ) || physicalBankAccounts.find(a => a.Name?.toLowerCase().includes("banco") || a.name?.toLowerCase().includes("banco")) || physicalBankAccounts[0];
+
+        // Cuenta contable general de caja (101-01-001)
+        const generalCashAccountingAccount = accountingAccounts.find(a => a.code === "101-01-001") || accountingAccounts.find(a => a.code.startsWith("101") && a.level >= 2);
+        
+        // Cuenta contable general de IVA trasladado cobrado (208)
+        const vatAccountingAccount = accountingAccounts.find(a => a.code.startsWith("208") && a.level >= 2);
+
+        const journalEntries = [];
+
+        // Procesar cada pago recibido
+        for (const p of payments) {
+          let physicalAccount = null;
+          let accountingAccount = null;
+
+          if (p.method === 'Efectivo') {
+            physicalAccount = branchCashAccount;
+
+            if (branchCashAccount && branchCashAccount.accountId) {
+              accountingAccount = accountingAccounts.find(a => a.id === branchCashAccount.accountId);
+            }
+            if (!accountingAccount && branchCashAccount) {
+              accountingAccount = accountingAccounts.find(a => a.name === (branchCashAccount.Name || branchCashAccount.name));
+            }
+            if (!accountingAccount) {
+              accountingAccount = generalCashAccountingAccount;
+            }
+          } else {
+            physicalAccount = defaultBankAccount;
+
+            if (defaultBankAccount && defaultBankAccount.accountId) {
+              accountingAccount = accountingAccounts.find(a => a.id === defaultBankAccount.accountId);
+            }
+            if (!accountingAccount && defaultBankAccount) {
+              accountingAccount = accountingAccounts.find(a => a.name === (defaultBankAccount.Name || defaultBankAccount.name));
+            }
+            if (!accountingAccount) {
+              accountingAccount = accountingAccounts.find(a => a.code === "102-01-002") || accountingAccounts.find(a => a.name?.toLowerCase().includes("bbva")) || accountingAccounts.find(a => a.code.startsWith("102") && a.level >= 2);
+            }
+          }
+
+          // A. Incrementar saldo en bankAccounts
+          if (physicalAccount) {
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", physicalAccount.id), {
+              balance: increment(p.amount),
+              Balance: increment(p.amount)
+            });
+
+            // Registrar transacción en la subcolección
+            await addDoc(collection(db, "companies", companyId, "bankAccounts", physicalAccount.id, "transactions"), sanitizeFirestoreData({
+              amount: p.amount,
+              date: new Date().toISOString().split("T")[0],
+              concept: `Venta POS ${remNumber}`,
+              reference: remNumber,
+              reconciled: true,
+              matchedAt: new Date().toISOString(),
+              reconcileType: "direct",
+              matchedDocumentId: remId,
+              createdAt: new Date().toISOString(),
+              createdBy: user?.email || "POS"
+            }));
+          }
+
+          // B. Preparar asiento de cargo en la póliza y actualizar saldo contable
+          if (accountingAccount) {
+            journalEntries.push({
+              accountId: accountingAccount.id,
+              accountCode: accountingAccount.code || "",
+              accountName: accountingAccount.name || "",
+              debit: p.amount,
+              credit: 0
+            });
+
+            await updateDoc(doc(db, "companies", companyId, "accounts", accountingAccount.id), {
+              balance: increment(p.amount)
+            });
+          }
+        }
+
+        // C. Agregar abonos (Ingresos e IVA) a la póliza
+        // Abono a Ventas Nacionales (401.1)
+        if (accountId) {
+          journalEntries.push({
+            accountId: accountId,
+            accountCode: accountCode,
+            accountName: accountName,
+            debit: 0,
+            credit: subtotal || total || 0
+          });
+
+          await updateDoc(doc(db, "companies", companyId, "accounts", accountId), {
+            balance: increment(subtotal || total || 0)
+          });
+        }
+
+        // Abono a IVA
+        if (tax > 0 && vatAccountingAccount) {
+          journalEntries.push({
+            accountId: vatAccountingAccount.id,
+            accountCode: vatAccountingAccount.code || "",
+            accountName: vatAccountingAccount.name || "",
+            debit: 0,
+            credit: tax
+          });
+
+          await updateDoc(doc(db, "companies", companyId, "accounts", vatAccountingAccount.id), {
+            balance: increment(tax)
+          });
+        }
+
+        // Registrar póliza en journal_entries
+        if (journalEntries.length > 0) {
+          await addDoc(collection(db, "companies", companyId, "journal_entries"), sanitizeFirestoreData({
+            type: "ingreso",
+            date: new Date().toISOString().split("T")[0],
+            description: `Venta POS ${remNumber}`,
+            referenceId: remId,
+            referenceType: "remision",
+            createdAt: new Date().toISOString(),
+            status: "activa",
+            entries: journalEntries
+          }));
+        }
+      } catch (err) {
+        console.error("Error al registrar saldos contables/cajas en POS:", err);
       }
 
       // 3. Actualizar Perfil del Cliente

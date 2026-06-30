@@ -31,6 +31,7 @@ export default function ReporteComercialPage() {
   const [selectedSucursal, setSelectedSucursal] = useState("all");
   const [selectedYear, setSelectedYear] = useState(2026); // Default to 2026 based on DB audit
   const [selectedMonth, setSelectedMonth] = useState("all");
+  const [dateFilterType, setDateFilterType] = useState<"por_mes" | "hoy" | "mes_fecha" | "ano_fecha">("por_mes");
 
   // States for product sales table
   const [tableDateFilterOption, setTableDateFilterOption] = useState("this_year");
@@ -212,40 +213,99 @@ export default function ReporteComercialPage() {
 
   // Compute stats and charts reactively
   const stats = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed
+    const currentDate = now.getDate(); // 1-31
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+    const isToday = (d: Date) => {
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth && d.getDate() === currentDate;
+    };
+
+    const isMonthToDate = (d: Date) => {
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth && d.getDate() <= currentDate;
+    };
+
+    const isYearToDate = (d: Date) => {
+      if (d.getFullYear() !== currentYear) return false;
+      if (d.getMonth() < currentMonth) return true;
+      if (d.getMonth() === currentMonth) return d.getDate() <= currentDate;
+      return false;
+    };
+
+    const filterByDate = (dateStr: string | undefined) => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+
+      if (dateFilterType === "hoy") {
+        return isToday(d);
+      } else if (dateFilterType === "mes_fecha") {
+        return isMonthToDate(d);
+      } else if (dateFilterType === "ano_fecha") {
+        return isYearToDate(d);
+      } else {
+        // por_mes
+        if (d.getFullYear() !== selectedYear) return false;
+        if (selectedMonth !== "all" && (d.getMonth() + 1) !== parseInt(selectedMonth)) return false;
+        return true;
+      }
+    };
+
+    const getGoalTarget = (g: any, ignoreLocation = false) => {
+      if (!ignoreLocation && selectedSucursal !== "all" && g.locationId !== selectedSucursal) return 0;
+
+      if (dateFilterType === "hoy") {
+        if (g.year === currentYear && g.month === (currentMonth + 1)) {
+          return (g.amount || 0) / daysInMonth;
+        }
+        return 0;
+      } else if (dateFilterType === "mes_fecha") {
+        if (g.year === currentYear && g.month === (currentMonth + 1)) {
+          return ((g.amount || 0) / daysInMonth) * currentDate;
+        }
+        return 0;
+      } else if (dateFilterType === "ano_fecha") {
+        if (g.year === currentYear) {
+          if (g.month < (currentMonth + 1)) {
+            return g.amount || 0;
+          } else if (g.month === (currentMonth + 1)) {
+            return ((g.amount || 0) / daysInMonth) * currentDate;
+          }
+        }
+        return 0;
+      } else {
+        // por_mes
+        if (g.year === selectedYear) {
+          if (selectedMonth === "all") {
+            return g.amount || 0;
+          } else if (g.month === parseInt(selectedMonth)) {
+            return g.amount || 0;
+          }
+        }
+        return 0;
+      }
+    };
+
     // 1. Filtered datasets
     const activeRemisiones = remisiones.filter(r => {
       if (r.status === "cancelada") return false;
-      const date = new Date(r.createdAt || r.date);
-      if (isNaN(date.getTime()) || date.getFullYear() !== selectedYear) return false;
       if (selectedSucursal !== "all" && r.locationId !== selectedSucursal) return false;
-      if (selectedMonth !== "all" && (date.getMonth() + 1) !== parseInt(selectedMonth)) return false;
-      return true;
+      return filterByDate(r.createdAt || r.date);
     });
 
     const activeFacturas = facturas.filter(f => {
       if (f.status === "cancelada") return false;
       if (f.posSaleId || f.remisionId || f.remissionId) return false; // Ignore facturas generated from existing remisiones to avoid double counting
-      const date = new Date(f.createdAt || f.date);
-      if (isNaN(date.getTime()) || date.getFullYear() !== selectedYear) return false;
       if (selectedSucursal !== "all" && f.locationId !== selectedSucursal) return false;
-      if (selectedMonth !== "all" && (date.getMonth() + 1) !== parseInt(selectedMonth)) return false;
-      return true;
+      return filterByDate(f.createdAt || f.date);
     });
 
     const activePedidos = pedidos.filter(p => {
       if (p.status === "cancelado") return false;
-      const date = new Date(p.createdAt);
-      if (isNaN(date.getTime()) || date.getFullYear() !== selectedYear) return false;
       if (selectedSucursal !== "all" && p.locationId !== selectedSucursal) return false;
-      if (selectedMonth !== "all" && (date.getMonth() + 1) !== parseInt(selectedMonth)) return false;
-      return true;
-    });
-
-    const filteredGoals = goals.filter(g => {
-      if (g.year !== selectedYear) return false;
-      if (selectedSucursal !== "all" && g.locationId !== selectedSucursal) return false;
-      if (selectedMonth !== "all" && g.month !== parseInt(selectedMonth)) return false;
-      return true;
+      return filterByDate(p.createdAt);
     });
 
     // 2. KPI Cards calculations
@@ -264,30 +324,31 @@ export default function ReporteComercialPage() {
     const winRate = 0; 
 
     // Goal Attainment
-    const totalGoalAmount = filteredGoals.reduce((sum, g) => sum + (g.amount || 0), 0);
+    const totalGoalAmount = goals.reduce((sum, g) => sum + getGoalTarget(g), 0);
     const goalAttainment = totalGoalAmount > 0 ? (totalSales / totalGoalAmount) * 100 : 0;
 
     // 3. Monthly Sales vs Goals data series (always full year comparison for context)
+    const chartYear = dateFilterType === "por_mes" ? selectedYear : currentYear;
     const monthlyData = MONTHS_SHORT.map((name, idx) => {
       const monthNum = idx + 1;
       
       const salesInMonth = remisiones.filter(r => {
         if (r.status === "cancelada") return false;
         const d = new Date(r.createdAt || r.date);
-        if (isNaN(d.getTime()) || d.getFullYear() !== selectedYear) return false;
+        if (isNaN(d.getTime()) || d.getFullYear() !== chartYear) return false;
         if (selectedSucursal !== "all" && r.locationId !== selectedSucursal) return false;
         return d.getMonth() + 1 === monthNum;
       }).reduce((sum, r) => sum + (r.totalAmount || 0), 0) +
       facturas.filter(f => {
         if (f.status === "cancelada" || f.posSaleId || f.remisionId || f.remissionId) return false;
         const d = new Date(f.createdAt || f.date);
-        if (isNaN(d.getTime()) || d.getFullYear() !== selectedYear) return false;
+        if (isNaN(d.getTime()) || d.getFullYear() !== chartYear) return false;
         if (selectedSucursal !== "all" && f.locationId !== selectedSucursal) return false;
         return d.getMonth() + 1 === monthNum;
       }).reduce((sum, f) => sum + (f.totalAmount || 0), 0);
 
       const goalInMonth = goals.filter(g => {
-        if (g.year !== selectedYear) return false;
+        if (g.year !== chartYear) return false;
         if (selectedSucursal !== "all" && g.locationId !== selectedSucursal) return false;
         return g.month === monthNum;
       }).reduce((sum, g) => sum + (g.amount || 0), 0);
@@ -303,9 +364,18 @@ export default function ReporteComercialPage() {
     const categoryTotals: { [key: string]: number } = {};
     const processItemsForCategories = (documents: any[]) => {
       documents.forEach(doc => {
-        if (!doc.items) return;
+        if (!doc.items || doc.items.length === 0) return;
+        
+        const docTotal = doc.totalAmount || 0;
+        
+        // Calculate items sum to get weights
+        const itemsSum = doc.items.reduce((sum: number, item: any) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+        
         doc.items.forEach((item: any) => {
-          const val = (item.quantity || 0) * (item.unitPrice || 0);
+          const itemVal = (item.quantity || 0) * (item.unitPrice || 0);
+          const weight = itemsSum > 0 ? (itemVal / itemsSum) : (1 / doc.items.length);
+          const val = weight * docTotal;
+          
           // Find category name
           const catId = resolveItemCategoryId(item);
           const catName = categories[catId] || "Otros";
@@ -340,24 +410,15 @@ export default function ReporteComercialPage() {
     const branchPerformance = locations.map(loc => {
       const rSales = remisiones.filter(r => {
         if (r.status === "cancelada" || r.locationId !== loc.id) return false;
-        const date = new Date(r.createdAt || r.date);
-        if (isNaN(date.getTime()) || date.getFullYear() !== selectedYear) return false;
-        if (selectedMonth !== "all" && (date.getMonth() + 1) !== parseInt(selectedMonth)) return false;
-        return true;
+        return filterByDate(r.createdAt || r.date);
       }).reduce((sum, r) => sum + (r.totalAmount || 0), 0) +
       facturas.filter(f => {
         if (f.status === "cancelada" || f.locationId !== loc.id || f.posSaleId || f.remisionId || f.remissionId) return false;
-        const date = new Date(f.createdAt || f.date);
-        if (isNaN(date.getTime()) || date.getFullYear() !== selectedYear) return false;
-        if (selectedMonth !== "all" && (date.getMonth() + 1) !== parseInt(selectedMonth)) return false;
-        return true;
+        return filterByDate(f.createdAt || f.date);
       }).reduce((sum, f) => sum + (f.totalAmount || 0), 0);
 
-      const rGoal = goals.filter(g => {
-        if (g.locationId !== loc.id || g.year !== selectedYear) return false;
-        if (selectedMonth !== "all" && g.month !== parseInt(selectedMonth)) return false;
-        return true;
-      }).reduce((sum, g) => sum + (g.amount || 0), 0);
+      const rGoal = goals.filter(g => g.locationId === loc.id)
+                         .reduce((sum, g) => sum + getGoalTarget({ ...g, locationId: "all" }, true), 0);
 
       const percent = rGoal > 0 ? (rSales / rGoal) * 100 : 0;
       const diff = rSales - rGoal;
@@ -372,6 +433,15 @@ export default function ReporteComercialPage() {
       };
     }).sort((a, b) => b.realSales - a.realSales);
 
+    const getGoalLabel = () => {
+      if (dateFilterType === "hoy") return "Cumplimiento de Hoy";
+      if (dateFilterType === "mes_fecha") return "Cumplimiento del Mes a la Fecha";
+      if (dateFilterType === "ano_fecha") return "Cumplimiento del Año a la Fecha";
+      if (selectedMonth === "all") return "Cumplimiento del Año";
+      const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+      return `Cumplimiento de ${monthNames[parseInt(selectedMonth) - 1]}`;
+    };
+
     return {
       totalSales,
       avgTicket,
@@ -383,9 +453,11 @@ export default function ReporteComercialPage() {
       monthlyData,
       categoryChartData,
       topClientsData,
-      branchPerformance
+      branchPerformance,
+      chartYear,
+      goalLabel: getGoalLabel()
     };
-  }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId]);
+  }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId, dateFilterType]);
 
   // Compute product sales table data reactively
   const productSalesTableData = useMemo(() => {
@@ -420,20 +492,16 @@ export default function ReporteComercialPage() {
         // Sucursal check
         if (tableSucursal !== "all" && doc.locationId !== tableSucursal) return;
 
-        if (!doc.items) return;
+        if (!doc.items || doc.items.length === 0) return;
         
-        // 1. Calculate sum of items in this document to detect base format
+        const docTotal = doc.totalAmount || 0;
+        const docSub = doc.subtotal || (docTotal / 1.16);
+        
+        // Reference total depends on taxMode
+        const referenceTotal = taxMode === "con_iva" ? docTotal : docSub;
+
+        // Calculate sum of items in this document to get weights
         const docItemsSum = doc.items.reduce((sum: number, it: any) => sum + (it.quantity || 0) * (it.unitPrice || 0), 0);
-        const docTotal = doc.totalAmount || doc.TotalAmount || 0;
-        const docSub = doc.subtotal || doc.Subtotal || 0;
-        
-        // Determine real tax ratio for the document (default to 1.16 if invalid)
-        const taxRatio = (docTotal > 0 && docSub > 0) ? (docTotal / docSub) : 1.16;
-        
-        // If itemsSum is closer to subtotal than to totalAmount, items are Sin IVA
-        const diffToSub = Math.abs(docItemsSum - docSub);
-        const diffToTot = Math.abs(docItemsSum - docTotal);
-        const itemsAreSinIva = docSub > 0 && docTotal > 0 && diffToSub < diffToTot;
 
         doc.items.forEach((item: any) => {
           const resolvedCatId = resolveItemCategoryId(item);
@@ -456,17 +524,8 @@ export default function ReporteComercialPage() {
           }
           
           const rawItemValue = (item.quantity || 0) * (item.unitPrice || 0);
-          let itemValue = rawItemValue;
-          
-          if (taxMode === "con_iva") {
-            if (itemsAreSinIva) {
-              itemValue = rawItemValue * taxRatio;
-            }
-          } else {
-            if (!itemsAreSinIva) {
-              itemValue = rawItemValue / taxRatio;
-            }
-          }
+          const weight = docItemsSum > 0 ? (rawItemValue / docItemsSum) : (1 / doc.items.length);
+          const itemValue = weight * referenceTotal;
 
           agg[key].quantity += (item.quantity || 0);
           agg[key].totalSales += itemValue;
@@ -518,6 +577,24 @@ export default function ReporteComercialPage() {
     }, { totalSales: 0, totalQuantity: 0 });
   }, [productSalesTableData]);
 
+  const branchPerformanceTotals = useMemo(() => {
+    const totals = stats.branchPerformance.reduce((acc, b) => {
+      acc.realSales += b.realSales || 0;
+      acc.goal += b.goal || 0;
+      return acc;
+    }, { realSales: 0, goal: 0 });
+
+    const percent = totals.goal > 0 ? Math.round((totals.realSales / totals.goal) * 100) : 0;
+    const diff = totals.realSales - totals.goal;
+
+    return {
+      realSales: totals.realSales,
+      goal: totals.goal,
+      percent,
+      diff
+    };
+  }, [stats.branchPerformance]);
+
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }).format(amount);
   };
@@ -535,7 +612,8 @@ export default function ReporteComercialPage() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `desempeno_comercial_${selectedYear}_${selectedSucursal}.csv`);
+    const suffix = dateFilterType === "por_mes" ? `${selectedYear}_mes_${selectedMonth}` : dateFilterType;
+    link.setAttribute("download", `desempeno_comercial_${suffix}_${selectedSucursal}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -622,43 +700,62 @@ export default function ReporteComercialPage() {
             </select>
           </div>
 
-          {/* Month filter */}
-          <div className="flex flex-col gap-1 w-full sm:w-36">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Mes</span>
+          {/* Period filter */}
+          <div className="flex flex-col gap-1 w-full sm:w-44">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Período</span>
             <select
               className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
+              value={dateFilterType}
+              onChange={(e) => setDateFilterType(e.target.value as any)}
             >
-              <option value="all">Todos los Meses</option>
-              <option value="1">Enero</option>
-              <option value="2">Febrero</option>
-              <option value="3">Marzo</option>
-              <option value="4">Abril</option>
-              <option value="5">Mayo</option>
-              <option value="6">Junio</option>
-              <option value="7">Julio</option>
-              <option value="8">Agosto</option>
-              <option value="9">Septiembre</option>
-              <option value="10">Octubre</option>
-              <option value="11">Noviembre</option>
-              <option value="12">Diciembre</option>
+              <option value="por_mes">Por mes/año</option>
+              <option value="hoy">Hoy</option>
+              <option value="mes_fecha">Mes a la fecha</option>
+              <option value="ano_fecha">Año a la fecha</option>
             </select>
           </div>
 
+          {/* Month filter */}
+          {dateFilterType === "por_mes" && (
+            <div className="flex flex-col gap-1 w-full sm:w-36">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Mes</span>
+              <select
+                className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+              >
+                <option value="all">Todos los Meses</option>
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+              </select>
+            </div>
+          )}
+
           {/* Year toggle */}
-          <div className="flex flex-col gap-1 w-full sm:w-28">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Año</span>
-            <select
-              className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-            >
-              <option value={2026}>2026</option>
-              <option value={2025}>2025</option>
-              <option value={2024}>2024</option>
-            </select>
-          </div>
+          {dateFilterType === "por_mes" && (
+            <div className="flex flex-col gap-1 w-full sm:w-28">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Año</span>
+              <select
+                className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              >
+                <option value={2026}>2026</option>
+                <option value={2025}>2025</option>
+                <option value={2024}>2024</option>
+              </select>
+            </div>
+          )}
 
           <div className="self-end w-full sm:w-auto pt-2">
             <Button variant="outline" className="gap-2 h-10 border-slate-200 font-semibold text-slate-600 hover:bg-slate-50 w-full sm:w-auto" onClick={handleExportCSV}>
@@ -684,7 +781,7 @@ export default function ReporteComercialPage() {
           {stats.totalGoalAmount > 0 ? (
             <div className="mt-4">
               <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
-                <span>Cumplimiento del Año</span>
+                <span>{stats.goalLabel}</span>
                 <span className={stats.goalAttainment >= 100 ? "text-emerald-600" : stats.goalAttainment >= 80 ? "text-amber-600" : "text-rose-500"}>
                   {stats.goalAttainment.toFixed(1)}%
                 </span>
@@ -705,7 +802,23 @@ export default function ReporteComercialPage() {
           )}
         </div>
 
-        {/* KPI 2: Win Rate */}
+        {/* KPI 2: Backlog */}
+        <div className="bg-white border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Backlog (Por Surtir)</p>
+              <h3 className="text-2xl font-black text-amber-600 mt-1">{formatMoney(stats.backlogAmount)}</h3>
+            </div>
+            <div className="p-2.5 bg-amber-50 rounded-xl">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-4 font-semibold text-slate-600">
+            {stats.pendingOrdersCount} pedidos pendientes de entrega
+          </p>
+        </div>
+
+        {/* KPI 3: Win Rate */}
         <div className="bg-white border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
           <div className="flex justify-between items-start mb-2">
             <div>
@@ -721,22 +834,6 @@ export default function ReporteComercialPage() {
           <p className="text-xs text-muted-foreground mt-4 flex items-center gap-1">
             <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             Sin cotizaciones activas en Firestore.
-          </p>
-        </div>
-
-        {/* KPI 3: Backlog */}
-        <div className="bg-white border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Backlog (Por Surtir)</p>
-              <h3 className="text-2xl font-black text-amber-600 mt-1">{formatMoney(stats.backlogAmount)}</h3>
-            </div>
-            <div className="p-2.5 bg-amber-50 rounded-xl">
-              <Clock className="w-5 h-5 text-amber-600" />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-4 font-semibold text-slate-600">
-            {stats.pendingOrdersCount} pedidos pendientes de entrega
           </p>
         </div>
 
@@ -762,7 +859,7 @@ export default function ReporteComercialPage() {
         <div className="bg-white border rounded-xl p-6 shadow-sm lg:col-span-2 flex flex-col">
           <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-indigo-600" />
-            Ventas Facturadas vs Meta ({selectedYear})
+            Ventas Facturadas vs Meta ({stats.chartYear})
           </h3>
           <div className="h-[300px] w-full flex-1">
             <ResponsiveContainer width="100%" height="100%">
@@ -792,10 +889,17 @@ export default function ReporteComercialPage() {
 
         {/* Categories Pie Chart */}
         <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <Package className="w-5 h-5 text-indigo-600" />
-            Venta por Categoría
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <Package className="w-5 h-5 text-indigo-600" />
+              Venta por Categoría
+            </h3>
+            {stats.categoryChartData.length > 0 && (
+              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
+                Total: {formatMoney(stats.totalSales)}
+              </span>
+            )}
+          </div>
           
           {stats.categoryChartData.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
@@ -932,6 +1036,29 @@ export default function ReporteComercialPage() {
                   ))
                 )}
               </tbody>
+              {stats.branchPerformance.length > 0 && (
+                <tfoot className="border-t-2 border-slate-200 bg-slate-50 font-bold text-slate-800">
+                  <tr>
+                    <td className="px-4 py-3 font-bold text-slate-800">Total</td>
+                    <td className="px-4 py-3 text-right font-black text-slate-900">{formatMoney(branchPerformanceTotals.realSales)}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">{formatMoney(branchPerformanceTotals.goal)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {branchPerformanceTotals.goal > 0 ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-bold text-xs ${
+                          branchPerformanceTotals.percent >= 100 ? "bg-emerald-100 text-emerald-800" : branchPerformanceTotals.percent >= 80 ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800"
+                        }`}>
+                          {branchPerformanceTotals.percent}%
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic font-medium">Sin meta</span>
+                      )}
+                    </td>
+                    <td className={`px-4 py-3 text-right font-black text-xs ${branchPerformanceTotals.diff >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                      {branchPerformanceTotals.diff >= 0 ? `+${formatMoney(branchPerformanceTotals.diff)}` : formatMoney(branchPerformanceTotals.diff)}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>

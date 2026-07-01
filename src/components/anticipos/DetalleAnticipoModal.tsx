@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, FileText, X, Trash2, Save } from "lucide-react";
-import { doc, updateDoc, deleteDoc, collection, query as firestoreQuery, orderBy, onSnapshot, increment, addDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, collection, query as firestoreQuery, orderBy, onSnapshot, increment, addDoc, getDoc } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -130,6 +130,33 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
     
     setIsUpdatingStatus(true);
     try {
+      // 1. Liberar movimiento bancario si estaba conciliado
+      if (anticipo.bankTransactionId && anticipo.bankAccountId) {
+        const txRef = doc(db, "companies", companyId, "bankAccounts", anticipo.bankAccountId, "transactions", anticipo.bankTransactionId);
+        const txSnap = await getDoc(txRef);
+        
+        if (txSnap.exists()) {
+          const txData = txSnap.data();
+          
+          if (txData.reconcileType === "direct") {
+            // Si fue una conciliación directa (ej. Efectivo), revertimos el saldo y eliminamos el movimiento
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", anticipo.bankAccountId), {
+              balance: increment(-parseFloat(anticipo.amount))
+            });
+            await deleteDoc(txRef);
+          } else {
+            // Si fue un "match" con un movimiento existente, lo liberamos
+            await updateDoc(txRef, {
+              reconciled: false,
+              matchedAt: null,
+              reconcileType: null,
+              matchedDocumentId: null
+            });
+          }
+        }
+      }
+
+      // 2. Borrar imagen de storage si existe
       if (anticipo.imageUrl) {
         try {
           const imgRef = storageRef(storage, anticipo.imageUrl);
@@ -138,6 +165,8 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
           console.error("Error al borrar de Storage (puede que no exista el archivo)", storageErr);
         }
       }
+
+      // 3. Borrar el documento del anticipo
       await deleteDoc(doc(db, "companies", companyId, "anticipos", anticipo.id));
       onOpenChange(false);
     } catch (err) {

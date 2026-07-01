@@ -329,7 +329,7 @@ export default function EstadoCuentaPage() {
       // Consolidate Anticipos
       anticiposList.forEach(ant => {
         const status = String(ant.status || "").trim().toLowerCase();
-        if (status === "cancelado" || status === "cancelada" || status === "cancelled" || status === "pending") {
+        if (status === "cancelado" || status === "cancelada" || status === "cancelled") {
           return;
         }
         const folio = ant.folio ? `ANT-${String(ant.folio).padStart(4, "0")}` : `ANT-${ant.id?.substring(0, 5).toUpperCase()}`;
@@ -339,7 +339,7 @@ export default function EstadoCuentaPage() {
           date,
           type: "Anticipo",
           number: folio,
-          description: `Anticipo - ${ant.paymentTermName || "Pago"}${ant.reference ? " | Ref: " + ant.reference : ""}`,
+          description: `Anticipo ${status === 'pending' ? '(Pendiente de Conciliar) ' : ''}- ${ant.paymentTermName || "Pago"}${ant.reference ? " | Ref: " + ant.reference : ""}`,
           cargo: 0,
           abono: parseFloat(ant.amount) || 0,
           runningBalance: 0

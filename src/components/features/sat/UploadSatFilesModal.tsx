@@ -58,10 +58,10 @@ const parseXmlInvoice = (xmlText: string): any => {
       folio = comprobanteNode.getAttribute("Folio") || "";
       serie = comprobanteNode.getAttribute("Serie") || "";
     } else {
-      const totalMatch = xmlText.match(/Total="([^"]+)"/i);
-      const fechaMatch = xmlText.match(/Fecha="([^"]+)"/i);
-      const folioMatch = xmlText.match(/Folio="([^"]+)"/i);
-      const serieMatch = xmlText.match(/Serie="([^"]+)"/i);
+      const totalMatch = xmlText.match(/\bTotal="([^"]+)"/i);
+      const fechaMatch = xmlText.match(/\bFecha="([^"]+)"/i);
+      const folioMatch = xmlText.match(/\bFolio="([^"]+)"/i);
+      const serieMatch = xmlText.match(/\bSerie="([^"]+)"/i);
       if (totalMatch) total = parseFloat(totalMatch[1]) || 0;
       if (fechaMatch) date = fechaMatch[1];
       if (folioMatch) folio = folioMatch[1];

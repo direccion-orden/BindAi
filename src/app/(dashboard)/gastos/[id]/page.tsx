@@ -19,6 +19,7 @@ interface ConceptItem {
   descripcion: string;
   valorUnitario: number;
   importe: number;
+  descuento?: number;
 }
 
 export default function GastoDetallePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
@@ -110,6 +111,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         const descripcion = node.getAttribute("Descripcion") || "";
         const valorUnitario = parseFloat(node.getAttribute("ValorUnitario") || "0") || 0;
         const importe = parseFloat(node.getAttribute("Importe") || "0") || 0;
+        const descuento = parseFloat(node.getAttribute("Descuento") || "0") || 0;
 
         items.push({
           claveProdServ,
@@ -120,6 +122,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
           descripcion,
           valorUnitario,
           importe,
+          descuento,
         });
       }
       return items;
@@ -1465,6 +1468,34 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                 </tbody>
               </table>
             </div>
+
+            {/* Totales al pie de la tabla */}
+            {(() => {
+              const totalGral = invoice.total || 0;
+              const subtotalGral = conceptos.length > 0 
+                ? conceptos.reduce((acc, item) => acc + item.importe, 0)
+                : totalGral / (1 + (invoice.vatRate || 0.16));
+              const impuestoGral = totalGral - subtotalGral;
+
+              return (
+                <div className="p-4 border-t bg-slate-50/30 flex justify-end">
+                  <div className="w-full max-w-[300px] space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500 font-medium">Subtotal</span>
+                      <span className="font-semibold text-slate-700">${subtotalGral.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500 font-medium">Impuestos (IVA)</span>
+                      <span className="font-semibold text-slate-700">${impuestoGral.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between text-base border-t pt-2 mt-1">
+                      <span className="text-slate-900 font-bold uppercase tracking-wider">Total</span>
+                      <span className="font-black text-rose-600 text-lg tracking-tight">${totalGral.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Warning if metadata only */}
             {conceptos.length === 0 && (

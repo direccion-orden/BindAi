@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
         // Descarga completada
         const packageIds = verifyResult.getPackageIds();
-        let invoices = [];
+        const invoicesMap = new Map<string, any>();
         
         for (const packageId of packageIds) {
             const downloadResult = await service.download(packageId);
@@ -63,12 +63,14 @@ export async function POST(req: Request) {
                 const reader = await CfdiPackageReader.createFromContents(zipBuffer as any);
                 for await (const map of reader.cfdis()) {
                     for (const [uuid, content] of map) {
-                        const uuidMatch = content.match(/UUID="([^"]+)"/i);
-                        const totalMatch = content.match(/Total="([^"]+)"/i);
-                        const fechaMatch = content.match(/Fecha="([^"]+)"/i);
+                        const normalizedUuid = uuid.toUpperCase();
+                        const uuidMatch = content.match(/\bUUID="([^"]+)"/i);
+                        const totalMatch = content.match(/\bTotal="([^"]+)"/i);
+                        const subtotalMatch = content.match(/\bSubTotal="([^"]+)"/i);
+                        const fechaMatch = content.match(/\bFecha="([^"]+)"/i);
                         const emisorNodeMatch = content.match(/<cfdi:Emisor([^>]+?)\/?>/i) || content.match(/<Emisor([^>]+?)\/?>/i);
-                        const folioMatch = content.match(/Folio="([^"]+)"/i);
-                        const serieMatch = content.match(/Serie="([^"]+)"/i);
+                        const folioMatch = content.match(/\bFolio="([^"]+)"/i);
+                        const serieMatch = content.match(/\bSerie="([^"]+)"/i);
                         
                         if (uuidMatch) {
                             const folio = folioMatch ? folioMatch[1] : "";
@@ -85,8 +87,8 @@ export async function POST(req: Request) {
                                 if (nombreM) emisorName = nombreM[1];
                             }
 
-                            invoices.push({
-                                uuid: uuidMatch[1],
+                            invoicesMap.set(normalizedUuid, {
+                                uuid: normalizedUuid,
                                 total: totalMatch ? parseFloat(totalMatch[1]) : 0,
                                 date: fechaMatch ? fechaMatch[1] : "",
                                 emisorRfc,
@@ -105,27 +107,32 @@ export async function POST(req: Request) {
                 for await (const item of reader.metadata()) {
                     const uuid = item.get('uuid');
                     if (uuid) {
-                        const total = parseFloat(item.get('monto')) || 0;
-                        const date = item.get('fechaEmision') || "";
-                        const emisorRfc = item.get('rfcEmisor') || "Desconocido";
-                        const emisorName = item.get('nombreEmisor') || "Desconocido";
-                        
-                        invoices.push({
-                            uuid: uuid,
-                            total: total,
-                            date: date,
-                            emisorRfc: emisorRfc,
-                            emisorName: emisorName,
-                            xmlBase64: "", // Los metadatos no contienen el archivo XML completo
-                            status: "pending_review",
-                            createdAt: new Date().toISOString()
-                        });
+                        const normalizedUuid = uuid.toUpperCase();
+                        // Solo agregamos si no existe ya un registro (preferimos el XML si ya se procesó)
+                        // O si el registro existente no tiene XML (preferimos los metadatos más frescos si no hay XML)
+                        if (!invoicesMap.has(normalizedUuid) || !invoicesMap.get(normalizedUuid).xmlBase64) {
+                            const total = parseFloat(item.get('monto')) || 0;
+                            const date = item.get('fechaEmision') || "";
+                            const emisorRfc = item.get('rfcEmisor') || "Desconocido";
+                            const emisorName = item.get('nombreEmisor') || "Desconocido";
+                            
+                            invoicesMap.set(normalizedUuid, {
+                                uuid: normalizedUuid,
+                                total: total,
+                                date: date,
+                                emisorRfc: emisorRfc,
+                                emisorName: emisorName,
+                                xmlBase64: invoicesMap.get(normalizedUuid)?.xmlBase64 || "", 
+                                status: "pending_review",
+                                createdAt: new Date().toISOString()
+                            });
+                        }
                     }
                 }
             }
         }
 
-        return NextResponse.json({ status: "finished", invoices });
+        return NextResponse.json({ status: "finished", invoices: Array.from(invoicesMap.values()) });
 
     } catch (error: any) {
         console.error("SAT Verify Error:", error);

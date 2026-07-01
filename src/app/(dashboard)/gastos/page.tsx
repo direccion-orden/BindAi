@@ -268,12 +268,13 @@ export default function GastosPage() {
             
             // Limit to 500 for safety, though typically less per batch
             verData.invoices.slice(0, 400).forEach((inv: any) => {
-               const docRef = doc(db, "companies", companyId, "expenses_inbox", inv.uuid);
-               const exists = invoices.some((x: any) => x.uuid === inv.uuid);
+               const normalizedUuid = inv.uuid.toUpperCase();
+               const docRef = doc(db, "companies", companyId, "expenses_inbox", normalizedUuid);
+               const exists = invoices.some((x: any) => x.uuid.toUpperCase() === normalizedUuid);
                if (exists) {
                  b.update(docRef, { xmlBase64: inv.xmlBase64 });
                } else {
-                 b.set(docRef, inv);
+                 b.set(docRef, { ...inv, uuid: normalizedUuid });
                }
             });
             await b.commit();
@@ -462,7 +463,7 @@ export default function GastosPage() {
         </div>
       )}
 
-      <div className="bg-white border rounded-xl shadow-sm flex flex-col h-[600px]">
+      <div className="bg-white border rounded-xl shadow-sm flex flex-col h-[900px]">
           <div className="p-4 border-b flex items-center justify-between gap-4 bg-muted/20 rounded-t-xl shrink-0">
               <h3 className="font-bold flex items-center gap-2">
                   <FileText className="w-5 h-5 text-muted-foreground" />

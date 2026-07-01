@@ -15,6 +15,8 @@ interface Order {
   orderNumber: string;
   quoteNumber: string;
   clientName: string;
+  subtotal: number;
+  tax: number;
   totalAmount: number;
   status: string; // 'por_surtir', 'surtido', 'entregado', 'remisionado'
   createdAt: string;
@@ -885,7 +887,7 @@ export default function PedidosPage() {
                               </span>
                             </div>
                             <div className="text-right">
-                              <span className="text-xs text-muted-foreground mr-1.5 font-medium">Subtotal del grupo:</span>
+                              <span className="text-xs text-muted-foreground mr-1.5 font-medium">Total del grupo:</span>
                               <span className="font-bold text-emerald-800 text-sm">
                                 ${group.totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                               </span>

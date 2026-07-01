@@ -210,7 +210,7 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
           erpDocumentNumber: docObj?.number || "Doc Desconocido",
           erpDocumentType: docObj?.type || "Unknown",
           amount: amount,
-          appliedAt: new Date().toISOString()
+          appliedAt: paymentDate
         });
       }
 

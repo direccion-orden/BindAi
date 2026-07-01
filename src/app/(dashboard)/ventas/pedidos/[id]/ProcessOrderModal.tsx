@@ -205,6 +205,8 @@ export function ProcessOrderModal({
     const appliedISO = new Date(`${appliedDate}T${hours}:${minutes}:${seconds}.${milliseconds}`).toISOString();
 
     // 1. Create Remission
+    const isPaid = order.status === "pagado" || (order.paidAmount >= (order.totalAmount - 0.01));
+    
     await setDoc(doc(db, "companies", companyId, "remisiones", remId), {
       id: remId,
       remissionNumber: remNumber,
@@ -217,6 +219,7 @@ export function ProcessOrderModal({
       tax: round2(order.tax || 0),
       totalDiscount: round2(order.totalDiscount || 0),
       totalAmount: round2(order.totalAmount || 0),
+      paidAmount: order.paidAmount || 0,
       projectId: order.projectId || null,
       projectName: order.projectName || null,
       locationId: order.locationId || null,
@@ -226,7 +229,7 @@ export function ProcessOrderModal({
       accountName,
       createdAt: appliedISO,
       createdBy: order.createdBy,
-      status: 'activa'
+      status: isPaid ? 'pagada' : 'activa'
     });
 
     // 2. Update Order
@@ -234,6 +237,25 @@ export function ProcessOrderModal({
       status: "remisionado",
       remissionId: remId
     });
+
+    // 2.5 Relate existing payments to the new remission
+    try {
+      const paymentsQuery = query(
+        collection(db, "companies", companyId, "payments"),
+        where("documentId", "==", order.id),
+        where("documentType", "==", "pedido")
+      );
+      const paymentsSnap = await getDocs(paymentsQuery);
+      for (const pDoc of paymentsSnap.docs) {
+        await updateDoc(pDoc.ref, {
+          documentId: remId,
+          documentType: "remision",
+          orderId: order.id // Mantener referencia al pedido original
+        });
+      }
+    } catch (payErr) {
+      console.error("Error updating related payments:", payErr);
+    }
 
     // 3. Deduct Inventory
     for (const item of order.items) {
@@ -388,6 +410,7 @@ export function ProcessOrderModal({
       tax: round2(order.tax || 0),
       totalDiscount: round2(order.totalDiscount || 0),
       totalAmount: round2(order.totalAmount || 0),
+      paidAmount: order.paidAmount || 0,
       projectId: order.projectId || null,
       projectName: order.projectName || null,
       cfdiPayload: payload,
@@ -400,6 +423,25 @@ export function ProcessOrderModal({
       status: "pre_facturado",
       invoiceId: invId
     });
+
+    // Relate existing payments to the new pre-invoice
+    try {
+      const paymentsQuery = query(
+        collection(db, "companies", companyId, "payments"),
+        where("documentId", "==", order.id),
+        where("documentType", "==", "pedido")
+      );
+      const paymentsSnap = await getDocs(paymentsQuery);
+      for (const pDoc of paymentsSnap.docs) {
+        await updateDoc(pDoc.ref, {
+          documentId: invId,
+          documentType: "factura",
+          orderId: order.id
+        });
+      }
+    } catch (payErr) {
+      console.error("Error updating related payments for pre-invoice:", payErr);
+    }
 
     alert("Pre-Factura creada exitosamente. Podrás timbrarla más tarde.");
     window.location.reload();
@@ -428,6 +470,7 @@ export function ProcessOrderModal({
         tax: round2(order.tax || 0),
         totalDiscount: round2(order.totalDiscount || 0),
         totalAmount: round2(order.totalAmount || 0),
+        paidAmount: order.paidAmount || 0,
         projectId: order.projectId || null,
         projectName: order.projectName || null,
         cfdiPayload: payload,
@@ -442,6 +485,25 @@ export function ProcessOrderModal({
         status: "facturado",
         invoiceId: invId
       });
+
+      // Relate existing payments to the new invoice
+      try {
+        const paymentsQuery = query(
+          collection(db, "companies", companyId, "payments"),
+          where("documentId", "==", order.id),
+          where("documentType", "==", "pedido")
+        );
+        const paymentsSnap = await getDocs(paymentsQuery);
+        for (const pDoc of paymentsSnap.docs) {
+          await updateDoc(pDoc.ref, {
+            documentId: invId,
+            documentType: "factura",
+            orderId: order.id
+          });
+        }
+      } catch (payErr) {
+        console.error("Error updating related payments for invoice:", payErr);
+      }
 
       alert("Factura timbrada exitosamente (Folio Fiscal: " + (facturamaUuid || 'Pendiente') + ")");
       window.location.reload();

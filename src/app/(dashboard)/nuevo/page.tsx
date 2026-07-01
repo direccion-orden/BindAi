@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Camera, Image as ImageIcon, Loader2, Search } from "lucide-react";
 import { ErpClient } from "@/app/actions/erp";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, serverTimestamp, query as firestoreQuery, orderBy, limit, getDocs, where } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query as firestoreQuery, orderBy, limit, getDocs, where, onSnapshot, doc, updateDoc, increment } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
+import { CheckCircle2, AlertCircle } from "lucide-react";
 
 const PAYMENT_TERMS = [
   { id: "1", name: "Efectivo" },
@@ -42,6 +43,10 @@ export default function NuevoAnticipoPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Reconciliation states
+  const [unreconciledTransactions, setUnreconciledTransactions] = useState<any[]>([]);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string>("manual");
+
   React.useEffect(() => {
     if (!companyId) return;
     const fetchAccounts = async () => {
@@ -57,6 +62,42 @@ export default function NuevoAnticipoPage() {
     };
     fetchAccounts();
   }, [companyId]);
+
+  // Fetch unreconciled transactions when account changes
+  React.useEffect(() => {
+    if (!companyId || !selectedAccountId) {
+      setUnreconciledTransactions([]);
+      return;
+    }
+
+    const q = firestoreQuery(
+      collection(db, "companies", companyId, "bankAccounts", selectedAccountId, "transactions"),
+      orderBy("date", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      // Only positive amounts (inflows) and not reconciled
+      const filtered = txs.filter(t => t.amount > 0 && !t.reconciled);
+      setUnreconciledTransactions(filtered);
+    }, (error) => {
+      console.error("Error loading transactions:", error);
+    });
+
+    return () => unsubscribe();
+  }, [companyId, selectedAccountId]);
+
+  // Auto-fill when a transaction is selected
+  React.useEffect(() => {
+    if (selectedTransactionId && selectedTransactionId !== "manual") {
+      const matchedTx = unreconciledTransactions.find(t => t.id === selectedTransactionId);
+      if (matchedTx) {
+        if (matchedTx.reference) setReference(matchedTx.reference);
+        if (matchedTx.date) setReceivedAt(matchedTx.date);
+        if (matchedTx.amount) setAmount(String(matchedTx.amount));
+      }
+    }
+  }, [selectedTransactionId, unreconciledTransactions]);
 
   const handleSearch = async () => {
     if (!query || !companyId) return;
@@ -104,6 +145,10 @@ export default function NuevoAnticipoPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClient || !amount || parseFloat(amount) <= 0) return;
+    if (!selectedAccountId) {
+      alert("Debes seleccionar una cuenta bancaria.");
+      return;
+    }
     
     setIsSubmitting(true);
     try {
@@ -124,16 +169,54 @@ export default function NuevoAnticipoPage() {
         nextFolio = ((folioSnap.docs[0].data() as any).folio || 0) + 1;
       }
 
-      // Guardar en Firestore
+      const finalAmount = parseFloat(amount);
+      let finalBankTransactionId = "";
+
+      // 2. Conciliación Bancaria
+      if (selectedTransactionId && selectedTransactionId !== "manual") {
+        finalBankTransactionId = selectedTransactionId;
+        await updateDoc(doc(db, "companies", companyId, "bankAccounts", selectedAccountId, "transactions", selectedTransactionId), {
+          reconciled: true,
+          matchedAt: new Date().toISOString(),
+          reconcileType: "match",
+          matchedDocumentId: `ANT-${nextFolio}`
+        });
+      } else if (selectedPaymentTerm === "1") { // 1 = Efectivo
+        // Registro manual: crear transacción conciliada SOLO para Efectivo (para evitar duplicados en bancos)
+        const txData = {
+          amount: finalAmount,
+          date: receivedAt,
+          concept: `Anticipo de Cliente (Efectivo): ${selectedClient.legalName} - Ref: ${reference || "Sin Ref"}`,
+          reference: reference || "",
+          reconciled: true,
+          matchedAt: new Date().toISOString(),
+          reconcileType: "direct",
+          matchedDocumentId: `ANT-${nextFolio}`,
+          createdAt: new Date().toISOString(),
+        };
+        const txRef = await addDoc(collection(db, "companies", companyId, "bankAccounts", selectedAccountId, "transactions"), txData);
+        finalBankTransactionId = txRef.id;
+
+        // Actualizar saldo de la cuenta bancaria (Caja/Efectivo)
+        await updateDoc(doc(db, "companies", companyId, "bankAccounts", selectedAccountId), {
+          balance: increment(finalAmount)
+        });
+      } else {
+        // Registro manual para otros métodos: NO crear movimiento, queda pendiente de conciliar para evitar duplicados
+        finalBankTransactionId = "";
+      }
+
+      // 3. Guardar Anticipo en Firestore
       await addDoc(collection(db, "companies", companyId, "anticipos"), {
         folio: nextFolio,
         clientId: selectedClient.id,
         clientName: selectedClient.legalName,
-        amount: parseFloat(amount),
-        balance: parseFloat(amount),
+        amount: finalAmount,
+        balance: finalAmount,
         reference,
         bankAccountId: selectedAccountId,
         bankAccountName: bankAccounts.find(b => b.id === selectedAccountId)?.name || "",
+        bankTransactionId: finalBankTransactionId || null,
         paymentTermId: parseInt(selectedPaymentTerm),
         paymentTermName: PAYMENT_TERMS.find(p => p.id === selectedPaymentTerm)?.name || "",
         imageUrl,
@@ -262,7 +345,10 @@ export default function NuevoAnticipoPage() {
                 required
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 value={selectedAccountId}
-                onChange={e => setSelectedAccountId(e.target.value)}
+                onChange={e => {
+                  setSelectedAccountId(e.target.value);
+                  setSelectedTransactionId("manual"); // Reset transaction when account changes
+                }}
               >
                 <option value="" disabled>Seleccione una cuenta...</option>
                 {bankAccounts.map(b => (
@@ -271,6 +357,50 @@ export default function NuevoAnticipoPage() {
               </select>
             </div>
           </div>
+
+          {/* Sugerencia de Conciliación */}
+          {selectedAccountId && (
+            <div className="mt-4 p-4 border rounded-lg bg-indigo-50/50 border-indigo-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-semibold text-indigo-900 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Vincular con Movimiento Bancario
+                </label>
+                <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase">
+                  Recomendado
+                </span>
+              </div>
+              
+              <div className="space-y-2">
+                <select
+                  className="flex h-10 w-full rounded-md border border-indigo-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={selectedTransactionId}
+                  onChange={(e) => setSelectedTransactionId(e.target.value)}
+                >
+                  <option value="manual">-- Crear registro manual (No sugerido) --</option>
+                  {unreconciledTransactions.map((tx) => (
+                    <option key={tx.id} value={tx.id}>
+                      {new Date(tx.date).toLocaleDateString()} - ${tx.amount.toLocaleString('es-MX')} - {tx.concept || tx.reference || 'Sin concepto'}
+                    </option>
+                  ))}
+                </select>
+                
+                {selectedTransactionId === "manual" ? (
+                  <p className="text-[11px] text-amber-700 flex items-center gap-1.5 px-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {selectedPaymentTerm === "1" 
+                      ? "Se creará un registro en Caja (Efectivo) y quedará autoconciliado." 
+                      : "El anticipo quedará pendiente de conciliar para evitar duplicados al importar estados de cuenta."}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-green-700 flex items-center gap-1.5 px-1 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    ¡Excelente! El anticipo quedará conciliado con el movimiento seleccionado.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Evidencia: Foto/Cámara */}

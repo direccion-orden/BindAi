@@ -5,10 +5,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, FileText, X, Trash2, Save } from "lucide-react";
-import { doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, collection, query as firestoreQuery, orderBy, onSnapshot, increment, addDoc } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
+import { CheckCircle2, AlertCircle, Landmark } from "lucide-react";
 
 interface DetalleAnticipoModalProps {
   anticipo: any;
@@ -27,24 +28,93 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
   const [editingAppIndex, setEditingAppIndex] = useState<number | null>(null);
   const [editingAppAmount, setEditingAppAmount] = useState<string>("");
 
+  // Reconciliation states
+  const [unreconciledTransactions, setUnreconciledTransactions] = useState<any[]>([]);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string>("manual");
+  const [isReconciling, setIsReconciling] = useState(false);
+
   useEffect(() => {
     if (anticipo) {
       setReference(anticipo.reference || "");
       setReceivedAt(anticipo.receivedAt || (anticipo.createdAt?.toDate ? anticipo.createdAt.toDate().toISOString().split("T")[0] : ""));
       setEditingAppIndex(null);
+      setIsReconciling(false);
+      setSelectedTransactionId("manual");
     }
   }, [anticipo]);
+
+  // Fetch unreconciled transactions if not reconciled
+  useEffect(() => {
+    if (!isOpen || !companyId || !anticipo || anticipo.bankTransactionId || !anticipo.bankAccountId) {
+      setUnreconciledTransactions([]);
+      return;
+    }
+
+    const q = firestoreQuery(
+      collection(db, "companies", companyId, "bankAccounts", anticipo.bankAccountId, "transactions"),
+      orderBy("date", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const filtered = txs.filter(t => t.amount > 0 && !t.reconciled);
+      setUnreconciledTransactions(filtered);
+    }, (error) => {
+      console.error("Error loading transactions:", error);
+    });
+
+    return () => unsubscribe();
+  }, [isOpen, companyId, anticipo]);
 
   const handleSave = async () => {
     if (!anticipo || !companyId) return;
     setIsSaving(true);
     try {
-      const ref = doc(db, "companies", companyId, "anticipos", anticipo.id);
-      await updateDoc(ref, {
+      const updates: any = {
         reference,
         receivedAt,
         updatedAt: new Date()
-      });
+      };
+
+      // Handle reconciliation if requested
+      if (isReconciling && !anticipo.bankTransactionId) {
+        const folio = anticipo.folio 
+          ? `ANT-${String(anticipo.folio).padStart(4, '0')}` 
+          : `ANT-${anticipo.id.substring(0, 5).toUpperCase()}`;
+
+        if (selectedTransactionId !== "manual") {
+          await updateDoc(doc(db, "companies", companyId, "bankAccounts", anticipo.bankAccountId, "transactions", selectedTransactionId), {
+            reconciled: true,
+            matchedAt: new Date().toISOString(),
+            reconcileType: "match",
+            matchedDocumentId: folio
+          });
+          updates.bankTransactionId = selectedTransactionId;
+        } else if (String(anticipo.paymentTermId) === "1") { // 1 = Efectivo
+          // Manual reconciliation ONLY for Efectivo
+          const txData = {
+            amount: parseFloat(anticipo.amount),
+            date: receivedAt,
+            concept: `Anticipo de Cliente (Efectivo): ${anticipo.clientName} - Ref: ${reference || "Sin Ref"}`,
+            reference: reference || "",
+            reconciled: true,
+            matchedAt: new Date().toISOString(),
+            reconcileType: "direct",
+            matchedDocumentId: folio,
+            createdAt: new Date().toISOString(),
+          };
+          const txRef = await addDoc(collection(db, "companies", companyId, "bankAccounts", anticipo.bankAccountId, "transactions"), txData);
+          updates.bankTransactionId = txRef.id;
+
+          // Update bank balance
+          await updateDoc(doc(db, "companies", companyId, "bankAccounts", anticipo.bankAccountId), {
+            balance: increment(parseFloat(anticipo.amount))
+          });
+        }
+      }
+
+      const ref = doc(db, "companies", companyId, "anticipos", anticipo.id);
+      await updateDoc(ref, updates);
       onOpenChange(false);
     } catch (error) {
       console.error("Error updating", error);
@@ -419,6 +489,78 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
             </div>
           </div>
 
+          {/* Estado de Conciliación */}
+          <div className="pt-4 border-t border-slate-100">
+            {anticipo.bankTransactionId ? (
+              <div className="bg-green-50 border border-green-100 p-3 rounded-lg flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-green-500 p-1.5 rounded-full">
+                    <CheckCircle2 className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-green-700 uppercase tracking-wider">Conciliado con Banco</p>
+                    <p className="text-xs text-green-600 font-medium">{anticipo.bankAccountName || 'Cuenta Bancaria'}</p>
+                  </div>
+                </div>
+                <Landmark className="w-5 h-5 text-green-200" />
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-100 p-3 rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-amber-500 p-1.5 rounded-full">
+                      <AlertCircle className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Pendiente de Conciliar</p>
+                      <p className="text-xs text-amber-600 font-medium">No se ha vinculado con un ingreso bancario</p>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="link" 
+                    className="text-indigo-600 font-bold text-[10px] p-0 h-auto uppercase tracking-wider"
+                    onClick={() => setIsReconciling(!isReconciling)}
+                  >
+                    {isReconciling ? 'Cancelar' : 'Conciliar Ahora'}
+                  </Button>
+                </div>
+
+                {isReconciling && (
+                  <div className="space-y-3 pt-2 border-t border-amber-200/50">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Seleccionar Movimiento Sugerido</label>
+                      <select
+                        className="flex h-9 w-full rounded-md border border-amber-200 bg-white px-3 py-1 text-xs outline-none focus:ring-2 focus:ring-amber-500"
+                        value={selectedTransactionId}
+                        onChange={(e) => setSelectedTransactionId(e.target.value)}
+                      >
+                        <option value="manual">-- Crear registro manual --</option>
+                        {unreconciledTransactions.map((tx) => (
+                          <option key={tx.id} value={tx.id}>
+                            {new Date(tx.date).toLocaleDateString()} - ${tx.amount.toLocaleString('es-MX')} - {tx.concept || tx.reference || 'Sin concepto'}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedTransactionId === "manual" ? (
+                        <p className="text-[10px] text-amber-600 italic">
+                          {String(anticipo.paymentTermId) === "1"
+                            ? `Se creará un nuevo ingreso en la cuenta de Efectivo y se autoconciliará.`
+                            : "No se recomienda registro manual para bancos (evita duplicados). El anticipo quedará pendiente."
+                          }
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-green-600 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Se vinculará con el movimiento seleccionado.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {anticipo.applications && anticipo.applications.length > 0 && (
             <div className="pt-6 border-t border-slate-100 space-y-4">
               <div className="flex items-center gap-2">
@@ -428,8 +570,13 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
               <div className="space-y-2.5">
                 {anticipo.applications.map((app: any, idx: number) => (
                   <div key={idx} className="bg-slate-50/50 p-3 rounded-lg text-sm border border-slate-100 shadow-sm hover:border-slate-200 transition-colors">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-slate-800">{app.erpDocumentNumber}</span>
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <span className="font-bold text-slate-800 block">{app.erpDocumentNumber}</span>
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          Aplicado el: {app.appliedAt ? new Date(app.appliedAt + "T12:00:00").toLocaleDateString() : 'N/A'}
+                        </span>
+                      </div>
                       <span className="text-[9px] font-black text-indigo-600 uppercase bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 tracking-wide">{app.erpDocumentType}</span>
                     </div>
                     

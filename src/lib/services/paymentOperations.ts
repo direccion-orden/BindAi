@@ -69,6 +69,24 @@ export async function cancelPaymentOperation(companyId: string, paymentId: strin
       await updateDoc(docRef, updates);
     }
   }
+
+  // 5. If it was an Anticipo application, revert the balance on the Anticipo document
+  if ((payment.method === "Anticipo" || (payment.reference && payment.reference.toLowerCase().includes("anticipo"))) && payment.anticipoId) {
+    const antRef = doc(db, "companies", companyId, "anticipos", payment.anticipoId);
+    const antSnap = await getDoc(antRef);
+    if (antSnap.exists()) {
+      const antData = antSnap.data();
+      const currentBalance = parseFloat(antData.balance) || 0;
+      const amountToRevert = parseFloat(payment.amount) || 0;
+      const newBalance = currentBalance + amountToRevert;
+      
+      await updateDoc(antRef, {
+        balance: newBalance,
+        status: "partially_applied", // At least partially applied now that we reverted some
+        updatedAt: new Date().toISOString()
+      });
+    }
+  }
 }
 
 export async function editPaymentOperation(

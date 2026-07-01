@@ -243,7 +243,7 @@ export default function EstadoCuentaPage() {
         const d = docSnap.data();
         const status = String(d.status || "").trim().toLowerCase();
         // Omit orders that are already delivered/remisioned or billed/completed (only show active pending orders)
-        if (status !== "cancelado" && status !== "cancelada" && status !== "surtido" && status !== "remisionado" && status !== "completado") {
+        if (status !== "cancelado" && status !== "cancelada" && status !== "surtido" && status !== "remisionado" && status !== "facturado" && status !== "pre_facturado" && status !== "completado") {
           lines.push({
             date: extractDate(d.createdAt),
             type: "Order",
@@ -299,6 +299,11 @@ export default function EstadoCuentaPage() {
         const d = docSnap.data();
         const amt = parseFloat(d.amount) || 0;
 
+        const status = String(d.status || "").trim().toLowerCase();
+        if (status === "cancelado" || status === "cancelada" || status === "cancelled") {
+          return;
+        }
+
         // Exclude payments that are applications of anticipos to avoid double-counting
         const refLower = (d.reference || "").toLowerCase();
         if (refLower.includes("anticipo")) {
@@ -323,6 +328,10 @@ export default function EstadoCuentaPage() {
       
       // Consolidate Anticipos
       anticiposList.forEach(ant => {
+        const status = String(ant.status || "").trim().toLowerCase();
+        if (status === "cancelado" || status === "cancelada" || status === "cancelled" || status === "pending") {
+          return;
+        }
         const folio = ant.folio ? `ANT-${String(ant.folio).padStart(4, "0")}` : `ANT-${ant.id?.substring(0, 5).toUpperCase()}`;
         const date = extractDate(ant.receivedAt) || extractDate(ant.createdAt);
 

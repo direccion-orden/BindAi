@@ -61,7 +61,7 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
         const d = docSnap.data();
         const status = String(d.status || "").trim().toLowerCase();
         const isCanceled = status === "cancelado" || status === "cancelada" || status === "cancelled" || status === "anulado" || status === "anulada";
-        if (!isCanceled && status !== "surtido" && status !== "remisionado" && status !== "completado") {
+        if (!isCanceled && status !== "surtido" && status !== "remisionado" && status !== "facturado" && status !== "pre_facturado" && status !== "completado") {
           const total = Math.round(((parseFloat(d.totalAmount) || d.totalAmount || 0) + Number.EPSILON) * 100) / 100;
           const paid = Math.round(((parseFloat(d.paidAmount) || d.paidAmount || 0) + Number.EPSILON) * 100) / 100;
           const balance = Math.round((total - paid + Number.EPSILON) * 100) / 100;
@@ -176,6 +176,7 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
           locationId: (docObj as any)?.locationId || null,
           locationName: (docObj as any)?.locationName || "",
           bankAccountId: anticipo.bankAccountId || "CUENTA_MOCK",
+          anticipoId: anticipo.id,
           createdAt: new Date().toISOString()
         };
 

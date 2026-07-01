@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, FileText } from "lucide-react";
+import { Loader2, FileText, X, Trash2, Save } from "lucide-react";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
@@ -121,12 +121,12 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
 
     const maxAvailable = anticipo.balance + appToEdit.amount;
     if (newAmount > maxAvailable) {
-      alert(`La aplicación no puede exceder el fondo disponible máximo ($${maxAvailable.toFixed(2)}).`);
+      alert(`La aplicación no puede exceder el fondo disponible máximo ($${maxAvailable.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
       return;
     }
 
     if (appToEdit.erpDocumentType !== "Order") {
-      if (!confirm(`IMPORTANTE: Modificaremos el saldo localmente de $${appToEdit.amount.toFixed(2)} a $${newAmount.toFixed(2)}. Deberás cuadrar y ajustar este nuevo monto manualmente en Bind ERP tú mismo. ¿Deseas continuar?`)) {
+      if (!confirm(`IMPORTANTE: Modificaremos el saldo localmente de $${appToEdit.amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} a $${newAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Deberás cuadrar y ajustar este nuevo monto manualmente en Bind ERP tú mismo. ¿Deseas continuar?`)) {
         return;
       }
     }
@@ -386,73 +386,83 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4 max-h-[65vh] overflow-y-auto pr-2">
+        <div className="space-y-5 py-4 max-h-[65vh] overflow-y-auto pr-2 custom-scrollbar">
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Folio</label>
-              <Input className="h-8" disabled value={`ANT-${anticipo.folio ? String(anticipo.folio).padStart(4, '0') : anticipo.id.substring(0, 5).toUpperCase()}`} />
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Folio</label>
+              <Input className="h-9 bg-slate-50 font-mono text-xs" disabled value={`ANT-${anticipo.folio ? String(anticipo.folio).padStart(4, '0') : anticipo.id.substring(0, 5).toUpperCase()}`} />
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Monto Original / Saldo</label>
-              <Input className="h-8" disabled value={`$${anticipo.amount?.toFixed(2)} / $${anticipo.balance?.toFixed(2)}`} />
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Monto Original / Saldo</label>
+              <Input className="h-9 bg-slate-50 font-bold text-xs" disabled value={`$${(anticipo.amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / $${(anticipo.balance || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Fecha de Recepción</label>
-            <Input 
-              className="h-8"
-              type="date" 
-              value={receivedAt} 
-              onChange={e => setReceivedAt(e.target.value)} 
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Referencia</label>
-            <Input 
-              className="h-8"
-              value={reference} 
-              onChange={e => setReference(e.target.value)} 
-              placeholder="Referencia" 
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fecha de Recepción</label>
+              <Input 
+                className="h-9"
+                type="date" 
+                value={receivedAt} 
+                onChange={e => setReceivedAt(e.target.value)} 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Referencia</label>
+              <Input 
+                className="h-9"
+                value={reference} 
+                onChange={e => setReference(e.target.value)} 
+                placeholder="Referencia de pago" 
+              />
+            </div>
           </div>
 
           {anticipo.applications && anticipo.applications.length > 0 && (
-            <div className="pt-4 border-t space-y-3">
-              <h4 className="text-sm font-semibold">Historial de Aplicaciones</h4>
-              <div className="space-y-2">
+            <div className="pt-6 border-t border-slate-100 space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-indigo-500 rounded-full"></div>
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-tight">Historial de Aplicaciones</h4>
+              </div>
+              <div className="space-y-2.5">
                 {anticipo.applications.map((app: any, idx: number) => (
-                  <div key={idx} className="bg-muted p-3 rounded-md text-sm border shadow-sm">
+                  <div key={idx} className="bg-slate-50/50 p-3 rounded-lg text-sm border border-slate-100 shadow-sm hover:border-slate-200 transition-colors">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="font-semibold text-primary">{app.erpDocumentNumber}</span>
-                      <span className="text-[10px] text-muted-foreground uppercase bg-secondary px-2 py-0.5 rounded-full">{app.erpDocumentType}</span>
+                      <span className="font-bold text-slate-800">{app.erpDocumentNumber}</span>
+                      <span className="text-[9px] font-black text-indigo-600 uppercase bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 tracking-wide">{app.erpDocumentType}</span>
                     </div>
                     
                     {editingAppIndex === idx ? (
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs font-semibold">$</span>
+                      <div className="flex items-center gap-2 mt-2 bg-white p-2 rounded border border-indigo-200 shadow-inner">
+                        <span className="text-xs font-bold text-slate-400">$</span>
                         <Input 
                           type="number" 
                           step="0.01" 
-                          className="h-8 flex-1" 
+                          className="h-8 flex-1 border-none focus-visible:ring-0 font-bold" 
                           value={editingAppAmount} 
                           onChange={e => setEditingAppAmount(e.target.value)} 
+                          autoFocus
                         />
-                        <Button size="sm" variant="ghost" onClick={() => setEditingAppIndex(null)}>X</Button>
-                        <Button size="sm" onClick={() => handleEditAppSave(idx)} disabled={isUpdatingStatus}>OK</Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingAppIndex(null)}>
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button size="sm" className="h-7 px-3 bg-indigo-600 hover:bg-indigo-700" onClick={() => handleEditAppSave(idx)} disabled={isUpdatingStatus}>
+                          OK
+                        </Button>
                       </div>
                     ) : (
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="font-semibold text-lg">${app.amount.toFixed(2)}</span>
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100/50">
+                        <span className="font-black text-lg text-slate-900">${app.amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={() => {
+                          <Button size="sm" variant="outline" className="h-7 text-[10px] font-bold px-3 border-slate-200 hover:bg-white hover:text-indigo-600" onClick={() => {
                             setEditingAppIndex(idx);
                             setEditingAppAmount(app.amount.toString());
                           }} disabled={isUpdatingStatus}>
-                            Editar
+                            EDITAR
                           </Button>
-                          <Button size="sm" variant="destructive" className="h-7 text-xs px-2" onClick={() => handleCancelApplication(idx)} disabled={isUpdatingStatus}>
-                            Cancelar
+                          <Button size="sm" variant="ghost" className="h-7 text-[10px] font-bold px-3 text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleCancelApplication(idx)} disabled={isUpdatingStatus}>
+                            CANCELAR
                           </Button>
                         </div>
                       </div>
@@ -464,32 +474,46 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
           )}
         </div>
 
-        <DialogFooter className="flex flex-col sm:flex-row justify-between w-full items-center gap-4 border-t pt-4">
-          <div className="w-full sm:w-auto">
+        <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4 mt-2 sm:gap-2">
+          <div className="flex-1 w-full sm:w-auto flex justify-start">
             {canDelete && (
-                <Button variant="destructive" className="w-full sm:w-auto" onClick={handleDeleteAnticipo} disabled={isUpdatingStatus || isSaving}>
-                  {isUpdatingStatus ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Eliminar Anticipo
+                <Button 
+                  variant="ghost" 
+                  className="w-full sm:w-auto text-rose-500 hover:text-rose-600 hover:bg-rose-50 font-bold text-xs gap-2" 
+                  onClick={handleDeleteAnticipo} 
+                  disabled={isUpdatingStatus || isSaving}
+                >
+                  {isUpdatingStatus ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  ELIMINAR ANTICIPO
                 </Button>
             )}
           </div>
-          <div className="flex gap-2 w-full sm:w-auto font-medium">
+          <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
             <Button 
               variant="outline"
               type="button"
-              className="flex-1 sm:flex-none gap-1.5" 
+              className="h-10 px-4 font-bold text-xs gap-2 border-slate-200 flex-1 sm:flex-none" 
               onClick={handleDownloadPDF}
               disabled={isSaving || isUpdatingStatus}
             >
               <FileText className="w-4 h-4 text-indigo-600" />
-              Descargar PDF
+              PDF
             </Button>
-            <Button variant="ghost" className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)} disabled={isSaving || isUpdatingStatus}>
-              Cerrar
+            <Button 
+              variant="ghost" 
+              className="h-10 px-4 font-bold text-xs flex-1 sm:flex-none" 
+              onClick={() => onOpenChange(false)} 
+              disabled={isSaving || isUpdatingStatus}
+            >
+              CERRAR
             </Button>
-            <Button className="flex-1 sm:flex-none" onClick={handleSave} disabled={isSaving || isUpdatingStatus}>
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Guardar
+            <Button 
+              className="h-10 px-6 font-black text-xs bg-indigo-600 hover:bg-indigo-700 shadow-md flex-1 sm:flex-none gap-2" 
+              onClick={handleSave} 
+              disabled={isSaving || isUpdatingStatus}
+            >
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              GUARDAR
             </Button>
           </div>
         </DialogFooter>

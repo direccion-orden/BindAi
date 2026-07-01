@@ -41,23 +41,45 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [locations, setLocations] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
+  const [clientSearch, setClientSearch] = useState("");
+  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [relatedDocs, setRelatedDocs] = useState<any[]>([]);
 
   useEffect(() => {
     if (!companyId || !params.id) return;
 
-    const fetchOrder = async () => {
-      try {
-        const orderDoc = await getDoc(doc(db, "companies", companyId, "pedidos", params.id));
-        if (orderDoc.exists()) {
-          setOrder({ id: orderDoc.id, ...orderDoc.data() });
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
+    const unsubOrder = onSnapshot(doc(db, "companies", companyId, "pedidos", params.id), (d) => {
+      if (d.exists()) {
+        setOrder({ id: d.id, ...d.data() });
       }
+      setLoading(false);
+    });
+
+    // Fetch related remisiones
+    const remsQuery = query(collection(db, "companies", companyId, "remisiones"), where("orderId", "==", params.id));
+    const unsubRems = onSnapshot(remsQuery, (snap) => {
+      const rems = snap.docs.map(d => ({ ...d.data(), type: 'Remisión', docType: 'remision' }));
+      setRelatedDocs(prev => {
+        const others = prev.filter(d => d.docType !== 'remision');
+        return [...others, ...rems].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      });
+    });
+
+    // Fetch related facturas
+    const factsQuery = query(collection(db, "companies", companyId, "facturas"), where("orderId", "==", params.id));
+    const unsubFacts = onSnapshot(factsQuery, (snap) => {
+      const facts = snap.docs.map(d => ({ ...d.data(), type: 'Factura', docType: 'factura' }));
+      setRelatedDocs(prev => {
+        const others = prev.filter(d => d.docType !== 'factura');
+        return [...others, ...facts].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      });
+    });
+
+    return () => {
+      unsubOrder();
+      unsubRems();
+      unsubFacts();
     };
-    fetchOrder();
   }, [companyId, params.id]);
 
   useEffect(() => {
@@ -274,6 +296,14 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
       p.variants?.some((v:any) => v.sku.toLowerCase().includes(term) || v.barcode?.includes(term))
     );
   };
+  
+  const getFilteredClients = () => {
+    const term = clientSearch.toLowerCase();
+    return clients.filter(c => 
+      c.name.toLowerCase().includes(term) || 
+      c.rfc.toLowerCase().includes(term)
+    ).slice(0, 10);
+  };
 
   const handleCancel = async () => {
     if (!companyId) return;
@@ -479,25 +509,67 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase">Cliente</label>
             {isEditing ? (
-              <select
-                className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold text-slate-900"
-                value={order.clientId || ""}
-                onChange={e => {
-                  const selectedId = e.target.value;
-                  const selectedClient = clients.find(c => c.id === selectedId);
-                  setOrder({
-                    ...order,
-                    clientId: selectedId,
-                    clientName: selectedClient ? selectedClient.name : "",
-                    rfc: selectedClient ? selectedClient.rfc : ""
-                  });
-                }}
-              >
-                <option value="">Seleccionar Cliente</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <div className="relative mt-1">
+                <div className="relative">
+                  <Input
+                    className="h-8 pr-8 text-xs font-semibold"
+                    placeholder="Buscar cliente..."
+                    value={clientSearch || (order.clientName || "")}
+                    onChange={(e) => {
+                      setClientSearch(e.target.value);
+                      setIsClientDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsClientDropdownOpen(true)}
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                    {isClientDropdownOpen ? (
+                      <ChevronDown className="w-3 h-3 text-slate-400 rotate-180 transition-transform" />
+                    ) : (
+                      <Search className="w-3 h-3 text-slate-400" />
+                    )}
+                  </div>
+                </div>
+
+                {isClientDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-[60]" 
+                      onClick={() => {
+                        setIsClientDropdownOpen(false);
+                        setClientSearch("");
+                      }} 
+                    />
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-xl z-[70] max-h-60 overflow-y-auto overflow-x-hidden divide-y">
+                      {getFilteredClients().length === 0 ? (
+                        <div className="p-2 text-[10px] text-slate-500 text-center italic">
+                          No se encontraron clientes
+                        </div>
+                      ) : (
+                        getFilteredClients().map(c => (
+                          <div 
+                            key={c.id} 
+                            className="p-2 hover:bg-slate-50 cursor-pointer transition-colors"
+                            onClick={() => {
+                              setOrder({
+                                ...order,
+                                clientId: c.id,
+                                clientName: c.name,
+                                rfc: c.rfc || ""
+                              });
+                              setClientSearch("");
+                              setIsClientDropdownOpen(false);
+                              setIsCreatingProject(false);
+                            }}
+                          >
+                            <p className="text-xs font-bold text-slate-900 truncate">{c.name}</p>
+                            {c.rfc && <p className="text-[9px] text-slate-500 font-medium">RFC: {c.rfc}</p>}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             ) : (
               <>
                 <p className="font-bold text-slate-900 mt-1">{order.clientName || 'Sin Cliente'}</p>
@@ -529,6 +601,16 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
               {order.status === 'remisionado' && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Remisionado
+                </span>
+              )}
+              {order.status === 'facturado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                  Facturado
+                </span>
+              )}
+              {order.status === 'pre_facturado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Pre-Facturado
                 </span>
               )}
             </div>
@@ -993,10 +1075,72 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
       )}
 
       {activeTab === "relacionados" && (
-        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
-          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
-          <p className="font-semibold text-slate-800 mb-1">Documentos relacionados</p>
-          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        <div className="bg-card border rounded-xl overflow-hidden shadow-sm">
+          <div className="p-4 border-b bg-slate-50/50 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-indigo-600" />
+            <h3 className="font-bold text-sm text-slate-800">Documentos Vinculados</h3>
+          </div>
+          
+          {relatedDocs.length === 0 ? (
+            <div className="p-12 text-center text-slate-400">
+              <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+              <p className="font-semibold text-slate-800 mb-1">Sin documentos relacionados</p>
+              <p className="text-xs text-slate-500">Aún no se han generado remisiones o facturas para este pedido.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 font-semibold text-[10px] uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-3">Tipo</th>
+                    <th className="px-6 py-3">Folio</th>
+                    <th className="px-6 py-3">Fecha</th>
+                    <th className="px-6 py-3">Estatus</th>
+                    <th className="px-6 py-3 text-right">Monto</th>
+                    <th className="px-6 py-3 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {relatedDocs.map((doc: any) => (
+                    <tr key={doc.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {doc.docType === 'remision' ? <Truck className="w-4 h-4 text-emerald-600" /> : <Receipt className="w-4 h-4 text-blue-600" />}
+                          <span className="font-bold text-slate-700">{doc.type}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-slate-900">
+                        {doc.docType === 'remision' ? `REM-${doc.remissionNumber}` : `FAC-${doc.invoiceNumber}`}
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 text-xs">
+                        {new Date(doc.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          doc.status === 'activa' || doc.status === 'timbrada' 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}>
+                          {doc.status?.toUpperCase() || 'DESCONOCIDO'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right font-black text-slate-900">
+                        ${Number(doc.totalAmount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <Link 
+                          href={doc.docType === 'remision' ? `/ventas/remisiones/${doc.id}` : `/ventas/facturas/${doc.id}`}
+                          className="text-indigo-600 hover:text-indigo-800 font-bold text-xs hover:underline"
+                        >
+                          Ver Detalle
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

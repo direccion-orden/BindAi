@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc, onSnapshot, query, collection, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, ArrowLeft, Receipt, Package, FileText, FileCode, Download, DollarSign, MessageSquare } from "lucide-react";
+import { Loader2, ArrowLeft, Receipt, Package, FileText, FileCode, Download, DollarSign, MessageSquare, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { createCfdi, cancelCfdi, downloadCfdi } from "@/actions/facturama";
@@ -28,6 +28,7 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
   const [downloading, setDownloading] = useState<'pdf' | 'xml' | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("detalle");
+  const [relatedDocs, setRelatedDocs] = useState<any[]>([]);
   
   const router = useRouter();
 
@@ -53,6 +54,20 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
       }
     };
     fetchFactura();
+
+    // Fetch related remisiones (that point to this invoice)
+    const remsQuery = query(collection(db, "companies", companyId, "remisiones"), where("invoiceId", "==", params.id));
+    const unsubRems = onSnapshot(remsQuery, (snap) => {
+      const rems = snap.docs.map(d => ({ ...d.data(), type: 'Remisión', docType: 'remision' }));
+      setRelatedDocs(prev => {
+        const others = prev.filter(d => d.docType !== 'remision');
+        return [...others, ...rems];
+      });
+    });
+
+    return () => {
+      unsubRems();
+    };
   }, [companyId, params.id]);
 
   if (loading) {
@@ -507,10 +522,55 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
       )}
 
       {activeTab === "relacionados" && (
-        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
-          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
-          <p className="font-semibold text-slate-800 mb-1">Documentos relacionados</p>
-          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        <div className="bg-card border rounded-xl overflow-hidden shadow-sm">
+          <div className="p-4 border-b bg-slate-50/50 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-indigo-600" />
+            <h3 className="font-bold text-sm text-slate-800">Documentos Vinculados</h3>
+          </div>
+          
+          <div className="divide-y divide-slate-100">
+            {factura.orderId && (
+              <div className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-50 rounded-lg">
+                    <Package className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 text-sm">Pedido {factura.orderNumber}</p>
+                    <p className="text-xs text-slate-500">Documento de origen</p>
+                  </div>
+                </div>
+                <Link href={`/ventas/pedidos/${factura.orderId}`}>
+                  <Button variant="outline" size="sm" className="font-bold text-xs h-8">Ver Pedido</Button>
+                </Link>
+              </div>
+            )}
+            
+            {relatedDocs.map((rem: any) => (
+              <div key={rem.id} className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-50 rounded-lg">
+                    <Truck className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 text-sm">Remisión {rem.remissionNumber}</p>
+                    <p className="text-xs text-slate-500">Entregado el {new Date(rem.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <Link href={`/ventas/remisiones/${rem.id}`}>
+                  <Button variant="outline" size="sm" className="font-bold text-xs h-8">Ver Remisión</Button>
+                </Link>
+              </div>
+            ))}
+
+            {!factura.orderId && relatedDocs.length === 0 && (
+              <div className="p-12 text-center text-slate-400">
+                <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                <p className="font-semibold text-slate-800 mb-1">Sin documentos relacionados</p>
+                <p className="text-xs text-slate-500">Esta factura fue generada de forma directa.</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

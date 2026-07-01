@@ -373,10 +373,55 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
       )}
 
       {activeTab === "relacionados" && (
-        <div className="bg-white border rounded-xl p-8 text-center text-slate-400">
-          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
-          <p className="font-semibold text-slate-800 mb-1">Documentos relacionados</p>
-          <p className="text-xs">Próximamente en el siguiente sprint.</p>
+        <div className="bg-card border rounded-xl overflow-hidden shadow-sm">
+          <div className="p-4 border-b bg-slate-50/50 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-indigo-600" />
+            <h3 className="font-bold text-sm text-slate-800">Documentos Vinculados</h3>
+          </div>
+          
+          <div className="divide-y divide-slate-100">
+            {remission.orderId && (
+              <div className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-50 rounded-lg">
+                    <Package className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 text-sm">Pedido {remission.orderNumber}</p>
+                    <p className="text-xs text-slate-500">Documento de origen</p>
+                  </div>
+                </div>
+                <Link href={`/ventas/pedidos/${remission.orderId}`}>
+                  <Button variant="outline" size="sm" className="font-bold text-xs h-8">Ver Pedido</Button>
+                </Link>
+              </div>
+            )}
+            
+            {remission.invoiceId && (
+              <div className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-50 rounded-lg">
+                    <Receipt className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 text-sm">Factura CFDI</p>
+                    <p className="text-xs text-slate-500">UUID: {remission.invoiceUuid || 'Pendiente'}</p>
+                  </div>
+                </div>
+                <Link href={`/ventas/facturas/${remission.invoiceId}`}>
+                  <Button variant="outline" size="sm" className="font-bold text-xs h-8">Ver Factura</Button>
+                </Link>
+              </div>
+            )}
+
+            {!remission.orderId && !remission.invoiceId && (
+              <div className="p-12 text-center text-slate-400">
+                <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                <p className="font-semibold text-slate-800 mb-1">Sin otros documentos relacionados</p>
+                <p className="text-xs text-slate-500">Esta remisión no tiene un pedido de origen ni ha sido facturada aún.</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
       

@@ -1,0 +1,4914 @@
+[
+  {
+    "winner": {
+      "id": "W9OLXMFbz68KpI3KvOti",
+      "name": "DANIELA VILLARREAL",
+      "rfc": "",
+      "email": "",
+      "phone": "",
+      "address": "",
+      "zipCode": "",
+      "city": "",
+      "state": "",
+      "neighborhood": "",
+      "createdAt": "2026-06-08T12:55:10.966Z",
+      "migrated": true,
+      "comments": "Creado automáticamente durante la migración de historial.",
+      "docCount": 15
+    },
+    "losers": [
+      {
+        "id": "m30ADklMYQB6SGWGMn8B",
+        "name": "ELSA BLOMEIER",
+        "phone": "8113798085",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1782331775,
+          "_nanoseconds": 101000000
+        },
+        "walletBalance": 0,
+        "docCount": 3
+      },
+      {
+        "id": "14bd1737-c987-4452-90a7-62361391c246",
+        "name": "FERNANDA VELENZUELA",
+        "phone": "9569838064",
+        "email": "",
+        "createdAt": "2026-06-20T17:33:25.649Z",
+        "docCount": 2
+      },
+      {
+        "id": "38bb2e09-c9e1-4bac-9430-0e3e77227a44",
+        "name": "Sandra Sosa",
+        "phone": "5554088151",
+        "email": "",
+        "createdAt": "2026-06-17T22:12:55.141Z",
+        "docCount": 2
+      },
+      {
+        "id": "9a608591-456b-408c-b1f4-54a5dae880c5",
+        "zipCode": "",
+        "city": "",
+        "rfc": "",
+        "createdAt": "2026-06-23T18:09:46.674Z",
+        "interiorNumber": "",
+        "phone": "",
+        "taxRegime": "612",
+        "exteriorNumber": "",
+        "street": "",
+        "name": "Nora",
+        "neighborhood": "",
+        "state": "",
+        "email": "",
+        "docCount": 2
+      },
+      {
+        "id": "b052cfb7-f15d-44b8-9835-45121fe1ce27",
+        "zipCode": "11540",
+        "city": "Miguel Hidalgo",
+        "rfc": "",
+        "interiorNumber": "F103",
+        "phone": "5537069074",
+        "taxRegime": "",
+        "exteriorNumber": "327",
+        "street": "Edgar Allan Poe",
+        "neighborhood": "Polanco III Sección",
+        "state": "Ciudad de México",
+        "email": "",
+        "createdAt": "2026-06-18T20:36:15.633Z",
+        "name": "Macarena Valle Díaz",
+        "docCount": 2
+      },
+      {
+        "id": "pAUXlaoHJPpjUTL1rkKg",
+        "name": "NOEMI VILLAREAL",
+        "phone": "5539015144",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1782503854,
+          "_nanoseconds": 751000000
+        },
+        "walletBalance": 0,
+        "docCount": 2
+      },
+      {
+        "id": "0K3LtpmCbCsdf3Pp6o9x",
+        "name": "gabriela santos",
+        "phone": "8182547308",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781809269,
+          "_nanoseconds": 259000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "0fMbdB8ZySyZC89jCdlR",
+        "name": "Orden #701-8709442-1841003",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.571Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "137c4UXxxxejbTDnJAZc",
+        "name": "CATALIA GOMEZ",
+        "phone": "8116903500",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781815559,
+          "_nanoseconds": 666000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "1666ce27-04aa-436d-a8d9-310c9dc1a865",
+        "zipCode": "",
+        "city": "",
+        "rfc": "",
+        "createdAt": "2026-06-29T15:06:04.499Z",
+        "interiorNumber": "",
+        "phone": "",
+        "taxRegime": "",
+        "exteriorNumber": "",
+        "street": "",
+        "name": "ROCIO LOPEZ",
+        "neighborhood": "EL VERGEL",
+        "state": "",
+        "email": "",
+        "docCount": 1
+      },
+      {
+        "id": "19kzzsnXjcX0xfsss7U2",
+        "name": "Orden #701-0294272-2638608",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.568Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "1aaf4824-d5a5-4309-a624-c49dde9b3136",
+        "name": "Sandra Sosa",
+        "phone": "5554088151",
+        "email": "",
+        "createdAt": "2026-06-24T19:25:23.257Z",
+        "docCount": 1
+      },
+      {
+        "id": "1i9bcy3zs2wxmxVHWlgh",
+        "name": "erika maldonado",
+        "phone": "8112441038",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781459429,
+          "_nanoseconds": 544000000
+        },
+        "walletBalance": 0,
+        "points": 55.37,
+        "docCount": 1
+      },
+      {
+        "id": "1phumX8z8eFgFrATNv3E",
+        "name": "Orden #2000014722096786 PackID#2000011050747613",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.552Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "34a7df09-a402-40fd-9b11-283e69d62742",
+        "name": "MARIA JOSÉ PENELOPE  VANEGAS",
+        "phone": "322 2106961",
+        "email": "",
+        "createdAt": "2026-06-15T19:38:05.813Z",
+        "docCount": 1
+      },
+      {
+        "id": "3lMcb3LCXn5FK1CSJk1s",
+        "name": "cecilia prieto",
+        "phone": "3121550031",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1782854437,
+          "_nanoseconds": 946000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "4027c813-d925-415a-b223-9eaf2627ff61",
+        "name": "VERO RODRIGUEZ",
+        "phone": "81",
+        "email": "",
+        "createdAt": "2026-06-15T21:09:32.833Z",
+        "docCount": 1
+      },
+      {
+        "id": "4Xzc6uoQVxUJ0ynWWUJb",
+        "name": "carmen valeria",
+        "phone": "5610748587",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781637761,
+          "_nanoseconds": 672000000
+        },
+        "walletBalance": 0,
+        "points": 30.99,
+        "docCount": 1
+      },
+      {
+        "id": "5iIvcsoaFqA0JFxAwbTn",
+        "name": "MARIA BERTHA",
+        "phone": "8183968912",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781391832,
+          "_nanoseconds": 433000000
+        },
+        "walletBalance": 0,
+        "points": 30,
+        "docCount": 1
+      },
+      {
+        "id": "6862cc06-cd18-40ee-9cae-808d2b753513",
+        "name": "ANDRE GINAC",
+        "phone": "8",
+        "email": "",
+        "createdAt": "2026-06-16T21:17:04.137Z",
+        "docCount": 1
+      },
+      {
+        "id": "88swSEAmRD4XTvesSBq6",
+        "name": "fernada oseguera",
+        "phone": "3122015549",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781629846,
+          "_nanoseconds": 828000000
+        },
+        "walletBalance": 0,
+        "points": 10,
+        "docCount": 1
+      },
+      {
+        "id": "ArSeMHp5BbTO4ruKZkw5",
+        "name": "Orden #701-1694395-9122657",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.527Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "BC8bnEzn7TImviT5n1Wr",
+        "name": "Orden #701-0240571-3289035",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.531Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "CeknmLaHrkGms2NhVYyZ",
+        "name": "Orden #702-1263440-0426641",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.518Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "D8Y8qstqgmcJfBdn3Z6E",
+        "name": "Orden #701-8078838-0941833",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.518Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "ESwAt0b0GFyqJQtkZuYf",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:48:19.007Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "name": "Daniela Bañuelos",
+        "docCount": 1
+      },
+      {
+        "id": "FeLycFkcEnlcCPfGdNDr",
+        "name": "ANA MONTALVO",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:37:59.740Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "FpnYbXVD7edNoq00xnAk",
+        "name": "Orden #702-3228939-3833869",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.531Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "GOgeNi9REoSoWq5Y1inL",
+        "name": "CARMEN DE LLAGUNO",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:36:49.515Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "H5WGu9nBPC0cUPiFiZ3e",
+        "name": "Orden #702-7966218-4573008",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.519Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "I68Xm5LUFmKkW29mqClQ",
+        "name": "TANIA COLORADO",
+        "phone": "8110288117",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781381176,
+          "_nanoseconds": 530000000
+        },
+        "walletBalance": 0,
+        "points": 128.74,
+        "docCount": 1
+      },
+      {
+        "id": "IkrZo0DgFf0I4JyGSrHx",
+        "name": "Orden #702-5469819-8538630",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.519Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "Jsz8H4mI3UJEcveZaM91",
+        "name": "Dulce Vazquez",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.764Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "L8OHOXxdzSeY9Tn5Saib",
+        "name": "Orden #702-3778231-5997844",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.519Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "LE9NZzYrzVLvgCjEyxCb",
+        "name": "cinthia gutierrez",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781200652,
+          "_nanoseconds": 610000000
+        },
+        "walletBalance": 0,
+        "points": 38.62,
+        "phone": "8113849026",
+        "docCount": 1
+      },
+      {
+        "id": "MDsQlLOylolHa9J3Yt1W",
+        "name": "Orden #2000015949724540 PackID#2000012476631301",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.557Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "NWrMuKbra7WUspuvnRXG",
+        "name": "Orden #701-9812790-0997862",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.518Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "PHkoZIFlWkNpzuyUYhNn",
+        "name": "GRISELDA ARAIZA",
+        "phone": "8711137337",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781890337,
+          "_nanoseconds": 464000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "Q3czeJANkSpxDOZpe4kW",
+        "name": "jessica mtz",
+        "phone": "8180207845",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781204142,
+          "_nanoseconds": 288000000
+        },
+        "walletBalance": 0,
+        "points": 8.4,
+        "docCount": 1
+      },
+      {
+        "id": "QLNtmG9swW5J26Zt8WhY",
+        "name": "Orden #701-9175038-7161020",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.580Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "Tv6wZxGsNNe4C5w7uLvw",
+        "name": "Orden #702-9800808-4731408",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.587Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "U2i0UxIJEDWefXUANXea",
+        "name": "cinthia gutierrez",
+        "phone": "8113849026",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1782169673,
+          "_nanoseconds": 260000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "VFcmC654Soyqw4RPJoHP",
+        "name": "MARUCA VILLAREAL",
+        "phone": "8441003210",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1782338025,
+          "_nanoseconds": 861000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "VtvLEy7Qn8KpG45qdLPR",
+        "name": "Orden #701-0726970-5629858",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.554Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "W1eOAcXkHuG0Z4ctATor",
+        "name": "Orden #701-7152779-0793010",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.518Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "W80TMxKRkHFqclSl4fIr",
+        "name": "maria ujenia",
+        "phone": "8115886432",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781543040,
+          "_nanoseconds": 596000000
+        },
+        "walletBalance": 0,
+        "points": 5,
+        "docCount": 1
+      },
+      {
+        "id": "XDLkg41KW9jMIrSosYeh",
+        "name": "soet jimenez",
+        "phone": "9332084556",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781977280,
+          "_nanoseconds": 69000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "ZiFqZQqWyIMPY7QURfFU",
+        "name": "LEONOR",
+        "phone": "6181344333",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1780944980,
+          "_nanoseconds": 564000000
+        },
+        "walletBalance": 0,
+        "points": 1.99,
+        "docCount": 1
+      },
+      {
+        "id": "aQTQp3FCn8maFGWuUzmg",
+        "name": "BEBIS MUNCH",
+        "phone": "8666381070",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781990698,
+          "_nanoseconds": 918000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "agRr7bnk9lZvpu52oVkB",
+        "name": "ALICIA CANALES",
+        "phone": "8183352814",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781981560,
+          "_nanoseconds": 360000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "biBbWE3uC3ev59z5oIxq",
+        "name": "OLGA MENA",
+        "phone": "8123555455",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781734456,
+          "_nanoseconds": 311000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "cxSty3BbsTXMDuFVpPvq",
+        "name": "ADRIANA CARRERA",
+        "phone": "4448441594",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781384371,
+          "_nanoseconds": 868000000
+        },
+        "walletBalance": 0,
+        "points": 63.96,
+        "docCount": 1
+      },
+      {
+        "id": "czevNKWsoRg9T23imYjY",
+        "name": "Orden #701-5878872-4794659",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.580Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "fBJFN4vGABCT5OAhnUn5",
+        "name": "iliana",
+        "phone": "8681532792",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781465798,
+          "_nanoseconds": 283000000
+        },
+        "walletBalance": 0,
+        "points": 22.22,
+        "docCount": 1
+      },
+      {
+        "id": "fUgKD3lwr2LvblwigbMC",
+        "name": "Orden #702-3225029-6544241",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.519Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "fXL1g2RMEUKZz3OC0iOi",
+        "name": "Orden #701-7250304-6942624",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.535Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "hDjXGbOF6aHiUIMHqqTW",
+        "name": "Orden #702-0323818-0645031",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.518Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "jDutBnxoPTj6TJe6LZLH",
+        "name": "Orden #701-0758253-8964201",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.519Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "kONnVgneaIRg8e7COxFL",
+        "name": "Orden #702-0310547-8179406",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.571Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "lHXsCPbtjqQA392Rg0zn",
+        "name": "carlos",
+        "phone": "8341439761",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781481943,
+          "_nanoseconds": 860000000
+        },
+        "walletBalance": 0,
+        "points": 11.56,
+        "docCount": 1
+      },
+      {
+        "id": "o7pQvv528erPqqHDiqBk",
+        "name": "KARLA GARZA",
+        "phone": "8182540177",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781381367,
+          "_nanoseconds": 445000000
+        },
+        "walletBalance": 0,
+        "points": 5.49,
+        "docCount": 1
+      },
+      {
+        "id": "ox9U6uXgXgdmAc0vQIJt",
+        "name": "Orden #701-1772446-7523448",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.518Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "qM3o7rOJT9MTRE9Xx5TF",
+        "name": "Orden #2000015609264180 PackID#2000012104605453",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.540Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "sPfs0WEGMhoDhoNvGjPi",
+        "name": "ATALIA ONTIVEROS",
+        "phone": "8134430081",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1782435855,
+          "_nanoseconds": 622000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "t5LoyopWtZQKXyw4BWFr",
+        "name": "margot quintanilla",
+        "phone": "8111755244",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781648220,
+          "_nanoseconds": 705000000
+        },
+        "walletBalance": 0,
+        "points": 21.89,
+        "docCount": 1
+      },
+      {
+        "id": "tiLe0ptPtHBEjLAVwIS7",
+        "name": "Orden #701-4135215-0743450",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:49:33.562Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 1
+      },
+      {
+        "id": "u5E08ENaVzQEPMplLSKz",
+        "name": "CATALINA JAIME",
+        "phone": "8183098050",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1782755218,
+          "_nanoseconds": 427000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "vWUQsQc4sLLbeaHHjcNn",
+        "name": "CAMILA VELASQUEZ",
+        "phone": "7774179125",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781717276,
+          "_nanoseconds": 236000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "yDhHIaEFh79nwAJ4dhMd",
+        "name": "NORMA LOZANO",
+        "phone": "4423433656",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781376628,
+          "_nanoseconds": 165000000
+        },
+        "walletBalance": 0,
+        "points": 6.89,
+        "docCount": 1
+      },
+      {
+        "id": "yPh9SUkiql6bQD7Lrt3f",
+        "name": "Raquel montemayor",
+        "phone": "8114731866",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781747243,
+          "_nanoseconds": 144000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "yz0zvc4cZbvxNZ5FK4g4",
+        "name": "MARINA MTZ",
+        "phone": "8115163063",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1782174047,
+          "_nanoseconds": 766000000
+        },
+        "walletBalance": 0,
+        "docCount": 1
+      },
+      {
+        "id": "2sGFlM6Jw9Hjjg2sIh9w",
+        "name": "AK",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.775Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "2syZAsIdFWspQz2gqIrf",
+        "name": "Stephanie Garcia",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.763Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "6zRiUmb8L0ekz4QuAafj",
+        "name": "Office Design",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.752Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "71150a3d-da0b-4ad0-be29-929be723376c",
+        "name": "DANIELA",
+        "phone": "8",
+        "email": "",
+        "createdAt": "2026-06-17T22:04:35.548Z",
+        "docCount": 0
+      },
+      {
+        "id": "7YAdi3AMNOjA7wQRkrWn",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-07T18:09:05.574Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "name": "Ing. Jairo García",
+        "docCount": 0
+      },
+      {
+        "id": "7f4de825-facf-42af-a7ac-7b69124b7479",
+        "name": "Litza",
+        "phone": "55 5414 6254",
+        "email": "",
+        "createdAt": "2026-06-26T16:27:56.682Z",
+        "docCount": 0
+      },
+      {
+        "id": "8d8e67f4-f4f5-4ddb-9414-b3174789cea6",
+        "name": "Anny Balderrama",
+        "phone": "9175107906",
+        "email": "",
+        "createdAt": "2026-06-22T22:25:04.679Z",
+        "docCount": 0
+      },
+      {
+        "id": "CchRZFnq18NNDfyKIzoC",
+        "name": "Dalia González",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.738Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "KvNthRoY3Lw6grq0Z51z",
+        "name": "Mónica Fernández",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.764Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "LgvoHANJZ3Lq7pKdgCEX",
+        "name": "Ulises González Villegas",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.766Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "MmQPIUqPyBoaXeqTDVuw",
+        "name": "Lucía Vigil",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.776Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "O6Y9BLWmLKgRJREBFUNJ",
+        "name": "Ariana Rivero",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.753Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "PTH14fVoQNs9ejo9gd6y",
+        "name": "Clauba",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.778Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "T7oMI1Q94r63HhqZJqWt",
+        "name": "Dian Valencia",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.771Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "TBXRbiipT1TJaRosQ7c2",
+        "name": "AURORA",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.743Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "UITSCEVlTnzfO8Ri4iYL",
+        "name": "Analy Treviño-Garza",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.765Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "UoTn4TS7of0a9yi0AsED",
+        "name": "Anel",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.736Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "cglEAaTEbOV5FnvG0wc3",
+        "name": "Manola",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.765Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "d9e2664e-a2dd-48a8-9264-924aed964830",
+        "name": "Silvia Santos",
+        "phone": "8180108484",
+        "email": "",
+        "createdAt": "2026-06-30T21:19:17.358Z",
+        "docCount": 0
+      },
+      {
+        "id": "h0pNiwixeUhP8Yod6Ndt",
+        "name": "Pam",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.778Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "hNEzZ0KRlVrZy0OBzpdg",
+        "name": "Daniela Treviño",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.739Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "jtKO73TDzgsHdJmotyQO",
+        "name": "Vv",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.762Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "kee13zpaDSZlOREsfL3A",
+        "name": "Lorely G.",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-07T18:09:05.574Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "ku525PDQlRjTfqlClLWM",
+        "name": "ROSI ESPINOZA",
+        "phone": "8181619950",
+        "email": "",
+        "rfc": "XAXX010101000",
+        "points": 0,
+        "walletBalance": 0,
+        "preferences": "",
+        "isActive": true,
+        "createdAt": {
+          "_seconds": 1781038746,
+          "_nanoseconds": 724000000
+        },
+        "docCount": 0
+      },
+      {
+        "id": "ljF6htNtvmq3xNWu5DWC",
+        "name": "Konitas",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.779Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "nGURIB5jjSYgAwselKEn",
+        "name": "JOEL SANTIAGO",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.773Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "tXk8bOaYFDWGnxtNeX7L",
+        "name": "Mayra Patico",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-07T18:09:05.573Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "u78DP5ZqyWX79AlSWuiI",
+        "name": "Erik",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.769Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      },
+      {
+        "id": "vIdk9knjOEnCwtQAZpSh",
+        "name": "Pam Salazar",
+        "rfc": "",
+        "email": "",
+        "phone": "",
+        "address": "",
+        "zipCode": "",
+        "city": "",
+        "state": "",
+        "neighborhood": "",
+        "createdAt": "2026-06-01T03:35:20.764Z",
+        "migrated": true,
+        "comments": "Creado automáticamente durante la migración de historial.",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "13ae7bdd-6b3e-4184-88c8-31e8d18e34de",
+      "ClientName": "Alessandra Garcia Camelo",
+      "LegalName": "Alessandra Garcia Camelo",
+      "Email": "alessandra_garcia7@outlook.com",
+      "Number": 1914,
+      "Phone": null,
+      "RegimenFiscal": "601",
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "13ae7bdd-6b3e-4184-88c8-31e8d18e34de",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "8cc27507-570d-4a85-b4eb-cb78547c5dbe",
+        "ClientName": "Alessandra Garcia Camelo",
+        "LegalName": "Alessandra Garcia Camelo",
+        "Email": "alessandra_garcia7@outlook.com",
+        "Number": 1913,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "8cc27507-570d-4a85-b4eb-cb78547c5dbe",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "13d709e1-acce-413b-9521-44b187571cbd",
+      "ClientName": "JESSICA GONZALEZ",
+      "LegalName": "JESSICA GONZALEZ",
+      "Email": null,
+      "Number": 2053,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "13d709e1-acce-413b-9521-44b187571cbd",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "b91d2b05-4082-478b-a29e-c709130823d3",
+        "ClientName": "JESSICA GONZALEZ",
+        "LegalName": "JESSICA GONZALEZ",
+        "Email": null,
+        "Number": 2054,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "b91d2b05-4082-478b-a29e-c709130823d3",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "1400e23f-dbe7-4a38-8565-c2225253f071",
+      "ClientName": "Ana Laura",
+      "LegalName": "Ana Laura",
+      "Email": null,
+      "Number": 1428,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "1400e23f-dbe7-4a38-8565-c2225253f071",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "a24ef75d-1510-4135-9d8b-fda8a3c1a59a",
+        "ClientName": "Ana Laura",
+        "LegalName": "Ana Laura",
+        "Email": null,
+        "Number": 1426,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "a24ef75d-1510-4135-9d8b-fda8a3c1a59a",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "aab3c595-e9c9-42fb-affa-002d868598e2",
+        "ClientName": "Ana Laura",
+        "LegalName": "Ana Laura",
+        "Email": null,
+        "Number": 1427,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "aab3c595-e9c9-42fb-affa-002d868598e2",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "157d0382-8876-4064-907c-758b6622c048",
+      "ClientName": "Lupita Marinez",
+      "LegalName": "Lupita Marinez",
+      "Email": null,
+      "Number": 1268,
+      "Phone": "+522227530090",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "157d0382-8876-4064-907c-758b6622c048",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "a22b0a45-b3c7-4b0f-88b9-ade0abd107af",
+        "ClientName": "Lupita Marinez",
+        "LegalName": "Lupita Marinez",
+        "Email": null,
+        "Number": 1295,
+        "Phone": "+522227530099",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "a22b0a45-b3c7-4b0f-88b9-ade0abd107af",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "162a7a23-e745-4dcb-94a8-4a60412bdf29",
+      "ClientName": "MAYELA TREVIÑO",
+      "LegalName": "MAYELA TREVIÑO",
+      "Email": null,
+      "Number": 3190,
+      "Phone": null,
+      "RegimenFiscal": "612",
+      "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+      "ID": "162a7a23-e745-4dcb-94a8-4a60412bdf29",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "33c2f038-630e-43df-a46c-6414d3bab2d0",
+        "ClientName": "MAYELA TREVIÑO",
+        "LegalName": "MAYELA TREVIÑO",
+        "Email": null,
+        "Number": 3187,
+        "Phone": null,
+        "RegimenFiscal": "612",
+        "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+        "ID": "33c2f038-630e-43df-a46c-6414d3bab2d0",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "164bbf63-1faf-4222-ad3a-71a5d91f75fa",
+      "ClientName": "LETICIA MONTEMAYOR",
+      "LegalName": "LETICIA MONTEMAYOR",
+      "Email": null,
+      "Number": 2741,
+      "Phone": "8117935619",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "164bbf63-1faf-4222-ad3a-71a5d91f75fa",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "23a31185-c162-4675-a4bd-1fcb09849423",
+        "ClientName": "LETICIA MONTEMAYOR",
+        "LegalName": "LETICIA MONTEMAYOR",
+        "Email": null,
+        "Number": 2740,
+        "Phone": "8117935619",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "23a31185-c162-4675-a4bd-1fcb09849423",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "a47b0da1-8839-4591-9cd4-d954935126f1",
+        "ClientName": "LETICIA MONTEMAYOR",
+        "LegalName": "LETICIA MONTEMAYOR",
+        "Email": null,
+        "Number": 2390,
+        "Phone": "8112127733",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "a47b0da1-8839-4591-9cd4-d954935126f1",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "d323c89c-9ad5-45b6-82c8-daad580ca616",
+        "ClientName": "LETICIA MONTEMAYOR",
+        "LegalName": "LETICIA MONTEMAYOR",
+        "Email": null,
+        "Number": 2742,
+        "Phone": "8117935619",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "d323c89c-9ad5-45b6-82c8-daad580ca616",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "18911b9c-3ac3-4440-b19b-95f3a65d6539",
+      "ClientName": "Mayita Valenzuela",
+      "LegalName": "Mayita Valenzuela",
+      "Email": null,
+      "Number": 3913,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "c991fa76-678b-44c9-9af4-87937e0492ab",
+      "ID": "18911b9c-3ac3-4440-b19b-95f3a65d6539",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "865253db-c70f-4728-8a90-1969027714ac",
+        "ClientName": "Mayita Valenzuela",
+        "LegalName": "Mayita Valenzuela",
+        "Email": null,
+        "Number": 1326,
+        "Phone": "+523334734339",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "865253db-c70f-4728-8a90-1969027714ac",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "18a62d10-5277-4156-a861-298a818a294f",
+      "ClientName": "RAQUEL ODRIOZOLA",
+      "LegalName": "RAQUEL ODRIOZOLA",
+      "Email": null,
+      "Number": 3058,
+      "Phone": null,
+      "RegimenFiscal": "612",
+      "LocationID": null,
+      "ID": "18a62d10-5277-4156-a861-298a818a294f",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "28f04b9d-4e27-4b64-bdfc-c9e1b61a13eb",
+        "ClientName": "Raquel Odriozola",
+        "LegalName": "Raquel Odriozola",
+        "Email": null,
+        "Number": 3036,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "28f04b9d-4e27-4b64-bdfc-c9e1b61a13eb",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "1ae52b3a-0fc2-4b01-82dc-a86c7e395185",
+      "ClientName": "Cecilia Etienne",
+      "LegalName": "Cecilia Etienne",
+      "Email": null,
+      "Number": 5008,
+      "Phone": "607 65 44 05",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "1ae52b3a-0fc2-4b01-82dc-a86c7e395185",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 40
+    },
+    "losers": [
+      {
+        "id": "64df6e1e-38e8-473b-a01d-00250827c8da",
+        "ClientName": "CECILIA ETIENNE",
+        "LegalName": "CECILIA ETIENNE",
+        "Email": null,
+        "Number": 1931,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "64df6e1e-38e8-473b-a01d-00250827c8da",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "1b1b91b5-2582-4c01-b925-4f2a0585bdc9",
+      "ClientName": "Barbara Gutierrez",
+      "LegalName": "Barbara Gutierrez",
+      "Email": null,
+      "Number": 1063,
+      "Phone": "+528126294215",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "1b1b91b5-2582-4c01-b925-4f2a0585bdc9",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "4df7bad0-17eb-44f2-bbce-ab0f348cf8b2",
+        "ClientName": "Barbara Gutierrez",
+        "LegalName": "Barbara Gutierrez",
+        "Email": null,
+        "Number": 1390,
+        "Phone": "+528713247199",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "4df7bad0-17eb-44f2-bbce-ab0f348cf8b2",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "1b8ba942-27ab-4797-9169-f52402884232",
+      "ClientName": "Lourdes Villagómez Menendez",
+      "LegalName": "Lourdes Villagómez Menendez",
+      "Email": "LV@lourdesvillagomez.com",
+      "Number": 1218,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+      "ID": "1b8ba942-27ab-4797-9169-f52402884232",
+      "NextContactDate": null,
+      "RFC": "VIML8401283QA",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "9062d1c1-4f33-419b-9982-c88d5338ab9b",
+        "ClientName": "Lourdes Villagómez Menendez",
+        "LegalName": "Lourdes Villagómez Menendez",
+        "Email": "LV@lourdesvillagomez.com",
+        "Number": 1213,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "9062d1c1-4f33-419b-9982-c88d5338ab9b",
+        "NextContactDate": null,
+        "RFC": "VIML8401283QA",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "1cb6ee47-2bdf-4595-ab9e-14231e078dd8",
+      "ClientName": "esteban de la garza",
+      "LegalName": "esteban de la garza",
+      "Email": null,
+      "Number": 2413,
+      "Phone": "8115312823",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "1cb6ee47-2bdf-4595-ab9e-14231e078dd8",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "3768315c-4aa3-4b67-b9d8-f3d16724889e",
+        "ClientName": "ESTEBAN DE LA GARZA",
+        "LegalName": "ESTEBAN DE LA GARZA",
+        "Email": null,
+        "Number": 2630,
+        "Phone": null,
+        "RegimenFiscal": "612",
+        "LocationID": null,
+        "ID": "3768315c-4aa3-4b67-b9d8-f3d16724889e",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "1eb8cc43-9a2a-44a5-8b60-dbed44647917",
+      "ClientName": "ana paula villarreal",
+      "LegalName": "ana paula villarreal",
+      "Email": "ventas@tresalejo.com.mx",
+      "Number": 2100,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "1eb8cc43-9a2a-44a5-8b60-dbed44647917",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "ab030686-cf7c-4be5-adc4-808ba4f559eb",
+        "ClientName": "ana paula villarreal",
+        "LegalName": "ana paula villarreal",
+        "Email": "ventas@tresalejo.com.mx",
+        "Number": 2100,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "ab030686-cf7c-4be5-adc4-808ba4f559eb",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "1ebe047d-6421-43b4-aba8-6f73a32f75bf",
+      "ClientName": "Laura",
+      "LegalName": "Laura",
+      "Email": null,
+      "Number": 1998,
+      "Phone": "551068 0210",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "1ebe047d-6421-43b4-aba8-6f73a32f75bf",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "327629b4-7bfc-47cb-97a8-4a73c6fdd1c3",
+        "ClientName": "LAURA",
+        "LegalName": "LAURA",
+        "Email": null,
+        "Number": 2765,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "327629b4-7bfc-47cb-97a8-4a73c6fdd1c3",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "a27aa681-61ad-40ec-8a6c-c6d23b8d3b97",
+        "ClientName": "LAURA",
+        "LegalName": "LAURA",
+        "Email": null,
+        "Number": 2279,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "a27aa681-61ad-40ec-8a6c-c6d23b8d3b97",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "df1d3a5f-0392-4883-a7eb-a64480a89888",
+        "ClientName": "LAURA",
+        "LegalName": "LAURA",
+        "Email": null,
+        "Number": 1407,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "df1d3a5f-0392-4883-a7eb-a64480a89888",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "1fb3e50e-43db-4571-a1f7-e7e60af69a4a",
+      "ClientName": "Rosalba Galvan",
+      "LegalName": "Rosalba Galvan",
+      "Email": null,
+      "Number": 3094,
+      "Phone": "+528180104381",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "1fb3e50e-43db-4571-a1f7-e7e60af69a4a",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "439c0b6a-7b7b-49ce-99f6-a0da94b1a804",
+        "ClientName": "ROSALBA GALVAN",
+        "LegalName": "ROSALBA GALVAN",
+        "Email": null,
+        "Number": 2805,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": null,
+        "ID": "439c0b6a-7b7b-49ce-99f6-a0da94b1a804",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "21bfa419-f38b-4629-9c4f-a75fc4c8a4db",
+      "ClientName": "Denise González",
+      "LegalName": "Denise González",
+      "Email": "denise.gonzher@gmail.com",
+      "Number": 1670,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "21bfa419-f38b-4629-9c4f-a75fc4c8a4db",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "walletBalance": 0,
+      "docCount": 1
+    },
+    "losers": [
+      {
+        "id": "c57286d7-50eb-456e-a6f6-0a3cf626187c",
+        "ClientName": "Denise González",
+        "LegalName": "Denise González",
+        "Email": "denise.gonzher@gmail.com",
+        "Number": 1670,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "c57286d7-50eb-456e-a6f6-0a3cf626187c",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "22ab56a2-557d-4f94-b794-655ddb9b2bf5",
+      "ClientName": "VERONICA MIRTA MORGENSTERN",
+      "LegalName": "VERONICA MIRTA MORGENSTERN",
+      "Email": "veromorgen@gmail.com",
+      "Number": 1242,
+      "Phone": "8117784555",
+      "RegimenFiscal": null,
+      "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+      "ID": "22ab56a2-557d-4f94-b794-655ddb9b2bf5",
+      "NextContactDate": null,
+      "RFC": "MOHV5809187V8",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "479452e1-a7b0-4662-bf7d-527b4c0342c1",
+        "ClientName": "VERONICA MIRTA MORGENSTERN",
+        "LegalName": "VERONICA MIRTA MORGENSTERN",
+        "Email": "veromorgen@gmail.com",
+        "Number": 1243,
+        "Phone": "8117784555",
+        "RegimenFiscal": null,
+        "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+        "ID": "479452e1-a7b0-4662-bf7d-527b4c0342c1",
+        "NextContactDate": null,
+        "RFC": "MOHV5809187V8",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "22f0e215-de54-44e9-9c37-48fe7a79661e",
+      "ClientName": "KARLA ARANA REYES",
+      "LegalName": "KARLA ARANA REYES",
+      "Email": "karjm@me.com",
+      "Number": 2135,
+      "Phone": "+529981114049",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "22f0e215-de54-44e9-9c37-48fe7a79661e",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "db9e3a2d-c7ee-44a1-9c80-b62866d6fe4c",
+        "ClientName": "KARLA ARANA REYES",
+        "LegalName": "KARLA ARANA REYES",
+        "Email": "karjm@me.com",
+        "Number": 2135,
+        "Phone": "+529981114049",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "db9e3a2d-c7ee-44a1-9c80-b62866d6fe4c",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "23ea11cf-185f-4696-95d6-43f8f902d399",
+      "ClientName": "Maria Zamarripa",
+      "LegalName": "Maria Zamarripa",
+      "Email": "maria.zbeltran@hotmail.com",
+      "Number": 1521,
+      "Phone": "8186931517",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "23ea11cf-185f-4696-95d6-43f8f902d399",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "b87eee45-cdd0-4f3b-afe5-7ae464ed92bc",
+        "ClientName": "MARIA ZAMARRIPA",
+        "LegalName": "MARIA ZAMARRIPA",
+        "Email": "maria.zbeltran@hotmail.com",
+        "Number": 1044,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "b87eee45-cdd0-4f3b-afe5-7ae464ed92bc",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "253d4104-1268-4749-849d-8b2558456b0e",
+      "ClientName": "Lu Schacht",
+      "LegalName": "Lu Schacht",
+      "Email": null,
+      "Number": 4985,
+      "Phone": "5554345777",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "253d4104-1268-4749-849d-8b2558456b0e",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 3
+    },
+    "losers": [
+      {
+        "id": "a0747f71-bf91-46ef-ac11-831b3e9581f1",
+        "ClientName": "Lu Schacht",
+        "LegalName": "Lu Schacht",
+        "Email": null,
+        "Number": 4972,
+        "Phone": "5554345777",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "a0747f71-bf91-46ef-ac11-831b3e9581f1",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "29e2734b-c77d-4b69-8086-2ca594712363",
+      "ClientName": "Andres Grisi",
+      "LegalName": "Andres Grisi",
+      "Email": "andresmgrisi@hotmail.com",
+      "Number": 1549,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "29e2734b-c77d-4b69-8086-2ca594712363",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "865344de-21ea-411a-a8a9-6ff730698e2a",
+        "ClientName": "Andres Grisi",
+        "LegalName": "Andres Grisi",
+        "Email": "andresmgrisi@hotmail.com",
+        "Number": 1541,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "865344de-21ea-411a-a8a9-6ff730698e2a",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "2d13d476-511e-4c56-be96-d86f0398a200",
+      "ClientName": "Katia Vargas",
+      "LegalName": "Katia Vargas",
+      "Email": "vargaskatia4@gmail.com",
+      "Number": 4287,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "2d13d476-511e-4c56-be96-d86f0398a200",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "cd1d8c3a-5bf3-4293-94be-8d89a02a3209",
+        "ClientName": "Katia Vargas",
+        "LegalName": "Katia Vargas",
+        "Email": "vargaskatia4@gmail.com",
+        "Number": 4286,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "cd1d8c3a-5bf3-4293-94be-8d89a02a3209",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "2db5f2ae-8de5-48bb-8ac5-4060a09f6b52",
+      "ClientName": "Lau Ross",
+      "LegalName": "Lau Ross",
+      "Email": "marijosu2016@gmail.com",
+      "Number": 2172,
+      "Phone": "+525540154448",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "2db5f2ae-8de5-48bb-8ac5-4060a09f6b52",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "e22f76ca-1cf8-4a05-8ab6-d26a6382b890",
+        "ClientName": "Lau Ross",
+        "LegalName": "Lau Ross",
+        "Email": "marijosu2016@gmail.com",
+        "Number": 2171,
+        "Phone": "+525540154448",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "e22f76ca-1cf8-4a05-8ab6-d26a6382b890",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "2dcf1e32-0d59-41e6-bbe6-bd9dc24c124b",
+      "ClientName": "Gabriela Gil",
+      "LegalName": "Gabriela Gil",
+      "Email": null,
+      "Number": 2133,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "2dcf1e32-0d59-41e6-bbe6-bd9dc24c124b",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "36dea597-348b-4781-ad47-439e20e64676",
+        "ClientName": "Gabriela Gil",
+        "LegalName": "Gabriela Gil",
+        "Email": null,
+        "Number": 2131,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "36dea597-348b-4781-ad47-439e20e64676",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "6ddb8bd2-49b0-4b5b-b6b0-2b37bb74e9d5",
+        "ClientName": "Gabriela Gil",
+        "LegalName": "Gabriela Gil",
+        "Email": null,
+        "Number": 2132,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "6ddb8bd2-49b0-4b5b-b6b0-2b37bb74e9d5",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "308b3a75-eeff-4007-a7a1-7c8fa9560874",
+      "ClientName": "Frieda Henderson Rodriguez",
+      "LegalName": "Frieda Henderson Rodriguez",
+      "Email": "friedahenderson@yahoo.com",
+      "Number": 2126,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "308b3a75-eeff-4007-a7a1-7c8fa9560874",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "e0354ddb-dc27-4479-b1a5-ddbab4d36945",
+        "ClientName": "Frieda Henderson Rodriguez",
+        "LegalName": "Frieda Henderson Rodriguez",
+        "Email": "friedahenderson@yahoo.com",
+        "Number": 2127,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "e0354ddb-dc27-4479-b1a5-ddbab4d36945",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "325861d5-0f92-468a-8336-d074fc2cd82f",
+      "ClientName": "Isela Sánchez González",
+      "LegalName": "Isela Sánchez González",
+      "Email": null,
+      "Number": 2191,
+      "Phone": "771 709 0824",
+      "RegimenFiscal": null,
+      "LocationID": "0531cb87-1a5f-4d67-9b9d-ca3314393f0d",
+      "ID": "325861d5-0f92-468a-8336-d074fc2cd82f",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "3ec13609-b18d-430e-a31b-f773daf9cade",
+        "ClientName": "Isela Sánchez González",
+        "LegalName": "Isela Sánchez González",
+        "Email": null,
+        "Number": 2110,
+        "Phone": "7717090824",
+        "RegimenFiscal": null,
+        "LocationID": "c991fa76-678b-44c9-9af4-87937e0492ab",
+        "ID": "3ec13609-b18d-430e-a31b-f773daf9cade",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "3314c30f-222f-4997-8f22-a74f99703aad",
+      "ClientName": "SARA M DE NICOLAU",
+      "LegalName": "SARA M DE NICOLAU",
+      "Email": null,
+      "Number": 1826,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "3314c30f-222f-4997-8f22-a74f99703aad",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "d772063f-1a5c-4231-9c52-b2172051efe7",
+        "ClientName": "Sara M de Nicolau",
+        "LegalName": "Sara M de Nicolau",
+        "Email": null,
+        "Number": 1833,
+        "Phone": "5554053118",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "d772063f-1a5c-4231-9c52-b2172051efe7",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "3472b08e-2e84-4017-a1be-4b89966a05a9",
+      "ClientName": "Lucia García de Alba",
+      "LegalName": "Lucia García de Alba",
+      "Email": "l.gdalba@gmail.com",
+      "Number": 3756,
+      "Phone": "+524451102223",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "3472b08e-2e84-4017-a1be-4b89966a05a9",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "4ff7fb93-cb72-4a62-9015-0cb387a76ebc",
+        "ClientName": "Lucia García de Alba",
+        "LegalName": "Lucia García de Alba",
+        "Email": "l.gdalba@gmail.com",
+        "Number": 3757,
+        "Phone": "+524451102223",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "4ff7fb93-cb72-4a62-9015-0cb387a76ebc",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "366faee7-e257-4fab-8b82-135976b66812",
+      "ClientName": "CONSTRUCTORA CACHAY",
+      "LegalName": "CONSTRUCTORA CACHAY",
+      "Email": "ventas@cachay.com.mx",
+      "Number": 2223,
+      "Phone": "8184503973",
+      "RegimenFiscal": null,
+      "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+      "ID": "366faee7-e257-4fab-8b82-135976b66812",
+      "NextContactDate": null,
+      "RFC": "CCA120515BT4",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "71b3da6c-cd1a-4ae0-bde8-fc830ebbb6f1",
+        "ClientName": "CONSTRUCTORA CACHAY",
+        "LegalName": "CONSTRUCTORA CACHAY",
+        "Email": "ventas@cachay.com.mx",
+        "Number": 2224,
+        "Phone": "8184503973",
+        "RegimenFiscal": null,
+        "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+        "ID": "71b3da6c-cd1a-4ae0-bde8-fc830ebbb6f1",
+        "NextContactDate": null,
+        "RFC": "CCA120515BT4",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "36bd5222-ea3c-4e6d-8116-bfc8d64b1133",
+      "ClientName": "ARGELIA LEON MEDEL",
+      "LegalName": "ARGELIA LEON MEDEL",
+      "Email": null,
+      "Number": 2217,
+      "Phone": "+525620540051",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "36bd5222-ea3c-4e6d-8116-bfc8d64b1133",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "bc32804b-e3ad-45f7-9236-18d42a109a5a",
+        "ClientName": "ARGELIA LEON MEDEL",
+        "LegalName": "ARGELIA LEON MEDEL",
+        "Email": null,
+        "Number": 2216,
+        "Phone": "+525620540051",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "bc32804b-e3ad-45f7-9236-18d42a109a5a",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "3949f87d-4e1b-4cd0-b410-45775fbd70d5",
+      "ClientName": "ANA LUISA RUBALCABA",
+      "LegalName": "ANA LUISA RUBALCABA",
+      "Email": null,
+      "Number": 2370,
+      "Phone": "8115001196",
+      "RegimenFiscal": null,
+      "LocationID": "0531cb87-1a5f-4d67-9b9d-ca3314393f0d",
+      "ID": "3949f87d-4e1b-4cd0-b410-45775fbd70d5",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "dbd4e047-8875-427f-a4cb-d6d531283f01",
+        "ClientName": "ANA LUISA RUBALCABA",
+        "LegalName": "ANA LUISA RUBALCABA",
+        "Email": null,
+        "Number": 2371,
+        "Phone": "8115001196",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "dbd4e047-8875-427f-a4cb-d6d531283f01",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "3a161b2b-6e0a-4a31-a35b-9a0cffbf61e5",
+      "ClientName": "VALERIA GARZA",
+      "LegalName": "VALERIA GARZA",
+      "Email": null,
+      "Number": 2395,
+      "Phone": "8119163469",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "3a161b2b-6e0a-4a31-a35b-9a0cffbf61e5",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "bc6dcc6c-2026-4aea-b215-aa1ebe73e676",
+        "ClientName": "VALERIA GARZA",
+        "LegalName": "VALERIA GARZA",
+        "Email": null,
+        "Number": 2629,
+        "Phone": null,
+        "RegimenFiscal": "612",
+        "LocationID": null,
+        "ID": "bc6dcc6c-2026-4aea-b215-aa1ebe73e676",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "3d5f2426-b551-44fd-8a5e-ded32601f428",
+      "ClientName": "Marina Mondragon",
+      "LegalName": "Marina Mondragon",
+      "Email": null,
+      "Number": 1113,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "3d5f2426-b551-44fd-8a5e-ded32601f428",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "e302cb57-cdba-4321-8b54-82e25e75ada0",
+        "ClientName": "Marina Mondragon",
+        "LegalName": "Marina Mondragon",
+        "Email": null,
+        "Number": 1087,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "e302cb57-cdba-4321-8b54-82e25e75ada0",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "3ef31731-f94c-4d6e-a561-7be0d44ebd58",
+      "ClientName": "Maria Jose Herrera",
+      "LegalName": "Maria Jose Herrera",
+      "Email": "mjha1@outlook.com",
+      "Number": 2002,
+      "Phone": "+525545774033",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "3ef31731-f94c-4d6e-a561-7be0d44ebd58",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "f1c2a78e-aaaa-4176-ae61-028ea8c88fc0",
+        "ClientName": "Maria Jose Herrera",
+        "LegalName": "Maria Jose Herrera",
+        "Email": "mjha1@outlook.com",
+        "Number": 2001,
+        "Phone": "+525545774033",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "f1c2a78e-aaaa-4176-ae61-028ea8c88fc0",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "3ff6d3f0-6222-4a0b-b210-3d36b3960487",
+      "ClientName": "Patricio Sandoval",
+      "LegalName": "Patricio Sandoval",
+      "Email": "patriciosandoval00@gmail.com",
+      "Number": 3306,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "3ff6d3f0-6222-4a0b-b210-3d36b3960487",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "58bc0fd6-0217-42b0-af38-cee0c640b22a",
+        "ClientName": "Patricio Sandoval",
+        "LegalName": "Patricio Sandoval",
+        "Email": "patriciosandoval00@gmail.com",
+        "Number": 3307,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "58bc0fd6-0217-42b0-af38-cee0c640b22a",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4276a66c-a2ff-4f70-8397-3d568a0b1c11",
+      "ClientName": "Gabriela Anahi Hernández López",
+      "LegalName": "Gabriela Anahi Hernández López",
+      "Email": "gahl2617@gmail.com",
+      "Number": 3848,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "4276a66c-a2ff-4f70-8397-3d568a0b1c11",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "7e95fdad-f244-489a-8275-d312a84235f1",
+        "ClientName": "Gabriela Anahi Hernández López",
+        "LegalName": "Gabriela Anahi Hernández López",
+        "Email": "gahl2617@gmail.com",
+        "Number": 3848,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "7e95fdad-f244-489a-8275-d312a84235f1",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "445ce89d-1b38-4e22-a5d7-c4e81d235fa1",
+      "ClientName": "JULIO",
+      "LegalName": "JULIO",
+      "Email": null,
+      "Number": 1352,
+      "Phone": "8187052840",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "445ce89d-1b38-4e22-a5d7-c4e81d235fa1",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "742fabf1-9ec0-4e30-982b-afa0035e93bb",
+        "ClientName": "JULIO",
+        "LegalName": "JULIO",
+        "Email": null,
+        "Number": 2611,
+        "Phone": "8116355851",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "742fabf1-9ec0-4e30-982b-afa0035e93bb",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "44894171-b208-48b6-9fa4-50fd72fe201a",
+      "ClientName": "Miriam Rocio Hernandez Vallejo",
+      "LegalName": "Miriam Rocio Hernandez Vallejo",
+      "Email": "benova.groupmx@gmail.com",
+      "Number": 1982,
+      "Phone": null,
+      "RegimenFiscal": "601",
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "44894171-b208-48b6-9fa4-50fd72fe201a",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "dbc3f73c-1bbd-4802-bd0d-904c20bf81c8",
+        "ClientName": "Miriam Rocio Hernandez Vallejo",
+        "LegalName": "Miriam Rocio Hernandez Vallejo",
+        "Email": "benova.groupmx@gmail.com",
+        "Number": 1990,
+        "Phone": "33 1918 0111",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "dbc3f73c-1bbd-4802-bd0d-904c20bf81c8",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "44eb5584-1183-4311-8611-76a9cb22e3ee",
+      "ClientName": "Itzel Iñiguez",
+      "LegalName": "Itzel Iñiguez",
+      "Email": "iib13@hotmail.com",
+      "Number": 2260,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "44eb5584-1183-4311-8611-76a9cb22e3ee",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "46e99f81-1036-4e49-9862-8498519bfa17",
+        "ClientName": "Itzel Iñiguez",
+        "LegalName": "Itzel Iñiguez",
+        "Email": "iib13@hotmail.com",
+        "Number": 2260,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "46e99f81-1036-4e49-9862-8498519bfa17",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4672a6f9-90e3-4e76-a023-81b82b21cd76",
+      "ClientName": "DIANA VERIN",
+      "LegalName": "DIANA VERIN",
+      "Email": "",
+      "Number": 4388,
+      "Phone": null,
+      "RegimenFiscal": "601",
+      "LocationID": null,
+      "ID": "4672a6f9-90e3-4e76-a023-81b82b21cd76",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 6
+    },
+    "losers": [
+      {
+        "id": "e3a9993a-7157-4fc7-a7eb-d8da2c189b40",
+        "ClientName": "DIANA VERIN",
+        "LegalName": "DIANA VERIN",
+        "Email": null,
+        "Number": 4686,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "f65f047b-4211-486b-9978-1a6709934d62",
+        "ID": "e3a9993a-7157-4fc7-a7eb-d8da2c189b40",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4724e792-e9ca-479e-9018-057e351f7952",
+      "ClientName": "Luis Mauricio Valladares Mendoza",
+      "LegalName": "Luis Mauricio Valladares Mendoza",
+      "Email": "miriamdiazmendoza@gmail.com",
+      "Number": 3469,
+      "Phone": "+525540865007",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "4724e792-e9ca-479e-9018-057e351f7952",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "6dc69214-d2f2-48f2-bd97-58b3826dfb70",
+        "ClientName": "Luis Mauricio Valladares Mendoza",
+        "LegalName": "Luis Mauricio Valladares Mendoza",
+        "Email": "miriamdiazmendoza@gmail.com",
+        "Number": 3469,
+        "Phone": "+525540865007",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "6dc69214-d2f2-48f2-bd97-58b3826dfb70",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "484ec46b-27e9-41ec-a6e8-c1f93b45a38d",
+      "ClientName": "MAYE GARZA",
+      "LegalName": "MAYE GARZA",
+      "Email": null,
+      "Number": 2228,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "484ec46b-27e9-41ec-a6e8-c1f93b45a38d",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "4b17b318-5d65-486c-af89-aba02fe2d5b0",
+        "ClientName": "MAYE GARZA",
+        "LegalName": "MAYE GARZA",
+        "Email": null,
+        "Number": 2227,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "4b17b318-5d65-486c-af89-aba02fe2d5b0",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "48eee947-ae7b-49a1-aa81-c0b0f57f09ed",
+      "ClientName": "Jessica Cantu",
+      "LegalName": "Jessica Cantu",
+      "Email": null,
+      "Number": 4807,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "48eee947-ae7b-49a1-aa81-c0b0f57f09ed",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 2
+    },
+    "losers": [
+      {
+        "id": "80e7703c-4cc3-46e4-9aa2-516e79c4e951",
+        "ClientName": "Jessica Cantu",
+        "LegalName": "Jessica Cantu",
+        "Email": null,
+        "Number": 4808,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "80e7703c-4cc3-46e4-9aa2-516e79c4e951",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4945ea18-4f9e-4653-b678-813569497f91",
+      "ClientName": "Dagma Sánchez cabelo",
+      "LegalName": "Dagma Sánchez cabelo",
+      "Email": "dagma14@yahoo.com.mx",
+      "Number": 2225,
+      "Phone": "+525549891864",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "4945ea18-4f9e-4653-b678-813569497f91",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "79b1ea0f-2037-402c-ac1a-7a07ef9c4a14",
+        "ClientName": "Dagma Sánchez cabelo",
+        "LegalName": "Dagma Sánchez cabelo",
+        "Email": "dagma14@yahoo.com.mx",
+        "Number": 2225,
+        "Phone": "+525549891864",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "79b1ea0f-2037-402c-ac1a-7a07ef9c4a14",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4a7b7688-a6d9-4dfb-9739-c64c85ae3e9e",
+      "ClientName": "Sergio Moreno",
+      "LegalName": "Sergio Moreno",
+      "Email": null,
+      "Number": 4447,
+      "Phone": "81 3570 9170",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "4a7b7688-a6d9-4dfb-9739-c64c85ae3e9e",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 3
+    },
+    "losers": [
+      {
+        "id": "6f25aa70-59c3-4d27-9ea0-a525332abc9b",
+        "ClientName": "Sergio Moreno",
+        "LegalName": "Sergio Moreno",
+        "Email": null,
+        "Number": 4546,
+        "Phone": "81 3570 9170",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "6f25aa70-59c3-4d27-9ea0-a525332abc9b",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4b272dc1-c261-4d5a-bcfd-1ec7801798fd",
+      "ClientName": "GACHY CARDENAS",
+      "LegalName": "GACHY CARDENAS",
+      "Email": null,
+      "Number": 2034,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "4b272dc1-c261-4d5a-bcfd-1ec7801798fd",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "a0209987-e4b3-429f-9f81-cbf84f815512",
+        "ClientName": "GACHY CARDENAS",
+        "LegalName": "GACHY CARDENAS",
+        "Email": null,
+        "Number": 2029,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "a0209987-e4b3-429f-9f81-cbf84f815512",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4b81387b-97d4-4937-96c2-752ac481a530",
+      "ClientName": "Ana Isabel Garcia",
+      "LegalName": "Ana Isabel Garcia",
+      "Email": "anaisabelgarcian@gmail.com",
+      "Number": 2195,
+      "Phone": "+528115775926",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "4b81387b-97d4-4937-96c2-752ac481a530",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "65f843b3-82bf-40f6-9c9f-12348f4701b7",
+        "ClientName": "Ana Isabel Garcia",
+        "LegalName": "Ana Isabel Garcia",
+        "Email": "anaisabelgarcian@gmail.com",
+        "Number": 2195,
+        "Phone": "+528115775926",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "65f843b3-82bf-40f6-9c9f-12348f4701b7",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4c4779f9-a442-4793-9041-99c03d9869a2",
+      "ClientName": "Andrea Salazar",
+      "LegalName": "Andrea Salazar",
+      "Email": null,
+      "Number": 1471,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "4c4779f9-a442-4793-9041-99c03d9869a2",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 1
+    },
+    "losers": [
+      {
+        "id": "c2c9583c-9611-4cd7-a65c-4ba4451471d5",
+        "ClientName": "ANDREA SALAZAR",
+        "LegalName": "ANDREA SALAZAR",
+        "Email": null,
+        "Number": 3252,
+        "Phone": null,
+        "RegimenFiscal": "612",
+        "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+        "ID": "c2c9583c-9611-4cd7-a65c-4ba4451471d5",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4d238365-3feb-4cda-b208-060889082c25",
+      "ClientName": "Mariel Fernández Celis",
+      "LegalName": "Mariel Fernández Celis",
+      "Email": null,
+      "Number": 1345,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "4d238365-3feb-4cda-b208-060889082c25",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "7d1fe5ad-8ed0-44f1-adbe-9ad517f2a170",
+        "ClientName": "Mariel Fernández Celis",
+        "LegalName": "Mariel Fernández Celis",
+        "Email": null,
+        "Number": 1269,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "7d1fe5ad-8ed0-44f1-adbe-9ad517f2a170",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "4e18937b-0fd1-4471-be15-d57921833859",
+      "ClientName": "Tania Salas",
+      "LegalName": "Tania Salas",
+      "Email": null,
+      "Number": 1554,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "4e18937b-0fd1-4471-be15-d57921833859",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "646b59a9-c8cd-4648-ae42-a7184ed89f6a",
+        "ClientName": "TANIA SALAS",
+        "LegalName": "TANIA SALAS",
+        "Email": null,
+        "Number": 3084,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+        "ID": "646b59a9-c8cd-4648-ae42-a7184ed89f6a",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "50a011ba-62bf-439a-92a0-f5338ec5bcdf",
+      "ClientName": "MICHELLE VELAZCO",
+      "LegalName": "MICHELLE VELAZCO",
+      "Email": null,
+      "Number": 2683,
+      "Phone": "8183622158",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "50a011ba-62bf-439a-92a0-f5338ec5bcdf",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "fc3d4031-61a3-4533-bc58-5e7af2070702",
+        "ClientName": "MICHELLE VELAZCO",
+        "LegalName": "MICHELLE VELAZCO",
+        "Email": null,
+        "Number": 2377,
+        "Phone": "8183622158",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "fc3d4031-61a3-4533-bc58-5e7af2070702",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "51b6aa47-a3b9-4ce5-a1df-0c3a3a1dfc10",
+      "ClientName": "Laura Cosío",
+      "LegalName": "Laura Cosío",
+      "Email": null,
+      "Number": 5013,
+      "Phone": "5541353842",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "51b6aa47-a3b9-4ce5-a1df-0c3a3a1dfc10",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 2
+    },
+    "losers": [
+      {
+        "id": "75728ebb-c24c-44b3-bea2-da2eb9cd7b29",
+        "ClientName": "Laura Cosío",
+        "LegalName": "Laura Cosío",
+        "Email": null,
+        "Number": 5030,
+        "Phone": "5541353842",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "75728ebb-c24c-44b3-bea2-da2eb9cd7b29",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "585b3305-7d66-4834-910d-b684bc3aff58",
+      "ClientName": "CLAUDIA ELOISA",
+      "LegalName": "CLAUDIA ELOISA",
+      "Email": null,
+      "Number": 2702,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+      "ID": "585b3305-7d66-4834-910d-b684bc3aff58",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "d4a702c2-7669-4b7d-888d-f251efb6e4fb",
+        "ClientName": "CLAUDIA ELOISA",
+        "LegalName": "CLAUDIA ELOISA",
+        "Email": null,
+        "Number": 2537,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "0531cb87-1a5f-4d67-9b9d-ca3314393f0d",
+        "ID": "d4a702c2-7669-4b7d-888d-f251efb6e4fb",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "5fddae2c-83aa-4539-a2ed-b02046a93b48",
+      "ClientName": "GINA TREVIÑO",
+      "LegalName": "GINA TREVIÑO",
+      "Email": null,
+      "Number": 2474,
+      "Phone": "8182536179",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "5fddae2c-83aa-4539-a2ed-b02046a93b48",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "7fb8beda-65f4-49cc-8a20-c8f0c00954dc",
+        "ClientName": "GINA TREVIÑO",
+        "LegalName": "GINA TREVIÑO",
+        "Email": null,
+        "Number": 2473,
+        "Phone": "8182536179",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "7fb8beda-65f4-49cc-8a20-c8f0c00954dc",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "603bca12-da41-4b72-9c5c-0fe54a90611c",
+      "ClientName": "LIZA CANTU",
+      "LegalName": "LIZA CANTU",
+      "Email": null,
+      "Number": 2745,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "603bca12-da41-4b72-9c5c-0fe54a90611c",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "fb583970-6128-41da-94f3-9d2fb78069bc",
+        "ClientName": "LIZA CANTU",
+        "LegalName": "LIZA CANTU",
+        "Email": null,
+        "Number": 2739,
+        "Phone": null,
+        "RegimenFiscal": "612",
+        "LocationID": null,
+        "ID": "fb583970-6128-41da-94f3-9d2fb78069bc",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "6273d97f-86c3-49a0-bb19-95b600a59a71",
+      "ClientName": "REINE SABA",
+      "LegalName": "REINE SABA",
+      "Email": null,
+      "Number": 3810,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "f65f047b-4211-486b-9978-1a6709934d62",
+      "ID": "6273d97f-86c3-49a0-bb19-95b600a59a71",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "be96f8ce-7ca2-4f81-ac8c-aeee78fbca3d",
+        "ClientName": "Reine Saba",
+        "LegalName": "Reine Saba",
+        "Email": null,
+        "Number": 1552,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+        "ID": "be96f8ce-7ca2-4f81-ac8c-aeee78fbca3d",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "641c9979-a473-4411-aef7-d9aa94ec84bb",
+      "ClientName": "CLAUDIA MARCELA  ARAMBULA MACIEL",
+      "LegalName": "CLAUDIA MARCELA  ARAMBULA MACIEL",
+      "Email": "claumarce512@gmail.com",
+      "Number": 4159,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "641c9979-a473-4411-aef7-d9aa94ec84bb",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "abdce129-ab61-4cca-8166-e3e85831af35",
+        "ClientName": "CLAUDIA MARCELA  ARAMBULA MACIEL",
+        "LegalName": "CLAUDIA MARCELA  ARAMBULA MACIEL",
+        "Email": "claumarce512@gmail.com",
+        "Number": 4158,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "abdce129-ab61-4cca-8166-e3e85831af35",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "6719bb47-b380-4043-a2f6-9689170f1ad8",
+      "ClientName": "Fer",
+      "LegalName": "Fer",
+      "Email": null,
+      "Number": 2080,
+      "Phone": "222 262 3556",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "6719bb47-b380-4043-a2f6-9689170f1ad8",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "c2c2530c-c67b-4d2f-8ce9-d8beb23aa69a",
+        "ClientName": "Fer",
+        "LegalName": "Fer",
+        "Email": null,
+        "Number": 2079,
+        "Phone": "222 262 3556",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "c2c2530c-c67b-4d2f-8ce9-d8beb23aa69a",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "6905c625-e16a-4b52-bd1e-ec06f9fd8268",
+      "ClientName": "America Sandoval",
+      "LegalName": "America Sandoval",
+      "Email": null,
+      "Number": 1409,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "6905c625-e16a-4b52-bd1e-ec06f9fd8268",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 1
+    },
+    "losers": [
+      {
+        "id": "75190e00-2a43-4894-a4f3-1b2eaaacf5d7",
+        "ClientName": "America Sandoval",
+        "LegalName": "America Sandoval",
+        "Email": "",
+        "Number": 2187,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": null,
+        "ID": "75190e00-2a43-4894-a4f3-1b2eaaacf5d7",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "690d0c69-3690-4d64-b12e-291b27209a70",
+      "ClientName": "DANIELA CORONA",
+      "LegalName": "DANIELA CORONA",
+      "Email": null,
+      "Number": 2806,
+      "Phone": null,
+      "RegimenFiscal": "612",
+      "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+      "ID": "690d0c69-3690-4d64-b12e-291b27209a70",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "b97113d7-0ea7-4711-b28f-81550e88f283",
+        "ClientName": "DANIELA CORONA",
+        "LegalName": "DANIELA CORONA",
+        "Email": null,
+        "Number": 2787,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "b97113d7-0ea7-4711-b28f-81550e88f283",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "6ca90c79-1daa-4169-95a1-49ffddbe5827",
+      "ClientName": "Tania Gordillo",
+      "LegalName": "Tania Gordillo",
+      "Email": null,
+      "Number": 1367,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "6ca90c79-1daa-4169-95a1-49ffddbe5827",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "754f0bcd-7648-4395-b60a-5b8953cd7114",
+        "ClientName": "Tania Gordillo",
+        "LegalName": "Tania Gordillo",
+        "Email": null,
+        "Number": 1429,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "754f0bcd-7648-4395-b60a-5b8953cd7114",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "6cfa8251-78f9-4bcd-8b0c-caa8f6f8920c",
+      "ClientName": "50 PRODUCCIONES",
+      "LegalName": "50 PRODUCCIONES",
+      "Email": "Edgar.hernandez@apodaca.com.mx",
+      "Number": 3423,
+      "Phone": null,
+      "RegimenFiscal": "601",
+      "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+      "ID": "6cfa8251-78f9-4bcd-8b0c-caa8f6f8920c",
+      "NextContactDate": null,
+      "RFC": "CPR080626JP7",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "a091bbe7-8db1-4644-9e70-0c1693218c70",
+        "ClientName": "50 PRODUCCIONES",
+        "LegalName": "50 PRODUCCIONES",
+        "Email": "Edgar.hernandez@apodaca.com.mx",
+        "Number": 3422,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": null,
+        "ID": "a091bbe7-8db1-4644-9e70-0c1693218c70",
+        "NextContactDate": null,
+        "RFC": "CPR080626JP7",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "6e3a0e87-abd9-4218-9141-a2e272dd7aea",
+      "ClientName": "aurora lavalle",
+      "LegalName": "aurora lavalle",
+      "Email": null,
+      "Number": 2384,
+      "Phone": "8181610520",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "6e3a0e87-abd9-4218-9141-a2e272dd7aea",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "fd91575d-7db1-4f47-b28c-377bb2376984",
+        "ClientName": "AURORA LAVALLE",
+        "LegalName": "AURORA LAVALLE",
+        "Email": null,
+        "Number": 2508,
+        "Phone": "8181610520",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "fd91575d-7db1-4f47-b28c-377bb2376984",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "6e3a9943-7f3d-411b-a8d7-6b967abac4b8",
+      "ClientName": "HANS",
+      "LegalName": "HANS",
+      "Email": null,
+      "Number": 2435,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "6e3a9943-7f3d-411b-a8d7-6b967abac4b8",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "75d0cdd7-2d82-4c9d-ab97-24c9d88dab3c",
+        "ClientName": "HANS",
+        "LegalName": "HANS",
+        "Email": null,
+        "Number": 2436,
+        "Phone": "8182809100",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "75d0cdd7-2d82-4c9d-ab97-24c9d88dab3c",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "9ccf1550-355b-4a4f-8a35-cbf1265155eb",
+        "ClientName": "HANS",
+        "LegalName": "HANS",
+        "Email": null,
+        "Number": 2393,
+        "Phone": "8182809100",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "9ccf1550-355b-4a4f-8a35-cbf1265155eb",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "7157576d-b9e0-40d8-9d49-983ed3da976c",
+      "ClientName": "CRISTINA FLORES",
+      "LegalName": "CRISTINA FLORES",
+      "Email": null,
+      "Number": 2372,
+      "Phone": "81111771317",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "7157576d-b9e0-40d8-9d49-983ed3da976c",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "cee066c7-73b1-427c-af9f-2e7f9b9db0e9",
+        "ClientName": "CRISTINA FLORES",
+        "LegalName": "CRISTINA FLORES",
+        "Email": null,
+        "Number": 2546,
+        "Phone": "8123548389",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "cee066c7-73b1-427c-af9f-2e7f9b9db0e9",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "7248ea89-0440-4c28-8b32-2593e62e3e72",
+      "ClientName": "LORENA MARTINEZ",
+      "LegalName": "LORENA MARTINEZ",
+      "Email": null,
+      "Number": 2661,
+      "Phone": null,
+      "RegimenFiscal": "601",
+      "LocationID": null,
+      "ID": "7248ea89-0440-4c28-8b32-2593e62e3e72",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "9259bf16-f8d9-48cf-a914-69ef4f044ca5",
+        "ClientName": "LORENA MARTINEZ",
+        "LegalName": "LORENA MARTINEZ",
+        "Email": null,
+        "Number": 2622,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "9259bf16-f8d9-48cf-a914-69ef4f044ca5",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "fe0eb1d2-2073-4f8c-9bc3-2b8ab073ebc7",
+        "ClientName": "LORENA MARTINEZ",
+        "LegalName": "LORENA MARTINEZ",
+        "Email": null,
+        "Number": 2679,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "fe0eb1d2-2073-4f8c-9bc3-2b8ab073ebc7",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "72a36579-6061-418c-9cc8-fabdc39c3825",
+      "ClientName": "MARIA TERESA",
+      "LegalName": "MARIA TERESA",
+      "Email": null,
+      "Number": 2538,
+      "Phone": "8111707587",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "72a36579-6061-418c-9cc8-fabdc39c3825",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "f1683235-4d2c-4f89-8ca6-cfdb37057898",
+        "ClientName": "maria teresa",
+        "LegalName": "maria teresa",
+        "Email": "",
+        "Number": 3303,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": "c991fa76-678b-44c9-9af4-87937e0492ab",
+        "ID": "f1683235-4d2c-4f89-8ca6-cfdb37057898",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "741da139-a7d5-4472-b471-98001501cf2c",
+      "ClientName": "Sofia Barragan",
+      "LegalName": "Sofia Barragan",
+      "Email": "sofispias@gmail.com",
+      "Number": 1986,
+      "Phone": "+523333141126",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "741da139-a7d5-4472-b471-98001501cf2c",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "cc8c3a7d-def1-4d6e-b5d7-5415baae40f5",
+        "ClientName": "Sofia Barragan",
+        "LegalName": "Sofia Barragan",
+        "Email": "sofispias@gmail.com",
+        "Number": 1986,
+        "Phone": "+523333141126",
+        "RegimenFiscal": "601",
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "cc8c3a7d-def1-4d6e-b5d7-5415baae40f5",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "799fc7d7-31dc-436c-8874-0f4f633c7bc1",
+      "ClientName": "REGINA",
+      "LegalName": "REGINA",
+      "Email": null,
+      "Number": 2644,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "799fc7d7-31dc-436c-8874-0f4f633c7bc1",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "7eef7385-67e9-40a4-af5d-7acb6ec57148",
+        "ClientName": "Regina",
+        "LegalName": "Regina",
+        "Email": null,
+        "Number": 2173,
+        "Phone": "444 142 7809",
+        "RegimenFiscal": "601",
+        "LocationID": null,
+        "ID": "7eef7385-67e9-40a4-af5d-7acb6ec57148",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "7c10142c-496f-4d39-9dee-a7ed593d9aa4",
+      "ClientName": "daniela garza",
+      "LegalName": "daniela garza",
+      "Email": null,
+      "Number": 3570,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "7c10142c-496f-4d39-9dee-a7ed593d9aa4",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "89a26d06-a30a-49b8-a5e2-3e1af190b114",
+        "ClientName": "DANIELA GARZA",
+        "LegalName": "DANIELA GARZA",
+        "Email": null,
+        "Number": 3572,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "89a26d06-a30a-49b8-a5e2-3e1af190b114",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "8c84de87-677f-404c-a183-51975c0f2224",
+        "ClientName": "DANIELA GARZA",
+        "LegalName": "DANIELA GARZA",
+        "Email": null,
+        "Number": 3547,
+        "Phone": null,
+        "RegimenFiscal": "612",
+        "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+        "ID": "8c84de87-677f-404c-a183-51975c0f2224",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "7c8f47e0-c097-440d-972f-48c9617924c2",
+      "ClientName": "ROSA JAZMIN ROJO",
+      "LegalName": "ROSA JAZMIN ROJO",
+      "Email": null,
+      "Number": 4017,
+      "Phone": "6677305274",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "7c8f47e0-c097-440d-972f-48c9617924c2",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "b528ec60-ad86-4f76-aec6-6c095aacb1fc",
+        "ClientName": "ROSA JAZMIN ROJO",
+        "LegalName": "ROSA JAZMIN ROJO",
+        "Email": null,
+        "Number": 4042,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "b528ec60-ad86-4f76-aec6-6c095aacb1fc",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "7ef462b7-bdcd-48f9-8f36-04aa31cfa2e5",
+      "ClientName": "INVERSIONES FIRPO",
+      "LegalName": "INVERSIONES FIRPO",
+      "Email": null,
+      "Number": 2701,
+      "Phone": null,
+      "RegimenFiscal": "603",
+      "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+      "ID": "7ef462b7-bdcd-48f9-8f36-04aa31cfa2e5",
+      "NextContactDate": null,
+      "RFC": "IFI1310077N0",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "84601b20-302d-4a0d-b906-1b40a5564a6d",
+        "ClientName": "INVERSIONES FIRPO",
+        "LegalName": "INVERSIONES FIRPO",
+        "Email": null,
+        "Number": 2733,
+        "Phone": null,
+        "RegimenFiscal": "603",
+        "LocationID": null,
+        "ID": "84601b20-302d-4a0d-b906-1b40a5564a6d",
+        "NextContactDate": null,
+        "RFC": "IFI1310077N0",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "814bf3f8-5b75-41aa-9980-2f066dac4439",
+      "ClientName": "Luis Cisneros",
+      "LegalName": "Luis Cisneros",
+      "Email": null,
+      "Number": 1151,
+      "Phone": "+522721991156",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "814bf3f8-5b75-41aa-9980-2f066dac4439",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "fe10dcc5-6821-403c-8b85-eac74974bbaa",
+        "ClientName": "Luis Cisneros",
+        "LegalName": "Luis Cisneros",
+        "Email": null,
+        "Number": 1152,
+        "Phone": "+522722131321",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "fe10dcc5-6821-403c-8b85-eac74974bbaa",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "81f76c35-5472-45ea-97da-2536b7cdc91b",
+      "ClientName": "SISFLEX",
+      "LegalName": "SISFLEX",
+      "Email": null,
+      "Number": 3855,
+      "Phone": null,
+      "RegimenFiscal": "601",
+      "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+      "ID": "81f76c35-5472-45ea-97da-2536b7cdc91b",
+      "NextContactDate": null,
+      "RFC": "SIS960307217",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "d8bc30ac-9d2b-443a-8331-85e23858669e",
+        "ClientName": "SISFLEX",
+        "LegalName": "SISFLEX",
+        "Email": null,
+        "Number": 2914,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": null,
+        "ID": "d8bc30ac-9d2b-443a-8331-85e23858669e",
+        "NextContactDate": null,
+        "RFC": "SIS960307217",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "82163902-be4d-4018-84e4-a4a38b9b2ae1",
+      "ClientName": "LORENA VILLA",
+      "LegalName": "LORENA VILLA",
+      "Email": null,
+      "Number": 2428,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "82163902-be4d-4018-84e4-a4a38b9b2ae1",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "da16fe2c-6deb-499c-b70e-a511bd3513e4",
+        "ClientName": "LORENA VILLA",
+        "LegalName": "LORENA VILLA",
+        "Email": null,
+        "Number": 2424,
+        "Phone": "8116013649",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "da16fe2c-6deb-499c-b70e-a511bd3513e4",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "872821b2-e620-429e-85b0-3e32a48bf183",
+      "ClientName": "ALIN PAZ",
+      "LegalName": "ALINE PAZ",
+      "Email": null,
+      "Number": 1329,
+      "Phone": "5580095451",
+      "RegimenFiscal": null,
+      "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+      "ID": "872821b2-e620-429e-85b0-3e32a48bf183",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "a0b3c773-2ec3-4f8e-8752-a64c94f03d09",
+        "ClientName": "ALIN PAZ",
+        "LegalName": "ALIN PAZ",
+        "Email": null,
+        "Number": 1266,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+        "ID": "a0b3c773-2ec3-4f8e-8752-a64c94f03d09",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "89869a88-5d37-43f9-bc9d-8a6d3bd1c75b",
+      "ClientName": "ALEJANDRA SALAZAR",
+      "LegalName": "ALEJANDRA SALAZAR",
+      "Email": null,
+      "Number": 3509,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "89869a88-5d37-43f9-bc9d-8a6d3bd1c75b",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "8ab57345-3e87-4a43-9935-632e7eec23ac",
+        "ClientName": "ALEJANDRA SALAZAR",
+        "LegalName": "ALEJANDRA SALAZAR",
+        "Email": null,
+        "Number": 3539,
+        "Phone": null,
+        "RegimenFiscal": "612",
+        "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+        "ID": "8ab57345-3e87-4a43-9935-632e7eec23ac",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "8bf78d1e-0e45-4997-b7b9-ed531ee857ae",
+      "ClientName": "BARBARA GARZA",
+      "LegalName": "BARBARA GARZA",
+      "Email": null,
+      "Number": 3131,
+      "Phone": null,
+      "RegimenFiscal": "612",
+      "LocationID": null,
+      "ID": "8bf78d1e-0e45-4997-b7b9-ed531ee857ae",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 1
+    },
+    "losers": [
+      {
+        "id": "b0418267-468f-47a4-9551-6e0b061e5115",
+        "ClientName": "Barbara Garza",
+        "LegalName": "Barbara Garza",
+        "Email": null,
+        "Number": 3902,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "c991fa76-678b-44c9-9af4-87937e0492ab",
+        "ID": "b0418267-468f-47a4-9551-6e0b061e5115",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "dfe2bccd-d413-405f-87f0-8cd4c50af319",
+        "ClientName": "BARBARA GARZA",
+        "LegalName": "BARBARA GARZA",
+        "Email": null,
+        "Number": 3148,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "dfe2bccd-d413-405f-87f0-8cd4c50af319",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      },
+      {
+        "id": "f5e8f7e5-5c9c-4b9d-b1d4-0b6e7345d1c4",
+        "ClientName": "BARBARA GARZA",
+        "LegalName": "BARBARA GARZA",
+        "Email": "",
+        "Number": 3037,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": null,
+        "ID": "f5e8f7e5-5c9c-4b9d-b1d4-0b6e7345d1c4",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "8edc99e4-2a49-4e3d-8d50-e8879e6cf4bb",
+      "ClientName": "Kelly Ochoa Cabrera",
+      "LegalName": "Kelly Ochoa Cabrera",
+      "Email": "kellycochoa@gmail.com",
+      "Number": 4160,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "8edc99e4-2a49-4e3d-8d50-e8879e6cf4bb",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "ffe78c32-5fad-466b-8cfb-5ac6b17c6a89",
+        "ClientName": "Kelly Ochoa Cabrera",
+        "LegalName": "Kelly Ochoa Cabrera",
+        "Email": "kellycochoa@gmail.com",
+        "Number": 4161,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "ffe78c32-5fad-466b-8cfb-5ac6b17c6a89",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "9431af44-c716-4109-97de-e201739ab512",
+      "ClientName": "Maritza Benitez",
+      "LegalName": "Maritza Benitez",
+      "Email": "maritzabenitez1971@hotmail.com",
+      "Number": 4099,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "9431af44-c716-4109-97de-e201739ab512",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 1
+    },
+    "losers": [
+      {
+        "id": "f92f5c5e-e1be-46f8-b6ea-af3ccd1ed40f",
+        "ClientName": "Maritza Benitez",
+        "LegalName": "Maritza Benitez",
+        "Email": "maritzabenitez1971@hotmail.com",
+        "Number": 4099,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "f92f5c5e-e1be-46f8-b6ea-af3ccd1ed40f",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "966e42d2-0846-4c47-8f0a-e20ef76d52be",
+      "ClientName": "Carmina",
+      "LegalName": "Carmina",
+      "Email": null,
+      "Number": 2082,
+      "Phone": "55 5509 3762",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "966e42d2-0846-4c47-8f0a-e20ef76d52be",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "f8a3559f-7f50-4574-ae0a-542c613185fc",
+        "ClientName": "Carmina",
+        "LegalName": "Carmina",
+        "Email": null,
+        "Number": 2293,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": null,
+        "ID": "f8a3559f-7f50-4574-ae0a-542c613185fc",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "99155356-19bf-4dd7-858b-b99e44419f81",
+      "ClientName": "Itzel Iñiguez",
+      "LegalName": "Itzel Iñiguez",
+      "Email": null,
+      "Number": 2093,
+      "Phone": "+523334963771",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "99155356-19bf-4dd7-858b-b99e44419f81",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "b23480b2-e836-4a47-a9d6-881316a76007",
+        "ClientName": "Itzel Iñiguez",
+        "LegalName": "Itzel Iñiguez",
+        "Email": null,
+        "Number": 2092,
+        "Phone": "33 3496 3771",
+        "RegimenFiscal": null,
+        "LocationID": "0531cb87-1a5f-4d67-9b9d-ca3314393f0d",
+        "ID": "b23480b2-e836-4a47-a9d6-881316a76007",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "9a044dd4-2acb-4348-bfac-0afca5e7491f",
+      "ClientName": "Jessie Medina",
+      "LegalName": "Jessie Medina",
+      "Email": "jessiemedina519@gmail.com",
+      "Number": 4945,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "9a044dd4-2acb-4348-bfac-0afca5e7491f",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 1
+    },
+    "losers": [
+      {
+        "id": "ff40f619-7eac-4e78-8727-476cd4965571",
+        "ClientName": "Jessie Medina",
+        "LegalName": "Jessie Medina",
+        "Email": "jessiemedina519@gmail.com",
+        "Number": 4947,
+        "Phone": "3861001239",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "ff40f619-7eac-4e78-8727-476cd4965571",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "9a0e7747-0086-4673-8983-9ffd4ee88540",
+      "ClientName": "Dario Salazar",
+      "LegalName": "Dario Salazar",
+      "Email": "administracion@nogalya.com",
+      "Number": 2218,
+      "Phone": "+525514618297",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "9a0e7747-0086-4673-8983-9ffd4ee88540",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "b4333d2b-d8f6-4980-a008-e1cd46cd0f82",
+        "ClientName": "Dario Salazar",
+        "LegalName": "Dario Salazar",
+        "Email": "administracion@nogalya.com",
+        "Number": 2218,
+        "Phone": "+525514618297",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "b4333d2b-d8f6-4980-a008-e1cd46cd0f82",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "9c8e5b9b-9317-4420-bd13-4242ed5deade",
+      "ClientName": "LSPS",
+      "LegalName": "LSPS",
+      "Email": null,
+      "Number": 3568,
+      "Phone": null,
+      "RegimenFiscal": "601",
+      "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+      "ID": "9c8e5b9b-9317-4420-bd13-4242ed5deade",
+      "NextContactDate": null,
+      "RFC": "LSP000314B53",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "ad86dc68-2157-4794-82e7-7aa3e651f903",
+        "ClientName": "LSPS",
+        "LegalName": "LSPS",
+        "Email": null,
+        "Number": 3567,
+        "Phone": null,
+        "RegimenFiscal": "601",
+        "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+        "ID": "ad86dc68-2157-4794-82e7-7aa3e651f903",
+        "NextContactDate": null,
+        "RFC": "LSP000314B53",
+        "docCount": 0
+      },
+      {
+        "id": "be98a4ca-5199-4938-9524-02fef9dc883e",
+        "ClientName": "LSPS",
+        "LegalName": "LSPS",
+        "Email": null,
+        "Number": 3502,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "920225d4-fe1a-41ca-83b2-4f01f11829a4",
+        "ID": "be98a4ca-5199-4938-9524-02fef9dc883e",
+        "NextContactDate": null,
+        "RFC": "LSP000314B53",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "a00616c7-94ce-4edf-b7f1-fae04faa7e09",
+      "ClientName": "AYDETH SANDOVAL",
+      "LegalName": "AYDETH SANDOVAL",
+      "Email": null,
+      "Number": 2554,
+      "Phone": "7771047662",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "a00616c7-94ce-4edf-b7f1-fae04faa7e09",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "e7795707-b136-4233-a699-5aec59f61031",
+        "ClientName": "AYDETH SANDOVAL",
+        "LegalName": "AYDETH SANDOVAL",
+        "Email": null,
+        "Number": 2555,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "e7795707-b136-4233-a699-5aec59f61031",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "a551d661-5bf1-4eca-a1b5-07e1bb0d505f",
+      "ClientName": "ANDRES GONZALES",
+      "LegalName": "ANDRES GONZALES",
+      "Email": null,
+      "Number": 2804,
+      "Phone": null,
+      "RegimenFiscal": "601",
+      "LocationID": null,
+      "ID": "a551d661-5bf1-4eca-a1b5-07e1bb0d505f",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "c7580a5c-570e-4662-a1b8-fb5ef80f19d4",
+        "ClientName": "andres gonzales",
+        "LegalName": "andres gonzales",
+        "Email": null,
+        "Number": 3805,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "943452f6-e13c-40f4-94e3-0463aa8ca4ec",
+        "ID": "c7580a5c-570e-4662-a1b8-fb5ef80f19d4",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "a90188f7-2425-41cf-bba6-374ccb6787a6",
+      "ClientName": "Isabel Centeno",
+      "LegalName": "Isabel Centeno",
+      "Email": null,
+      "Number": 2097,
+      "Phone": "+528183622124",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "a90188f7-2425-41cf-bba6-374ccb6787a6",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "ca288a77-4e39-4057-bd6f-a8d2535706cd",
+        "ClientName": "Isabel Centeno",
+        "LegalName": "Isabel Centeno",
+        "Email": null,
+        "Number": 2096,
+        "Phone": "+528183622124",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "ca288a77-4e39-4057-bd6f-a8d2535706cd",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "add97daf-aa8a-4229-8eb2-1d732eb778d8",
+      "ClientName": "MARTHA ALICIA DÁVALOS GARCÍA",
+      "LegalName": "MARTHA ALICIA DÁVALOS GARCÍA",
+      "Email": "i.davalos@yahoo.com",
+      "Number": 1307,
+      "Phone": "8183634788",
+      "RegimenFiscal": null,
+      "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+      "ID": "add97daf-aa8a-4229-8eb2-1d732eb778d8",
+      "NextContactDate": null,
+      "RFC": "DAGM671205LG6",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "d5cc0534-bed3-4f1c-a043-4377b86fd28a",
+        "ClientName": "MARTHA ALICIA DÁVALOS GARCÍA",
+        "LegalName": "MARTHA ALICIA DÁVALOS GARCÍA",
+        "Email": "i.davalos@yahoo.com",
+        "Number": 2290,
+        "Phone": "8183634788",
+        "RegimenFiscal": null,
+        "LocationID": "4f22ef47-4aec-4aa2-9822-8c8177d65b26",
+        "ID": "d5cc0534-bed3-4f1c-a043-4377b86fd28a",
+        "NextContactDate": null,
+        "RFC": "DAGM671205LG6",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "b14661d7-9d7d-48f5-a116-af1944ad6a79",
+      "ClientName": "MAGALY GUERRA",
+      "LegalName": "MAGALY GUERRA",
+      "Email": null,
+      "Number": 2506,
+      "Phone": null,
+      "RegimenFiscal": "612",
+      "LocationID": null,
+      "ID": "b14661d7-9d7d-48f5-a116-af1944ad6a79",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 3
+    },
+    "losers": [
+      {
+        "id": "b8591a97-c248-48db-9ab5-f5f13152ba48",
+        "ClientName": "MAGALY GUERRA",
+        "LegalName": "MAGALY GUERRA",
+        "Email": null,
+        "Number": 2513,
+        "Phone": "8110703524",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "b8591a97-c248-48db-9ab5-f5f13152ba48",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "b51efe73-428d-474f-a336-04e32f74a424",
+      "ClientName": "Zury Espinoza",
+      "LegalName": "Zury Espinoza",
+      "Email": null,
+      "Number": 4381,
+      "Phone": "314 147 1111",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "b51efe73-428d-474f-a336-04e32f74a424",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 4
+    },
+    "losers": [
+      {
+        "id": "dc1d4950-5520-41f9-a613-259b035766e9",
+        "ClientName": "Zury Espinoza",
+        "LegalName": "Zury Espinoza",
+        "Email": null,
+        "Number": 4382,
+        "Phone": "314 147 1111",
+        "RegimenFiscal": "612",
+        "LocationID": null,
+        "ID": "dc1d4950-5520-41f9-a613-259b035766e9",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "b5ce1323-456d-4955-bc0f-db79489e38f6",
+      "ClientName": "Yoselin Gallegos",
+      "LegalName": "Yoselin Gallegos",
+      "Email": null,
+      "Number": 1978,
+      "Phone": "55 6167 9324",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "b5ce1323-456d-4955-bc0f-db79489e38f6",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "dbb1fa4d-5c52-4660-8a41-79c1b1b54c06",
+        "ClientName": "Yoselin Gallegos",
+        "LegalName": "Yoselin Gallegos",
+        "Email": null,
+        "Number": 2020,
+        "Phone": "55 6167 9324",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "dbb1fa4d-5c52-4660-8a41-79c1b1b54c06",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "c3b1167c-79be-4947-acd3-6e23cabd0cf4",
+      "ClientName": "Imelda Vallina",
+      "LegalName": "Imelda Vallina",
+      "Email": null,
+      "Number": 1576,
+      "Phone": "+526144881420",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "c3b1167c-79be-4947-acd3-6e23cabd0cf4",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "d0fc8967-d577-46ed-921e-234ebe8986e8",
+        "ClientName": "IMELDA VALLINA",
+        "LegalName": "IMELDA VALLINA",
+        "Email": null,
+        "Number": 2609,
+        "Phone": "6144881420",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "d0fc8967-d577-46ed-921e-234ebe8986e8",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "c403c0ac-8f3e-46bd-8d00-097a309a3a14",
+      "ClientName": "Beverly Berkowitz",
+      "LegalName": "Beverly Berkowitz",
+      "Email": "beverly@ibalinter.com",
+      "Number": 1989,
+      "Phone": "55 4811 6526",
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "c403c0ac-8f3e-46bd-8d00-097a309a3a14",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "f753bd0c-bb82-4b22-99c4-1f0779ecc276",
+        "ClientName": "Beverly Berkowitz",
+        "LegalName": "Beverly Berkowitz",
+        "Email": "beverly@ibalinter.com",
+        "Number": 1969,
+        "Phone": "+525548116526",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "f753bd0c-bb82-4b22-99c4-1f0779ecc276",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "c607f793-bc16-4359-aea0-44075e0e3a56",
+      "ClientName": "Luz Durán O.",
+      "LegalName": "Luz Durán O.",
+      "Email": null,
+      "Number": 4409,
+      "Phone": "33 1479 4270",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "c607f793-bc16-4359-aea0-44075e0e3a56",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 2
+    },
+    "losers": [
+      {
+        "id": "de61369c-b990-4625-aea2-aae14eae7df7",
+        "ClientName": "Luz Durán O.",
+        "LegalName": "Luz Durán O.",
+        "Email": null,
+        "Number": 4408,
+        "Phone": "33 1479 4270",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "de61369c-b990-4625-aea2-aae14eae7df7",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "c91f9b55-e515-42fd-bcf2-32d706a51ea6",
+      "ClientName": "Michelle Solis",
+      "LegalName": "Michelle Solis",
+      "Email": "solismichelle350@gmail.com",
+      "Number": 4170,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "c91f9b55-e515-42fd-bcf2-32d706a51ea6",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "fc25c313-219a-417f-843b-4c6df687f8c5",
+        "ClientName": "Michelle Solis",
+        "LegalName": "Michelle Solis",
+        "Email": "solismichelle350@gmail.com",
+        "Number": 4169,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "fc25c313-219a-417f-843b-4c6df687f8c5",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "cc03ad8d-5344-4b30-b519-d294d368c679",
+      "ClientName": "ANA TORRES",
+      "LegalName": "ANA TORRES",
+      "Email": null,
+      "Number": 2425,
+      "Phone": "8115998692",
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "cc03ad8d-5344-4b30-b519-d294d368c679",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "f1970b27-3b03-4b62-8414-4bfa58f079f4",
+        "ClientName": "ana torres",
+        "LegalName": "ana torres",
+        "Email": null,
+        "Number": 2421,
+        "Phone": "8115998692",
+        "RegimenFiscal": null,
+        "LocationID": null,
+        "ID": "f1970b27-3b03-4b62-8414-4bfa58f079f4",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "d7e0ae4e-fd3b-4571-a162-0185bcd2a8c6",
+      "ClientName": "test",
+      "LegalName": "test",
+      "Email": "test@gmail.com",
+      "Number": 2333,
+      "Phone": "432",
+      "RegimenFiscal": "608",
+      "LocationID": null,
+      "ID": "d7e0ae4e-fd3b-4571-a162-0185bcd2a8c6",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "faba1eae-a84c-4288-8a04-cd04ba6615d5",
+        "ClientName": "test",
+        "LegalName": "test",
+        "Email": "test@gmail.com",
+        "Number": 2334,
+        "Phone": "321321",
+        "RegimenFiscal": "607",
+        "LocationID": null,
+        "ID": "faba1eae-a84c-4288-8a04-cd04ba6615d5",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "e6c5bcf8-1926-4145-bfe6-9a444f0cf589",
+      "ClientName": "Mercedes Cadena Dávalos",
+      "LegalName": "Mercedes Cadena Dávalos",
+      "Email": "mercedescadena@hotmail.com",
+      "Number": 2261,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+      "ID": "e6c5bcf8-1926-4145-bfe6-9a444f0cf589",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 0
+    },
+    "losers": [
+      {
+        "id": "fd87819f-d9b4-4c21-95a7-e44632187b38",
+        "ClientName": "Mercedes Cadena Dávalos",
+        "LegalName": "Mercedes Cadena Dávalos",
+        "Email": "mercedescadena@hotmail.com",
+        "Number": 2261,
+        "Phone": null,
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "fd87819f-d9b4-4c21-95a7-e44632187b38",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  },
+  {
+    "winner": {
+      "id": "ecfe9397-4c5f-4f50-8c9f-5897ca4b4633",
+      "ClientName": "PATRICIA TREVIÑO",
+      "LegalName": "PATRICIA TREVIÑO",
+      "Email": null,
+      "Number": 2857,
+      "Phone": null,
+      "RegimenFiscal": null,
+      "LocationID": null,
+      "ID": "ecfe9397-4c5f-4f50-8c9f-5897ca4b4633",
+      "NextContactDate": null,
+      "RFC": "XAXX010101000",
+      "docCount": 1
+    },
+    "losers": [
+      {
+        "id": "f3f4106e-98cd-4680-b3f8-d9ac7c715742",
+        "ClientName": "Patricia Treviño",
+        "LegalName": "Patricia Treviño",
+        "Email": null,
+        "Number": 5021,
+        "Phone": "+528117450856",
+        "RegimenFiscal": null,
+        "LocationID": "8671227a-c779-4f54-b26f-c6e2cbcf4f2a",
+        "ID": "f3f4106e-98cd-4680-b3f8-d9ac7c715742",
+        "NextContactDate": null,
+        "RFC": "XAXX010101000",
+        "docCount": 0
+      }
+    ]
+  }
+]

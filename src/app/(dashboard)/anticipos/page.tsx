@@ -300,8 +300,8 @@ export default function DashboardPage() {
                         </a>
                       ) : '-'}
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">${(parseFloat(a.amount) || 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-semibold">${(parseFloat(a.balance) || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">${(parseFloat(a.amount) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                    <TableCell className="text-right font-semibold">${(parseFloat(a.balance) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                     <TableCell className="text-center hidden md:table-cell">{getStatusBadge(a.status)}</TableCell>
                     <TableCell className="text-right">
                       <Button 
@@ -330,7 +330,7 @@ export default function DashboardPage() {
                                 <span className="text-muted-foreground w-20">{dateStr}</span>
                                 <span className="w-32 truncate">• {app.erpDocumentNumber}</span>
                                 <span className="font-medium text-foreground w-24">
-                                  ${(parseFloat(app.amount) || 0).toFixed(2)}
+                                  ${(parseFloat(app.amount) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                               </div>
                             );

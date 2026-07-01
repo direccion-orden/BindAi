@@ -260,15 +260,15 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
           <div className="flex justify-between items-center bg-muted/30 p-4 rounded-lg border">
             <div className="text-sm">
               <p className="text-muted-foreground">Anticipo Total</p>
-              <p className="font-semibold">${anticipo.amount.toFixed(2)}</p>
+              <p className="font-semibold">${anticipo.amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
             <div className="text-sm">
               <p className="text-muted-foreground">Saldo Disponible</p>
-              <p className="font-semibold text-primary text-xl">${anticipo.balance.toFixed(2)}</p>
+              <p className="font-semibold text-primary text-xl">${anticipo.balance.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
             <div className={`text-sm ${remainingBalance < 0 ? 'text-destructive' : 'text-foreground'}`}>
               <p className="text-muted-foreground">Saldo Restante</p>
-              <p className="font-semibold">${remainingBalance.toFixed(2)}</p>
+              <p className="font-semibold">${remainingBalance.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
           </div>
 
@@ -326,7 +326,7 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
                           {doc.type}
                         </span>
                       </p>
-                      <p className="text-sm text-muted-foreground">Saldo Doc: ${doc.balance.toFixed(2)}</p>
+                      <p className="text-sm text-muted-foreground">Saldo Doc: ${doc.balance.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">Monto a aplicar:</span>

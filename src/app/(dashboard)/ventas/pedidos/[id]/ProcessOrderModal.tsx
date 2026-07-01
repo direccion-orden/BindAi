@@ -250,6 +250,8 @@ export function ProcessOrderModal({
         await updateDoc(pDoc.ref, {
           documentId: remId,
           documentType: "remision",
+          documentNumber: remNumber,
+          documentDate: appliedISO,
           orderId: order.id // Mantener referencia al pedido original
         });
       }
@@ -436,6 +438,8 @@ export function ProcessOrderModal({
         await updateDoc(pDoc.ref, {
           documentId: invId,
           documentType: "factura",
+          documentNumber: invNumber,
+          documentDate: new Date().toISOString(),
           orderId: order.id
         });
       }
@@ -498,6 +502,8 @@ export function ProcessOrderModal({
           await updateDoc(pDoc.ref, {
             documentId: invId,
             documentType: "factura",
+            documentNumber: invNumber,
+            documentDate: new Date().toISOString(),
             orderId: order.id
           });
         }

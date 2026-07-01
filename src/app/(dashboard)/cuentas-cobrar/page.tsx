@@ -243,7 +243,7 @@ export default function CuentasCobrarPage() {
     pedidos.forEach(p => {
       const status = String(p.status || "").trim().toLowerCase();
       // Omit canceled, delivered, remisioned or completed orders to avoid double counting
-      if (status !== "cancelado" && status !== "cancelada" && status !== "surtido" && status !== "remisionado" && status !== "completado") {
+      if (status !== "cancelado" && status !== "cancelada" && status !== "surtido" && status !== "remisionado" && status !== "facturado" && status !== "pre_facturado" && status !== "completado") {
         const docId = p.id;
         const activePayments = payments.filter(pm => pm.status !== "cancelado" && isDocumentPaymentMatch(docId, p.orderNumber || p.number || "", "pedido", pm));
         const paidAmount = activePayments.reduce((sum, pm) => sum + (parseFloat(pm.amount) || pm.amount || 0), 0);

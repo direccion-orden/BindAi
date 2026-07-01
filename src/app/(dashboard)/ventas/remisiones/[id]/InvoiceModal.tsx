@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Receipt, X } from "lucide-react";
 import { createCfdi } from "@/actions/facturama";
-import { doc, updateDoc, getDoc, collection, getDocs } from "firebase/firestore";
+import { doc, updateDoc, getDoc, collection, getDocs, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { distributeDiscountAndTax } from "@/lib/utils/discountEngine";
+import { getNextSequence } from "@/lib/firebase/counters";
 
 export function InvoiceModal({ 
   isOpen, 
@@ -22,6 +23,7 @@ export function InvoiceModal({
   remission: any,
   companyId: string 
 }) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
@@ -261,6 +263,17 @@ export function InvoiceModal({
         const invoiceUuid = result.data?.Complement?.TaxStamp?.Uuid || result.data?.Uuid || result.data?.uuid || null;
         const invoiceDate = result.data?.Date || result.data?.date || new Date().toISOString();
 
+        // Get internal sequence if Facturama doesn't return one
+        let internalInvoiceNumber = result.data?.Folio;
+        if (!internalInvoiceNumber) {
+          try {
+            internalInvoiceNumber = await getNextSequence(companyId, 'facturas');
+          } catch (e) {
+            console.error("Error getting next sequence:", e);
+            internalInvoiceNumber = remission.remissionNumber?.replace('REM-', 'FAC-') || remission.remissionNumber || "";
+          }
+        }
+
         // Save invoice relation to remission document
         await updateDoc(doc(db, "companies", companyId, "remisiones", remission.id), {
           status: "facturada",
@@ -269,6 +282,29 @@ export function InvoiceModal({
           invoiceDate: invoiceDate
         });
         
+        // Create new invoice document in the facturas collection
+        const invoiceData = {
+          id: invoiceId,
+          invoiceNumber: internalInvoiceNumber,
+          facturamaId: invoiceId,
+          facturamaUuid: invoiceUuid,
+          clientName: razonSocial.toUpperCase(),
+          clientId: selectedClientId || remission.clientId || "public",
+          items: remission.items || [],
+          totalAmount: remission.totalAmount || 0,
+          subtotal: remission.subtotal || 0,
+          tax: remission.tax || 0,
+          status: "timbrada",
+          createdAt: new Date().toISOString(),
+          createdBy: user?.email || "Unknown",
+          cfdiPayload: facturamaPayload,
+          isPosSale: true,
+          posSaleId: remission.id,
+          timbradoAt: invoiceDate
+        };
+        
+        await setDoc(doc(db, "companies", companyId, "facturas", invoiceId), invoiceData);
+
         // Also update order to facturado if needed (optional)
         if (remission.orderId) {
           await updateDoc(doc(db, "companies", companyId, "pedidos", remission.orderId), {

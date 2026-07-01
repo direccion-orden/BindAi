@@ -54,19 +54,16 @@ class SankeyDataBuilder {
 }
 
 const CustomSankeyNode = ({ x, y, width, height, index, payload, value }: any) => {
-  const leafNodes = ["Costo de Ventas", "Gastos Operativos", "Impuestos e Intereses", "Utilidad Neta"];
-  const isOut = leafNodes.includes(payload.name);
+  const leafNodes = ["EBITDA", "Gasto Administrativo", "Logística", "Producción", "Ventas", "Marketing", "Sistemas", "Nómina", "Arrendamiento"];
+  const isOut = leafNodes.includes(payload.name) || (payload.value === 0);
   const colors: { [key: string]: string } = {
-    "Venta de Productos": "#6366f1",
-    "Venta de Servicios": "#10b981",
-    "Otros Ingresos": "#f59e0b",
     "Ingreso Total": "#8b5cf6",
-    "Costo de Ventas": "#ef4444",
+    "Costo Operativo": "#ef4444",
     "Utilidad Bruta": "#10b981",
-    "Gastos Operativos": "#f97316",
-    "Utilidad de Operación": "#06b6d4",
-    "Impuestos e Intereses": "#ec4899",
-    "Utilidad Neta": "#22c55e",
+    "Gasto Administrativo": "#f97316",
+    "EBITDA": "#22c55e",
+    "Logística": "#6366f1",
+    "Producción": "#6366f1",
   };
   const fill = colors[payload.name] || "#3b82f6";
   
@@ -112,6 +109,7 @@ export default function ReporteFinancieroPage() {
   const [productsMap, setProductsMap] = useState<{ [key: string]: any }>({});
   const [expenses, setExpenses] = useState<any[]>([]);
   const [expensesInbox, setExpensesInbox] = useState<any[]>([]);
+  const [costCenters, setCostCenters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState("ytd"); // ytd, month, quarter
 
@@ -121,14 +119,15 @@ export default function ReporteFinancieroPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [locSnap, remSnap, factSnap, catSnap, prodSnap, expSnap, expInboxSnap] = await Promise.all([
+        const [locSnap, remSnap, factSnap, catSnap, prodSnap, expSnap, expInboxSnap, costCenterSnap] = await Promise.all([
           getDocs(collection(db, "companies", companyId, "locations")),
           getDocs(collection(db, "companies", companyId, "remisiones")),
           getDocs(collection(db, "companies", companyId, "facturas")),
           getDocs(collection(db, "companies", companyId, "categories")),
           getDocs(collection(db, "companies", companyId, "products")),
           getDocs(collection(db, "companies", companyId, "expenses")),
-          getDocs(collection(db, "companies", companyId, "expenses_inbox"))
+          getDocs(collection(db, "companies", companyId, "expenses_inbox")),
+          getDocs(collection(db, "companies", companyId, "cost_centers"))
         ]);
 
         const locs = locSnap.docs.map(d => ({
@@ -159,6 +158,7 @@ export default function ReporteFinancieroPage() {
 
         setExpenses(expSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         setExpensesInbox(expInboxSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setCostCenters(costCenterSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       } catch (err) {
         console.error("Error loading reports data:", err);
@@ -302,63 +302,99 @@ export default function ReporteFinancieroPage() {
     const builder = new SankeyDataBuilder();
 
     if (hasData) {
+      const rTotalIncome = Math.round(totalIncome);
+      
+      // Level 1: Sucursales -> Ingreso Total
       Object.entries(branchSales).forEach(([branchName, sales]) => {
-        builder.addLink(branchName, "Venta de Productos", Math.round(sales.products));
-        builder.addLink(branchName, "Venta de Servicios", Math.round(sales.services));
-        builder.addLink(branchName, "Otros Ingresos", Math.round(sales.others));
+        const branchTotal = Math.round(sales.products + sales.services + sales.others);
+        if (branchTotal > 0) {
+          builder.addLink(branchName, "Ingreso Total", branchTotal);
+        }
       });
 
-      builder.addLink("Venta de Productos", "Ingreso Total", Math.round(totalProducts));
-      builder.addLink("Venta de Servicios", "Ingreso Total", Math.round(totalServices));
-      builder.addLink("Otros Ingresos", "Ingreso Total", Math.round(totalOthers));
+      // Group expenses by cost center type
+      const costCenterMap = costCenters.reduce((acc, cc) => {
+        acc[cc.id] = cc;
+        return acc;
+      }, {} as any);
 
-      builder.addLink("Ingreso Total", "Costo de Ventas", rCogs);
+      let totalCostoOperativo = 0;
+      let totalGastoAdministrativo = 0;
+      const costCenterBreakdown: { [ccName: string]: number } = {};
+
+      const processExpenses = (expList: any[]) => {
+        expList.forEach(e => {
+          const amount = e.subtotal || e.amount || 0;
+          const ccId = e.costCenterId;
+          const cc = costCenterMap[ccId];
+          if (cc) {
+            const type = (cc.type || "").toLowerCase();
+            if (type === "costo") {
+              totalCostoOperativo += amount;
+              costCenterBreakdown[cc.name] = (costCenterBreakdown[cc.name] || 0) + amount;
+            } else if (type === "gasto") {
+              totalGastoAdministrativo += amount;
+            }
+          }
+        });
+      };
+
+      processExpenses(activeExpenses);
+      processExpenses(activeExpensesInbox);
+
+      // Level 2: Ingreso Total -> Costo Operativo & Utilidad Bruta
+      // If we don't have real cost data, we'll use a fallback percentage to show the flow
+      const finalCostoOperativo = totalCostoOperativo > 0 ? totalCostoOperativo : rTotalIncome * 0.45;
+      const rCostoOp = Math.round(finalCostoOperativo);
+      const rGross = Math.round(totalIncome) - rCostoOp;
+
+      builder.addLink("Ingreso Total", "Costo Operativo", rCostoOp);
       builder.addLink("Ingreso Total", "Utilidad Bruta", rGross);
 
-      builder.addLink("Utilidad Bruta", "Gastos Operativos", rOpex);
-      builder.addLink("Utilidad Bruta", "Utilidad de Operación", rOpProfit);
+      // Level 3: Costo Operativo -> Centros de Costo (tipo costo)
+      if (totalCostoOperativo > 0) {
+        Object.entries(costCenterBreakdown).forEach(([ccName, amount]) => {
+          builder.addLink("Costo Operativo", ccName, Math.round(amount));
+        });
+      } else {
+        // Mock sub-centers if no data
+        builder.addLink("Costo Operativo", "Logística", Math.round(rCostoOp * 0.4));
+        builder.addLink("Costo Operativo", "Producción", Math.round(rCostoOp * 0.6));
+      }
 
-      builder.addLink("Utilidad de Operación", "Impuestos e Intereses", rTaxes);
-      builder.addLink("Utilidad de Operación", "Utilidad Neta", rNet);
+      // Level 3: Utilidad Bruta -> Gasto Administrativo & EBITDA
+      const finalGastoAdmin = totalGastoAdministrativo > 0 ? totalGastoAdministrativo : rGross * 0.4;
+      const rGastoAdmin = Math.round(finalGastoAdmin);
+      const rEbitda = rGross - rGastoAdmin;
+
+      builder.addLink("Utilidad Bruta", "Gasto Administrativo", rGastoAdmin);
+      builder.addLink("Utilidad Bruta", "EBITDA", rEbitda);
+
     } else {
       let scale = 1.0;
       if (timeRange === "month") scale = 0.12;
       else if (timeRange === "quarter") scale = 0.35;
 
-      const fProducts = Math.round(6500000 * scale);
-      const fServices = Math.round(2800000 * scale);
-      const fOthers = Math.round(1096491 * scale);
-
-      builder.addLink("Sucursal CDMX", "Venta de Productos", Math.round(3000000 * scale));
-      builder.addLink("Sucursal CDMX", "Venta de Servicios", Math.round(1000000 * scale));
+      const fTotal = Math.round(10396491 * scale);
       
-      builder.addLink("Sucursal Monterrey", "Venta de Productos", Math.round(2000000 * scale));
-      builder.addLink("Sucursal Monterrey", "Venta de Servicios", Math.round(1500000 * scale));
+      builder.addLink("Sucursal CDMX", "Ingreso Total", Math.round(4000000 * scale));
+      builder.addLink("Sucursal Monterrey", "Ingreso Total", Math.round(3500000 * scale));
+      builder.addLink("Sucursal Arboleda", "Ingreso Total", fTotal - Math.round(7500000 * scale));
+
+      const fCostoOp = Math.round(fTotal * 0.45);
+      const fGross = fTotal - fCostoOp;
       
-      builder.addLink("Sucursal Arboleda", "Venta de Productos", Math.round(1500000 * scale));
-      builder.addLink("Sucursal Arboleda", "Venta de Servicios", Math.round(300000 * scale));
-      builder.addLink("Sucursal Arboleda", "Otros Ingresos", fOthers);
-
-      builder.addLink("Venta de Productos", "Ingreso Total", fProducts);
-      builder.addLink("Venta de Servicios", "Ingreso Total", fServices);
-      builder.addLink("Otros Ingresos", "Ingreso Total", fOthers);
-
-      const fTotal = fProducts + fServices + fOthers;
-      const fCogs = Math.round(fProducts * 0.6);
-      const fGross = fTotal - fCogs;
-      const fOpex = Math.round(fGross * 0.4);
-      const fOpProfit = fGross - fOpex;
-      const fTaxes = Math.round(fOpProfit * 0.3);
-      const fNet = fOpProfit - fTaxes;
-
-      builder.addLink("Ingreso Total", "Costo de Ventas", fCogs);
+      builder.addLink("Ingreso Total", "Costo Operativo", fCostoOp);
       builder.addLink("Ingreso Total", "Utilidad Bruta", fGross);
 
-      builder.addLink("Utilidad Bruta", "Gastos Operativos", fOpex);
-      builder.addLink("Utilidad Bruta", "Utilidad de Operación", fOpProfit);
+      builder.addLink("Costo Operativo", "Logística", Math.round(fCostoOp * 0.4));
+      builder.addLink("Costo Operativo", "Producción", Math.round(fCostoOp * 0.6));
 
-      builder.addLink("Utilidad de Operación", "Impuestos e Intereses", fTaxes);
-      builder.addLink("Utilidad de Operación", "Utilidad Neta", fNet);
+      const fGastoAdmin = Math.round(fGross * 0.4);
+      const fEbitda = fGross - fGastoAdmin;
+
+      builder.addLink("Utilidad Bruta", "Gasto Administrativo", fGastoAdmin);
+      builder.addLink("Utilidad Bruta", "EBITDA", fEbitda);
     }
 
     return {
@@ -488,7 +524,7 @@ export default function ReporteFinancieroPage() {
           Flujo del Estado de Resultados (Sankey)
         </h3>
         <p className="text-xs text-muted-foreground mb-6">
-          Visualización del flujo de ingresos desde las sucursales hasta la utilidad neta final, pasando por costos y gastos del período seleccionado.
+          Visualización del flujo de ingresos por sucursal, su transformación en utilidad bruta (restando costos operativos) y finalmente el desglose entre gastos administrativos y EBITDA.
         </p>
         <div className="h-[420px] w-full">
           <ResponsiveContainer width="100%" height="100%">

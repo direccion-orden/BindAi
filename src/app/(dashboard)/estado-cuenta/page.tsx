@@ -84,7 +84,7 @@ function formatCurrency(value: number): string {
 function formatDate(dateStr: string): string {
   if (!dateStr) return "—";
   try {
-    const d = new Date(dateStr + "T00:00:00");
+    const d = new Date(dateStr + "T12:00:00");
     return d.toLocaleDateString("es-MX", {
       day: "2-digit",
       month: "short",
@@ -167,7 +167,7 @@ export default function EstadoCuentaPage() {
     if (!val) return "";
     let d: Date;
     if (typeof val === "string") {
-      d = new Date(val);
+      d = new Date(val.includes("T") ? val : val + "T12:00:00");
     } else if (val.seconds || val._seconds) {
       const secs = val.seconds || val._seconds;
       d = new Date(secs * 1000);

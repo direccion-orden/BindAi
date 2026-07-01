@@ -288,7 +288,7 @@ export default function DashboardPage() {
                     <TableCell className="font-semibold text-muted-foreground whitespace-nowrap hidden md:table-cell">
                       ANT-{a.folio ? String(a.folio).padStart(4, '0') : a.id.substring(0, 5).toUpperCase()}
                     </TableCell>
-                    <TableCell>{a.receivedAt ? new Date(a.receivedAt).toLocaleDateString() : (a.createdAt?.toDate ? a.createdAt.toDate().toLocaleDateString() : 'N/A')}</TableCell>
+                    <TableCell>{a.receivedAt ? new Date(a.receivedAt + "T12:00:00").toLocaleDateString() : (a.createdAt?.toDate ? a.createdAt.toDate().toLocaleDateString() : 'N/A')}</TableCell>
                     <TableCell className="font-medium">{a.clientName}</TableCell>
                     <TableCell>{a.paymentTermName || '-'}</TableCell>
                     <TableCell className="hidden md:table-cell">{a.bankAccountName || '-'}</TableCell>
@@ -324,7 +324,7 @@ export default function DashboardPage() {
                             Historial de Aplicaciones:
                           </span>
                           {a.applications.map((app: any, idx: number) => {
-                            const dateStr = app.appliedAt ? new Date(app.appliedAt).toLocaleDateString() : '';
+                            const dateStr = app.appliedAt ? new Date(app.appliedAt + "T12:00:00").toLocaleDateString() : '';
                             return (
                               <div key={idx} className="flex items-center gap-2 text-xs py-0.5">
                                 <span className="text-muted-foreground w-20">{dateStr}</span>

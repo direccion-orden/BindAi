@@ -328,7 +328,7 @@ export default function DetalleOrdenCompraPage() {
         doc.setFont("helvetica", "bold");
         doc.text("Entrega Esperada:", pageWidth - 70, y);
         doc.setFont("helvetica", "normal");
-        doc.text(new Date(order.expectedDate).toLocaleDateString("es-MX"), pageWidth - margin, y, { align: "right" });
+        doc.text(new Date(order.expectedDate + "T12:00:00").toLocaleDateString("es-MX"), pageWidth - margin, y, { align: "right" });
       }
 
       y += 12;
@@ -581,7 +581,7 @@ export default function DetalleOrdenCompraPage() {
                 onChange={(e) => setEditData({ ...editData, expectedDate: e.target.value })}
               />
             ) : (
-              <p className="font-semibold">{order.expectedDate ? new Date(order.expectedDate).toLocaleDateString('es-MX') : "No especificada"}</p>
+              <p className="font-semibold">{order.expectedDate ? new Date(order.expectedDate + "T12:00:00").toLocaleDateString('es-MX') : "No especificada"}</p>
             )}
           </div>
           <div>

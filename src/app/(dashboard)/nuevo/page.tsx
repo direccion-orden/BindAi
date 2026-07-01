@@ -380,7 +380,7 @@ export default function NuevoAnticipoPage() {
                   <option value="manual">-- Crear registro manual (No sugerido) --</option>
                   {unreconciledTransactions.map((tx) => (
                     <option key={tx.id} value={tx.id}>
-                      {new Date(tx.date).toLocaleDateString()} - ${tx.amount.toLocaleString('es-MX')} - {tx.concept || tx.reference || 'Sin concepto'}
+                      {new Date(tx.date + "T12:00:00").toLocaleDateString()} - ${tx.amount.toLocaleString('es-MX')} - {tx.concept || tx.reference || 'Sin concepto'}
                     </option>
                   ))}
                 </select>

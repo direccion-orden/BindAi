@@ -145,8 +145,8 @@ export default function DescuentosPage() {
                       </div>
                       <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                         <Calendar className="w-3 h-3" />
-                        {new Date(discount.startDate).toLocaleDateString()}
-                        {discount.endDate && ` - ${new Date(discount.endDate).toLocaleDateString()}`}
+                        {new Date(discount.startDate + "T12:00:00").toLocaleDateString()}
+                        {discount.endDate && ` - ${new Date(discount.endDate + "T12:00:00").toLocaleDateString()}`}
                       </div>
                     </TableCell>
                     <TableCell>

@@ -178,9 +178,9 @@ export default function ProyectosPage() {
                 <div className="flex items-center gap-2 text-sm text-slate-700">
                   <Calendar className="w-4 h-4 text-slate-400" />
                   <span>
-                    {project.startDate ? new Date(project.startDate).toLocaleDateString() : '--'} 
-                    {' - '} 
-                    {project.endDate ? new Date(project.endDate).toLocaleDateString() : '--'}
+                    {project.startDate ? new Date(project.startDate + "T12:00:00").toLocaleDateString() : '--'} 
+                    <span className="mx-1 text-slate-300">/</span> 
+                    {project.endDate ? new Date(project.endDate + "T12:00:00").toLocaleDateString() : '--'}
                   </span>
                 </div>
               </div>

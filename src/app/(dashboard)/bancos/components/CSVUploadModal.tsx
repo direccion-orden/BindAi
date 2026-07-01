@@ -91,17 +91,22 @@ export function CSVUploadModal({ accounts, initialAccountId, onClose }: CSVUploa
 
   const parseDateStr = (val: any) => {
     if (!val) return "";
-    // If format is DD/MM/YYYY
-    if (val.includes('/')) {
-        const parts = val.split('/');
-        if (parts.length === 3) {
-            // Check if DD/MM/YYYY or MM/DD/YYYY
-            // Assuming DD/MM/YYYY for Mexico
-            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        }
+    const s = val.toString().trim();
+    
+    // Handle DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (dmyMatch) {
+      return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
     }
-    // Return original if unknown, html input type="date" needs YYYY-MM-DD
-    return val.toString();
+
+    // Handle YYYY/MM/DD or YYYY-MM-DD
+    const ymdMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (ymdMatch) {
+      return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+    }
+    
+    // Fallback to original if it already looks like YYYY-MM-DD
+    return s;
   };
 
   const handlePreview = () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, ArrowLeft, Truck, Package, Receipt, FileText, XCircle, DollarSign, Printer, MessageSquare } from "lucide-react";
@@ -65,9 +65,11 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
       });
 
       // 2. Update Order status back to 'por_surtir'
-      if (remission.orderId) {
-        await updateDoc(doc(db, "companies", companyId, "pedidos", remission.orderId), {
-          status: "por_surtir"
+      const orderId = remission.orderId || remission.idPedido;
+      if (orderId) {
+        await updateDoc(doc(db, "companies", companyId, "pedidos", orderId), {
+          status: "por_surtir",
+          remissionId: deleteField()
         });
       }
 

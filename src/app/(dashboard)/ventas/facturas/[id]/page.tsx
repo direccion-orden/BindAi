@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { doc, getDoc, updateDoc, setDoc, onSnapshot, query, collection, where } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc, onSnapshot, query, collection, where, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, ArrowLeft, Receipt, Package, FileText, FileCode, Download, DollarSign, MessageSquare, Truck } from "lucide-react";
@@ -158,8 +158,9 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
         });
         
         if (factura.orderId) {
-          await updateDoc(doc(db, "companies", companyId, "orders", factura.orderId), {
-            status: "por_facturar" // or por_surtir depending on previous state, assuming por_facturar since it was invoiced
+          await updateDoc(doc(db, "companies", companyId, "pedidos", factura.orderId), {
+            status: "por_surtir",
+            invoiceId: deleteField()
           });
         }
         

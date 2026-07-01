@@ -60,7 +60,8 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
       pedidosSnap.docs.forEach(docSnap => {
         const d = docSnap.data();
         const status = String(d.status || "").trim().toLowerCase();
-        if (status !== "cancelado" && status !== "cancelada" && status !== "surtido" && status !== "remisionado" && status !== "completado") {
+        const isCanceled = status === "cancelado" || status === "cancelada" || status === "cancelled" || status === "anulado" || status === "anulada";
+        if (!isCanceled && status !== "surtido" && status !== "remisionado" && status !== "completado") {
           const total = Math.round(((parseFloat(d.totalAmount) || d.totalAmount || 0) + Number.EPSILON) * 100) / 100;
           const paid = Math.round(((parseFloat(d.paidAmount) || d.paidAmount || 0) + Number.EPSILON) * 100) / 100;
           const balance = Math.round((total - paid + Number.EPSILON) * 100) / 100;
@@ -81,7 +82,8 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
       remisionesSnap.docs.forEach(docSnap => {
         const d = docSnap.data();
         const status = String(d.status || "").trim().toLowerCase();
-        if (status !== "cancelada" && status !== "cancelado" && status !== "facturada" && status !== "pagada") {
+        const isCanceled = status === "cancelado" || status === "cancelada" || status === "cancelled" || status === "anulado" || status === "anulada";
+        if (!isCanceled && status !== "facturada" && status !== "pagada") {
           const total = Math.round(((parseFloat(d.totalAmount) || d.totalAmount || 0) + Number.EPSILON) * 100) / 100;
           const paid = Math.round(((parseFloat(d.paidAmount) || d.paidAmount || 0) + Number.EPSILON) * 100) / 100;
           const balance = Math.round((total - paid + Number.EPSILON) * 100) / 100;
@@ -102,7 +104,8 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
       facturasSnap.docs.forEach(docSnap => {
         const d = docSnap.data();
         const status = String(d.status || "").trim().toLowerCase();
-        if (status !== "cancelada" && status !== "cancelado" && status !== "pagada") {
+        const isCanceled = status === "cancelado" || status === "cancelada" || status === "cancelled" || status === "anulado" || status === "anulada";
+        if (!isCanceled && status !== "pagada") {
           const total = Math.round(((parseFloat(d.totalAmount) || d.totalAmount || 0) + Number.EPSILON) * 100) / 100;
           const paid = Math.round(((parseFloat(d.paidAmount) || d.paidAmount || 0) + Number.EPSILON) * 100) / 100;
           const balance = Math.round((total - paid + Number.EPSILON) * 100) / 100;

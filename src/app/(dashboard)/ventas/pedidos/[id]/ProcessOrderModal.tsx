@@ -268,7 +268,7 @@ export function ProcessOrderModal({
     window.location.reload();
   };
 
-  const buildFacturamaPayload = () => {
+  const buildFacturamaPayload = async () => {
     const totalDocDiscount = Number(order.totalDiscount) || 0;
     const targetTax = Number(order.tax) || 0;
     const targetTotal = Number(order.totalAmount) || 0;
@@ -278,6 +278,38 @@ export function ProcessOrderModal({
       totalDocDiscount,
       targetTax,
       targetTotal
+    );
+
+    // Fetch missing SAT codes from product catalog
+    const resolvedItems = await Promise.all(
+      distributedItems.map(async (item: any) => {
+        let satProductCode = item.satProductCode;
+        let satUnitCode = item.satUnitCode;
+        let satUnitName = item.satUnitName;
+
+        if ((!satProductCode || satProductCode === "01010101") && item.productId && companyId) {
+          try {
+            const prodSnap = await getDoc(doc(db, "companies", companyId, "products", item.productId));
+            if (prodSnap.exists()) {
+              const prodData = prodSnap.data();
+              if (prodData) {
+                if (prodData.satProductCode) satProductCode = prodData.satProductCode;
+                if (prodData.satUnitCode) satUnitCode = prodData.satUnitCode;
+                if (prodData.satUnitName) satUnitName = prodData.satUnitName;
+              }
+            }
+          } catch (e) {
+            console.error("Error fetching product SAT codes in buildFacturamaPayload:", e);
+          }
+        }
+
+        return {
+          ...item,
+          satProductCode: satProductCode || "01010101",
+          satUnitCode: satUnitCode || "H87",
+          satUnitName: satUnitName || "PIEZA"
+        };
+      })
     );
 
     const payload: any = {
@@ -294,22 +326,21 @@ export function ProcessOrderModal({
       PaymentMethod: paymentMethod,
       Currency: "MXN",
       ExpeditionPlace: companyZipCode,
-      Items: distributedItems.map((item: any) => {
-        const itemUnitPriceExVAT = item.unitPrice;
-        const unitPriceRounded = Number(itemUnitPriceExVAT.toFixed(4));
-        const subtotalVal = Number((item.quantity * unitPriceRounded).toFixed(4));
+      Items: resolvedItems.map((item: any) => {
+        const unitPriceRounded = round2(item.unitPrice);
+        const subtotalVal = round2(item.quantity * unitPriceRounded);
         
-        const discountVal = Number(item.finalDiscountAmt.toFixed(4));
-        const baseVal = Number(item.finalSubtotal.toFixed(4));
-        const taxTotalVal = Number(item.tax.toFixed(4));
-        const totalVal = Number(item.total.toFixed(4));
+        const discountVal = round2(item.finalDiscountAmt);
+        const baseVal = round2(subtotalVal - discountVal);
+        const taxTotalVal = round2(item.tax);
+        const totalVal = round2(baseVal + taxTotalVal);
 
         return {
-          ProductCode: item.satProductCode || "01010101",
+          ProductCode: item.satProductCode,
           IdentificationNumber: item.variantId || item.id || "SKU",
           Description: item.isService && item.description ? item.description : item.productName,
-          Unit: item.satUnitName || "PIEZA",
-          UnitCode: item.satUnitCode || "H87",
+          Unit: item.satUnitName,
+          UnitCode: item.satUnitCode,
           UnitPrice: unitPriceRounded,
           Quantity: item.quantity,
           Subtotal: subtotalVal,
@@ -341,7 +372,7 @@ export function ProcessOrderModal({
   };
 
   const processPreFactura = async () => {
-    const payload = buildFacturamaPayload();
+    const payload = await buildFacturamaPayload();
     const invId = crypto.randomUUID();
     const invNumber = await getNextSequence(companyId, 'facturas');
 
@@ -375,7 +406,7 @@ export function ProcessOrderModal({
   };
 
   const processFactura = async () => {
-    const payload = buildFacturamaPayload();
+    const payload = await buildFacturamaPayload();
     const result = await createCfdi(payload);
 
     if (result.success) {

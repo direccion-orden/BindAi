@@ -318,36 +318,42 @@ export default function NuevaFacturaPage() {
         Date: new Date().toISOString().split('.')[0],
         ExpeditionPlace: "64753",
         Items: items.map((item: any) => {
+          const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+          
           // Find the precise engine calculations for this item
           const engineItem = totals.processedItems?.find(ei => ei.id === (item.lineKey || item.variantId));
           const discountAmt = engineItem ? engineItem.finalDiscountAmt : 0;
           const itemUnitPriceExVAT = engineItem ? engineItem.unitPrice : (Number(item.unitPrice) || 0);
           
-          const subtotalItem = engineItem ? engineItem.finalSubtotal : Number(((item.quantity * itemUnitPriceExVAT) - discountAmt).toFixed(4));
-          const taxTotalVal = engineItem ? engineItem.tax : Number((subtotalItem * 0.16).toFixed(4));
-          const totalVal = engineItem ? engineItem.total : Number((subtotalItem + taxTotalVal).toFixed(4));
+          const unitPriceRounded = round2(itemUnitPriceExVAT);
+          const subtotalVal = round2(item.quantity * unitPriceRounded);
+          const discountVal = round2(discountAmt);
+          const baseVal = round2(subtotalVal - discountVal);
+          
+          const taxTotalVal = engineItem ? engineItem.tax : round2(baseVal * 0.16);
+          const totalVal = engineItem ? engineItem.total : round2(baseVal + taxTotalVal);
           
           return {
-            ProductCode: "01010101",
+            ProductCode: item.satProductCode || "01010101",
             IdentificationNumber: item.variantId || "SKU",
             Description: item.isService && item.description ? item.description : item.productName,
-            Unit: "PIEZA",
-            UnitCode: "H87",
-            UnitPrice: Number(itemUnitPriceExVAT.toFixed(4)),
+            Unit: item.satUnitName || "PIEZA",
+            UnitCode: item.satUnitCode || "H87",
+            UnitPrice: unitPriceRounded,
             Quantity: item.quantity,
-            Subtotal: Number((item.quantity * itemUnitPriceExVAT).toFixed(4)),
-            Discount: Number(discountAmt.toFixed(4)),
+            Subtotal: subtotalVal,
+            Discount: discountVal,
             TaxObject: "02",
             Taxes: [
               {
-                Total: Number(taxTotalVal.toFixed(4)),
+                Total: round2(taxTotalVal),
                 Name: "IVA",
-                Base: Number(subtotalItem.toFixed(4)),
+                Base: baseVal,
                 Rate: 0.16,
                 IsRetention: false
               }
             ],
-            Total: Number(totalVal.toFixed(4))
+            Total: round2(totalVal)
           };
         })
       };

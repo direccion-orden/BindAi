@@ -460,6 +460,8 @@ export async function createAutofactura(companyId: string, remissionId: string, 
       targetTotal
     );
 
+    const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+
     // Transform products and look up SAT codes if missing on remission
     const items = await Promise.all(distributedItems.map(async (item: any) => {
       let satProductCode = item.satProductCode || "01010101";
@@ -482,11 +484,12 @@ export async function createAutofactura(companyId: string, remissionId: string, 
         }
       }
 
-      const discountVal = Number(item.finalDiscountAmt.toFixed(4));
-      const subtotalItem = Number((item.quantity * item.unitPrice).toFixed(4));
-      const baseVal = Number(item.finalSubtotal.toFixed(4));
-      const taxTotalVal = Number(item.tax.toFixed(4));
-      const totalVal = Number(item.total.toFixed(4));
+      const unitPriceRounded = round2(item.unitPrice);
+      const subtotalItem = round2(item.quantity * unitPriceRounded);
+      const discountVal = round2(item.finalDiscountAmt);
+      const baseVal = round2(subtotalItem - discountVal);
+      const taxTotalVal = round2(item.tax);
+      const totalVal = round2(baseVal + taxTotalVal);
       
       return {
         ProductCode: satProductCode,
@@ -494,7 +497,7 @@ export async function createAutofactura(companyId: string, remissionId: string, 
         Description: item.isService && item.description ? item.description : (item.productName || item.title || ""),
         Unit: satUnitName,
         UnitCode: satUnitCode,
-        UnitPrice: Number(item.unitPrice.toFixed(4)),
+        UnitPrice: unitPriceRounded,
         Quantity: item.quantity,
         Subtotal: subtotalItem,
         Discount: discountVal,

@@ -97,7 +97,9 @@ export async function cancelPaymentOperation(companyId: string, paymentId: strin
         const antData = antSnap.data();
         const currentBalance = parseFloat(antData.balance) || 0;
         const amountToRevert = parseFloat(payment.amount) || 0;
-        const newBalance = currentBalance + amountToRevert;
+        // Safety cap: balance should not exceed original amount
+        const originalAmount = parseFloat(antData.amount) || amountToRevert;
+        const newBalance = Math.min(originalAmount, currentBalance + amountToRevert);
         
         // Remove this application from the applications array if it exists
         let newApplications = Array.isArray(antData.applications) ? [...antData.applications] : [];
@@ -256,6 +258,46 @@ export async function editPaymentOperation(
         }
       }
       await updateDoc(docRef, updates);
+    }
+  }
+
+  // 5. If it was an Anticipo, re-apply the new balance
+  if (originalPayment.method === "Anticipo" || (originalPayment.reference && originalPayment.reference.toLowerCase().includes("anticipo"))) {
+    let anticipoId = originalPayment.anticipoId;
+    if (!anticipoId && originalPayment.reference) {
+      const match = originalPayment.reference.match(/ANT-(\d+)/i);
+      if (match) {
+        const folioNum = parseInt(match[1], 10);
+        const antisQuery = query(collection(db, "companies", companyId, "anticipos"), where("folio", "==", folioNum));
+        const antisSnap = await getDocs(antisQuery);
+        if (!antisSnap.empty) anticipoId = antisSnap.docs[0].id;
+      }
+    }
+
+    if (anticipoId) {
+      const antRef = doc(db, "companies", companyId, "anticipos", anticipoId);
+      const antSnap = await getDoc(antRef);
+      if (antSnap.exists()) {
+        const antData = antSnap.data();
+        const currentBalance = parseFloat(antData.balance) || 0;
+        const newBalance = Math.max(0, currentBalance - updatedFields.amount);
+        
+        let newApplications = Array.isArray(antData.applications) ? [...antData.applications] : [];
+        newApplications.push({
+          erpDocumentId: originalPayment.documentId,
+          erpDocumentNumber: originalPayment.documentNumber || "Doc Editado",
+          erpDocumentType: originalPayment.documentType,
+          amount: updatedFields.amount,
+          appliedAt: updatedFields.date
+        });
+
+        await updateDoc(antRef, {
+          balance: newBalance,
+          status: newBalance <= 0.05 ? "applied" : "partially_applied",
+          applications: newApplications,
+          updatedAt: new Date().toISOString()
+        });
+      }
     }
   }
 }

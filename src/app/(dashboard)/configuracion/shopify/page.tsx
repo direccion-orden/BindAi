@@ -72,6 +72,7 @@ export default function ShopifyIntegrationPage() {
   const [oauthStatus, setOauthStatus] = useState<"idle" | "success" | "error">("idle");
   const [oauthError, setOauthError] = useState("");
   const [productStatusFilter, setProductStatusFilter] = useState<string>("active");
+  const [orderDaysBack, setOrderDaysBack] = useState<number>(7);
 
   const searchParams = useSearchParams();
 
@@ -272,7 +273,7 @@ export default function ShopifyIntegrationPage() {
     setSyncingOrders(true);
     setOrderSyncResult(null);
     try {
-      const res = await syncOrdersFromShopify(companyId);
+      const res = await syncOrdersFromShopify(companyId, orderDaysBack);
       if (res.success) {
         setOrderSyncResult(`Sincronización de pedidos completada. Se importaron ${res.count} pedidos nuevos.`);
       } else {
@@ -685,6 +686,34 @@ export default function ShopifyIntegrationPage() {
               </div>
 
               <div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 gap-2 font-bold justify-start"
+                    onClick={handleSyncOrders}
+                    disabled={syncingOrders || connectionStatus !== "success"}
+                  >
+                    {syncingOrders ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4" />}
+                    Sincronizar Pedidos
+                  </Button>
+                  <select
+                    className="h-9 rounded-md border border-input bg-background px-2 text-xs font-medium ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={orderDaysBack}
+                    onChange={(e) => setOrderDaysBack(parseInt(e.target.value))}
+                  >
+                    <option value={7}>Últimos 7 días</option>
+                    <option value={15}>Últimos 15 días</option>
+                    <option value={30}>Últimos 30 días</option>
+                    <option value={60}>Últimos 60 días</option>
+                  </select>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1.5 pl-1.5">
+                  Importa pedidos pasados. Útil si hubo fallos en la sincronización automática o para pedidos de junio.
+                </p>
+              </div>
+
+              <div>
                 <Button
                   type="button"
                   variant="outline"
@@ -705,6 +734,12 @@ export default function ShopifyIntegrationPage() {
             {syncResult && (
               <div className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono whitespace-pre-wrap border border-slate-800">
                 {syncResult}
+              </div>
+            )}
+
+            {orderSyncResult && (
+              <div className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono whitespace-pre-wrap border border-slate-800">
+                {orderSyncResult}
               </div>
             )}
 

@@ -502,7 +502,7 @@ export async function syncOrdersFromShopify(
     const createdAtMin = minDate.toISOString();
 
     const response = await client.getOrders({
-      limit: 100,
+      limit: 250,
       status: "any",
       created_at_min: createdAtMin
     });
@@ -526,8 +526,13 @@ export async function syncOrdersFromShopify(
       }
 
       // Map to Remision schema (same logic as webhook)
-      const remissionData = {
+      const totalPrice = parseFloat(payload.total_price || "0");
+      const totalOutstanding = parseFloat(payload.total_outstanding || "0");
+      const paidAmount = Math.max(0, totalPrice - totalOutstanding);
+
+      const remissionData: any = {
         id: orderId,
+        companyId,
         remissionNumber: `Ecom-${orderNumber}`,
         orderId: null,
         orderNumber: `SHOPIFY-${orderNumber}`,
@@ -544,10 +549,11 @@ export async function syncOrdersFromShopify(
           discountPercentage: 0,
           imageUrl: ""
         })),
-        totalAmount: parseFloat(payload.total_price) || 0,
+        totalAmount: totalPrice,
         subtotal: parseFloat(payload.subtotal_price) || 0,
         tax: parseFloat(payload.total_tax) || 0,
-        paidAmount: payload.financial_status === "paid" ? parseFloat(payload.total_price) : 0,
+        paidAmount: paidAmount,
+        paymentStatus: payload.financial_status === "paid" ? "paid" : (paidAmount > 0 ? "partial" : "pending"),
         locationId: "shopify",
         locationName: "eCOMMERCE",
         status: "activa",

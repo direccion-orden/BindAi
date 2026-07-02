@@ -4,6 +4,8 @@ import { useState } from "react";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Navbar } from "@/components/layout/Navbar";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { TrackerAgent } from "@/components/tracker/TrackerAgent";
+import { useAuth } from "@/context/AuthContext";
 
 export default function DashboardLayout({
   children,
@@ -11,6 +13,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { companyId } = useAuth();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -25,6 +28,7 @@ export default function DashboardLayout({
           </div>
         </main>
       </div>
+      {companyId && <TrackerAgent companyId={companyId} />}
     </div>
   );
 }

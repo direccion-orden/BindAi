@@ -128,6 +128,8 @@ export async function POST(req: NextRequest) {
               if (metaUrlRes.ok) {
                 const metaUrlData = await metaUrlRes.json();
                 mediaUrl = metaUrlData.url;
+              } else {
+                console.error("Meta media URL fetch failed:", await metaUrlRes.text());
               }
             } catch (err) {
               console.error("Error fetching Meta media URL:", err);
@@ -135,13 +137,23 @@ export async function POST(req: NextRequest) {
           }
         }
         messageBody = message.text?.body || "";
+      } else if (val?.statuses) {
+        // Log status updates but don't process them as messages
+        console.log(`WhatsApp Status Update: ${val.statuses[0]?.status} for ${val.statuses[0]?.recipient_id}`);
+        return NextResponse.json({ success: true, message: "Status update ignored" });
       }
     }
 
     // 2. Load or Initialize Session
+    if (!fromNumber) {
+      console.warn("No fromNumber found in webhook payload");
+      return NextResponse.json({ error: "No fromNumber found" }, { status: 200 }); // Return 200 to Meta
+    }
+
     const cleanedSenderPhone = fromNumber.replace(/\D/g, "").slice(-10);
     if (!cleanedSenderPhone) {
-      return NextResponse.json({ error: "Invalid phone number" }, { status: 400 });
+      console.warn("Invalid phone number format:", fromNumber);
+      return NextResponse.json({ error: "Invalid phone number" }, { status: 200 });
     }
 
     const sessionRef = adminDb.collection("whatsappSessions").doc(cleanedSenderPhone);
@@ -172,50 +184,73 @@ export async function POST(req: NextRequest) {
 
     // Helper to send text reply
     const sendReply = async (text: string) => {
+      console.log(`Sending reply to ${fromNumber}: ${text.substring(0, 50)}...`);
       if (isTwilio) {
         const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message><Body>${text}</Body></Message></Response>`;
         return new NextResponse(twiml, { headers: { "Content-Type": "text/xml" } });
       } else if (phoneId && whatsappAccessToken) {
-        await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${whatsappAccessToken}`
-          },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            to: fromNumber,
-            type: "text",
-            text: { body: text }
-          })
-        });
+        try {
+          const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${whatsappAccessToken}`
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: fromNumber,
+              type: "text",
+              text: { body: text }
+            })
+          });
+          
+          if (!res.ok) {
+            const errorData = await res.text();
+            console.error("Meta API error sending message:", errorData);
+          } else {
+            console.log("Message sent successfully to Meta");
+          }
+        } catch (err) {
+          console.error("Fetch error sending Meta message:", err);
+        }
+      } else {
+        console.warn("Cannot send Meta reply: Missing phoneId or whatsappAccessToken", { phoneId, hasToken: !!whatsappAccessToken });
       }
       return NextResponse.json({ success: true, message: "Text reply handled" });
     };
 
     // Helper to send document reply
     const sendDocumentReply = async (pdfUrl: string, filename: string, caption: string) => {
+      console.log(`Sending document reply to ${fromNumber}: ${filename}`);
       if (isTwilio) {
         const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message><Body>${caption}</Body><Media>${pdfUrl}</Media></Message></Response>`;
         return new NextResponse(twiml, { headers: { "Content-Type": "text/xml" } });
       } else if (phoneId && whatsappAccessToken) {
-        await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${whatsappAccessToken}`
-          },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            to: fromNumber,
-            type: "document",
-            document: {
-              link: pdfUrl,
-              filename: filename,
-              caption: caption
-            }
-          })
-        });
+        try {
+          const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${whatsappAccessToken}`
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: fromNumber,
+              type: "document",
+              document: {
+                link: pdfUrl,
+                filename: filename,
+                caption: caption
+              }
+            })
+          });
+          if (!res.ok) {
+            const errorData = await res.text();
+            console.error("Meta API error sending document:", errorData);
+          }
+        } catch (err) {
+          console.error("Fetch error sending Meta document:", err);
+        }
       }
       return NextResponse.json({ success: true, message: "Document reply handled" });
     };
@@ -364,7 +399,7 @@ export async function POST(req: NextRequest) {
         try {
           const genAI = new GoogleGenerativeAI(apiKey);
           const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-3.5-flash",
             generationConfig: { responseMimeType: "application/json" }
           });
 
@@ -401,7 +436,16 @@ Devuelve estrictamente un objeto JSON con los siguientes campos:
           };
 
           const result = await model.generateContent([prompt, imagePart]);
-          geminiResult = JSON.parse(result.response.text());
+          let responseText = result.response.text();
+          
+          // Clean possible markdown code blocks
+          if (responseText.includes("```json")) {
+            responseText = responseText.split("```json")[1].split("```")[0];
+          } else if (responseText.includes("```")) {
+            responseText = responseText.split("```")[1].split("```")[0];
+          }
+          
+          geminiResult = JSON.parse(responseText.trim());
         } catch (err) {
           console.error("Gemini receipt analysis error in webhook:", err);
         }

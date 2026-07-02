@@ -335,7 +335,7 @@ export async function generateClientStatementPDFAndUpload(
     y += 6;
   }
 
-  // 3. Upload to Firebase Storage
+  // 3. Upload to Firebase Storage with a persistent download token
   const pdfArrayBuffer = doc.output("arraybuffer");
   const pdfBuffer = Buffer.from(pdfArrayBuffer);
   
@@ -350,15 +350,20 @@ export async function generateClientStatementPDFAndUpload(
   const fileName = `companies/${companyId}/statements/${client.id}_statement_${Date.now()}.pdf`;
   const file = bucket.file(fileName);
 
+  // Generate a random token for the download URL
+  const downloadToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
   await file.save(pdfBuffer, {
-    metadata: { contentType: "application/pdf" }
+    metadata: { 
+      contentType: "application/pdf",
+      metadata: {
+        firebaseStorageDownloadTokens: downloadToken
+      }
+    }
   });
 
-  // Generate public signed URL
-  const [url] = await file.getSignedUrl({
-    action: 'read',
-    expires: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days expiry
-  });
+  // Construct the manual Firebase Download URL
+  const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
 
   return url;
 }

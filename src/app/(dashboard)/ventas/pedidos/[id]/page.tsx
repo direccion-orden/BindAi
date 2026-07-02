@@ -395,8 +395,9 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                 </Button>
               </Link>
             </div>
-            <p className="text-muted-foreground text-sm mt-1">
-              Ref: Cotización {order.quoteNumber} | Cliente: {order.clientName}
+            <p className="text-muted-foreground text-sm mt-1 flex items-center gap-1">
+              <Package className="w-3.5 h-3.5" /> 
+              Fecha: {order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A'}
             </p>
           </div>
         </div>
@@ -500,14 +501,50 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         <>
           {/* Top Header Card: Datos Generales */}
            <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
-        <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2 border-b pb-2">
-          <FileText className="w-4 h-4 text-indigo-600" />
-          Información General del Pedido
-        </h3>
+        <div className="flex justify-between items-center border-b pb-2">
+          <h3 className="font-semibold text-sm text-slate-800 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-indigo-600" />
+            Información General del Pedido
+          </h3>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center">
+              {order.status === 'por_surtir' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 uppercase">
+                  Por Surtir
+                </span>
+              )}
+              {order.status === 'cancelado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-red-50 text-red-700 border border-red-200 uppercase">
+                  Cancelado
+                </span>
+              )}
+              {order.status === 'remisionado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                  Remisionado
+                </span>
+              )}
+              {order.status === 'facturado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                  Facturado
+                </span>
+              )}
+              {order.status === 'pre_facturado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">
+                  Pre-Facturado
+                </span>
+              )}
+            </div>
+            <span className="text-xs font-bold text-indigo-700">
+              {order.quoteNumber ? `Ref: Cotización ${order.quoteNumber}` : 'Ref: Directo / Sin cotización'}
+            </span>
+          </div>
+        </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-start">
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase">Cliente</label>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start pt-2">
+          <div className="md:col-span-6">
+            <div className="flex items-center h-5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cliente / Empresa</label>
+            </div>
             {isEditing ? (
               <div className="relative mt-1">
                 <div className="relative">
@@ -572,59 +609,23 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
               </div>
             ) : (
               <>
-                <p className="font-bold text-slate-900 mt-1">{order.clientName || 'Sin Cliente'}</p>
-                {order.rfc && <p className="text-[10px] text-slate-500 mt-0.5">RFC: {order.rfc}</p>}
+                <p className="font-bold text-slate-900 mt-1 leading-tight">{order.clientName || 'Sin Cliente'}</p>
+                {order.rfc && <p className="text-[10px] text-slate-500 mt-0.5 font-medium">RFC: {order.rfc}</p>}
               </>
             )}
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase">Referencia</label>
-            <p className="font-bold text-indigo-700 mt-1">
-              {order.quoteNumber ? `Cotización ${order.quoteNumber}` : 'Directo / Sin cotización'}
-            </p>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase">Estatus del Pedido</label>
-            <div className="mt-1">
-              {order.status === 'por_surtir' && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                  Por Surtir
-                </span>
-              )}
-              {order.status === 'cancelado' && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-50 text-red-700 border border-red-200">
-                  Cancelado
-                </span>
-              )}
-              {order.status === 'remisionado' && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Remisionado
-                </span>
-              )}
-              {order.status === 'facturado' && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                  Facturado
-                </span>
-              )}
-              {order.status === 'pre_facturado' && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  Pre-Facturado
-                </span>
-              )}
+          <div className="md:col-span-2">
+            <div className="flex items-center h-5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sucursal</label>
             </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase">Sucursal</label>
             {isEditing ? (
               <select 
                 className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
                 value={order.locationId || ""}
                 onChange={e => setOrder({...order, locationId: e.target.value})}
               >
-                <option value="">Seleccionar Sucursal</option>
+                <option value="">Seleccionar</option>
                 {locations.map(l => (
                   <option key={l.id} value={l.id}>{l.name}</option>
                 ))}
@@ -634,15 +635,17 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
             )}
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase">Almacén</label>
+          <div className="md:col-span-2">
+            <div className="flex items-center h-5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Almacén</label>
+            </div>
             {isEditing ? (
               <select 
                 className="mt-1 flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm font-semibold"
                 value={order.warehouseId || ""}
                 onChange={e => setOrder({...order, warehouseId: e.target.value})}
               >
-                <option value="">Seleccionar Almacén</option>
+                <option value="">Seleccionar</option>
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.name}</option>
                 ))}
@@ -652,42 +655,42 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
             )}
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <div className="flex justify-between items-center h-5">
-              <label className="text-xs font-semibold text-slate-500 uppercase">Proyecto Vinculado</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Proyecto</label>
               {isEditing && order.clientId && (
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
+                  className="h-5 px-1 text-[9px] text-blue-600 font-bold hover:bg-blue-50"
                   onClick={() => setIsCreatingProject(true)}
                 >
-                  + Crear Proyecto
+                  + Nuevo
                 </Button>
               )}
             </div>
             {isEditing ? (
               isCreatingProject ? (
-                <div className="space-y-2 bg-blue-50/30 p-2.5 rounded-lg border border-blue-100 mt-1">
+                <div className="space-y-2 bg-blue-50/30 p-2 rounded-lg border border-blue-100 mt-1">
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-[10px] font-bold text-blue-900 uppercase">Nuevo Proyecto</label>
+                    <label className="text-[9px] font-bold text-blue-900 uppercase">Nuevo Proyecto</label>
                     <Button 
                       variant="ghost" 
                       size="sm" 
-                      className="h-4 px-1 text-[9px] text-blue-600 font-semibold hover:bg-blue-50"
+                      className="h-4 px-1 text-[8px] text-blue-600 font-bold hover:bg-blue-50"
                       onClick={() => {
                         setIsCreatingProject(false);
                         setNewProjectName("");
                       }}
                     >
-                      Buscar Existente
+                      Cancelar
                     </Button>
                   </div>
                   <Input 
-                    placeholder="Nombre del Proyecto *" 
+                    placeholder="Nombre..." 
                     value={newProjectName}
                     onChange={(e) => setNewProjectName(e.target.value)}
-                    className="bg-white border-blue-200 h-8 text-xs font-semibold"
+                    className="bg-white border-blue-200 h-7 text-[10px] font-semibold"
                   />
                 </div>
               ) : (
@@ -703,7 +706,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                 </select>
               )
             ) : (
-              <p className="font-bold text-indigo-700 mt-1">{order.projectName || 'Ninguno'}</p>
+              <p className="font-bold text-indigo-700 mt-1 truncate">{order.projectName || 'Ninguno'}</p>
             )}
           </div>
         </div>

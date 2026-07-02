@@ -83,6 +83,29 @@ export async function POST(req: NextRequest) {
       console.error("Error loading company configs in webhook:", err);
     }
 
+    const contentType = req.headers.get("content-type") || "";
+    let body: any = null;
+
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      const formData = await req.formData();
+      body = Object.fromEntries(formData.entries());
+    } else if (contentType.includes("application/json")) {
+      body = await req.json();
+    }
+
+    // LOG DE EMERGENCIA: Registra cualquier petición que llegue de Meta para depuración
+    try {
+      await adminDb.collection("whatsappDebugLogs").add({
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        method: req.method,
+        companyId,
+        body: body,
+        headers: Object.fromEntries(req.headers.entries())
+      });
+    } catch (e) {
+      console.error("Error writing debug log:", e);
+    }
+
     if (!whatsappBotActive) {
       return NextResponse.json({ success: true, message: "Bot is disabled for this company" });
     }
@@ -94,19 +117,17 @@ export async function POST(req: NextRequest) {
     let messageBody = "";
     let phoneId = ""; // Used for Meta Cloud API responses
 
-    const contentType = req.headers.get("content-type") || "";
     let reqJsonBody: any = null;
 
     if (contentType.includes("application/x-www-form-urlencoded")) {
       isTwilio = true;
-      const formData = await req.formData();
-      fromNumber = (formData.get("From") as string) || "";
-      mediaUrl = (formData.get("MediaUrl0") as string) || "";
-      mediaType = (formData.get("MediaContentType0") as string) || "";
-      messageBody = (formData.get("Body") as string) || "";
+      fromNumber = (body.From as string) || "";
+      mediaUrl = (body.MediaUrl0 as string) || "";
+      mediaType = (body.MediaContentType0 as string) || "";
+      messageBody = (body.Body as string) || "";
     } else {
       // Parse JSON payload (Meta Cloud API)
-      reqJsonBody = await req.json();
+      reqJsonBody = body;
       const entry = reqJsonBody.entry?.[0];
       const change = entry?.changes?.[0];
       const val = change?.value;
@@ -207,11 +228,19 @@ export async function POST(req: NextRequest) {
           if (!res.ok) {
             const errorData = await res.text();
             console.error("Meta API error sending message:", errorData);
+            // SAVE ERROR TO SESSION FOR DIAGNOSIS
+            await sessionRef.update({ 
+              lastMetaError: errorData,
+              lastMetaStatus: res.status,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
           } else {
             console.log("Message sent successfully to Meta");
+            await sessionRef.update({ lastMetaError: null, lastMetaStatus: 200 });
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Fetch error sending Meta message:", err);
+          await sessionRef.update({ lastMetaError: err.message, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
         }
       } else {
         console.warn("Cannot send Meta reply: Missing phoneId or whatsappAccessToken", { phoneId, hasToken: !!whatsappAccessToken });

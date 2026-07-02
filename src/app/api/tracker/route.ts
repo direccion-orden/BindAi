@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { searchErpClients, getClientDocuments } from "@/app/actions/erp";
 import { adminDb } from "@/lib/firebase/admin";
 
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash",
+      model: "gemini-3.5-flash",
       tools: [
         {
           functionDeclarations: [
@@ -37,9 +37,9 @@ export async function POST(req: NextRequest) {
               name: "search_clients",
               description: "Busca clientes en el ERP por nombre o razón social.",
               parameters: {
-                type: "object",
+                type: SchemaType.OBJECT,
                 properties: {
-                  query: { type: "string", description: "El nombre o término de búsqueda del cliente." }
+                  query: { type: SchemaType.STRING, description: "El nombre o término de búsqueda del cliente." }
                 },
                 required: ["query"]
               }
@@ -48,9 +48,9 @@ export async function POST(req: NextRequest) {
               name: "get_client_documents",
               description: "Obtiene los documentos pendientes (facturas, remisiones, pedidos) de un cliente específico.",
               parameters: {
-                type: "object",
+                type: SchemaType.OBJECT,
                 properties: {
-                  clientId: { type: "string", description: "El ID único del cliente en el ERP." }
+                  clientId: { type: SchemaType.STRING, description: "El ID único del cliente en el ERP." }
                 },
                 required: ["clientId"]
               }
@@ -95,9 +95,9 @@ export async function POST(req: NextRequest) {
       for (const call of calls) {
         let toolData;
         if (call.name === "search_clients") {
-          toolData = await searchErpClients(call.args.query as string);
+          toolData = await searchErpClients((call.args as any).query as string);
         } else if (call.name === "get_client_documents") {
-          toolData = await getClientDocuments(call.args.clientId as string);
+          toolData = await getClientDocuments((call.args as any).clientId as string);
         }
         
         toolResponses.push({

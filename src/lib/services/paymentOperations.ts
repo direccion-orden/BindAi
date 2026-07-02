@@ -71,20 +71,53 @@ export async function cancelPaymentOperation(companyId: string, paymentId: strin
   }
 
   // 5. If it was an Anticipo application, revert the balance on the Anticipo document
-  if ((payment.method === "Anticipo" || (payment.reference && payment.reference.toLowerCase().includes("anticipo"))) && payment.anticipoId) {
-    const antRef = doc(db, "companies", companyId, "anticipos", payment.anticipoId);
-    const antSnap = await getDoc(antRef);
-    if (antSnap.exists()) {
-      const antData = antSnap.data();
-      const currentBalance = parseFloat(antData.balance) || 0;
-      const amountToRevert = parseFloat(payment.amount) || 0;
-      const newBalance = currentBalance + amountToRevert;
-      
-      await updateDoc(antRef, {
-        balance: newBalance,
-        status: "partially_applied", // At least partially applied now that we reverted some
-        updatedAt: new Date().toISOString()
-      });
+  if (payment.method === "Anticipo" || (payment.reference && payment.reference.toLowerCase().includes("anticipo"))) {
+    let anticipoId = payment.anticipoId;
+    
+    // Fallback: If anticipoId is missing, try to find it by folio from reference (e.g., "ANT-0111")
+    if (!anticipoId && payment.reference) {
+      const match = payment.reference.match(/ANT-(\d+)/i);
+      if (match) {
+        const folioNum = parseInt(match[1], 10);
+        const antisQuery = query(
+          collection(db, "companies", companyId, "anticipos"),
+          where("folio", "==", folioNum)
+        );
+        const antisSnap = await getDocs(antisQuery);
+        if (!antisSnap.empty) {
+          anticipoId = antisSnap.docs[0].id;
+        }
+      }
+    }
+
+    if (anticipoId) {
+      const antRef = doc(db, "companies", companyId, "anticipos", anticipoId);
+      const antSnap = await getDoc(antRef);
+      if (antSnap.exists()) {
+        const antData = antSnap.data();
+        const currentBalance = parseFloat(antData.balance) || 0;
+        const amountToRevert = parseFloat(payment.amount) || 0;
+        const newBalance = currentBalance + amountToRevert;
+        
+        // Remove this application from the applications array if it exists
+        let newApplications = Array.isArray(antData.applications) ? [...antData.applications] : [];
+        const initialLength = newApplications.length;
+        
+        // Match by documentId (order-2781, etc)
+        newApplications = newApplications.filter(app => app.erpDocumentId !== documentId);
+        
+        const updates: any = {
+          balance: newBalance,
+          status: newBalance >= (antData.amount || 0) - 0.01 ? "pending" : "partially_applied",
+          updatedAt: new Date().toISOString()
+        };
+
+        if (newApplications.length !== initialLength) {
+          updates.applications = newApplications;
+        }
+        
+        await updateDoc(antRef, updates);
+      }
     }
   }
 }

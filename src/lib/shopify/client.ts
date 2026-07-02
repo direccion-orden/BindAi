@@ -140,4 +140,19 @@ export class ShopifyClient {
       body: JSON.stringify({ product: productData }),
     });
   }
+
+  // --- Orders ---
+  async getOrders(params: {
+    limit?: number;
+    since_id?: string;
+    status?: string;
+    created_at_min?: string;
+  }): Promise<{ orders: any[] }> {
+    let endpoint = `/orders.json?limit=${params.limit || 50}`;
+    if (params.since_id) endpoint += `&since_id=${params.since_id}`;
+    if (params.status) endpoint += `&status=${params.status}`;
+    if (params.created_at_min) endpoint += `&created_at_min=${params.created_at_min}`;
+    
+    return this.request<{ orders: any[] }>(endpoint);
+  }
 }

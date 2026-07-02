@@ -116,7 +116,14 @@ export async function POST(req: NextRequest) {
         .digest("base64");
 
       if (hash !== hmacHeader) {
-        console.warn(`[Shopify Webhook] Invalid HMAC signature for company: ${companyId}. Expected: ${hash}, Got: ${hmacHeader}`);
+        console.error(`[Shopify Webhook] Invalid HMAC signature for company: ${companyId}`);
+        // Log to Firestore for visibility
+        await adminDb.collection("server_errors").add({
+          actionName: "shopify_webhook_hmac_failure",
+          companyId,
+          message: `Invalid HMAC signature. Header: ${hmacHeader}`,
+          timestamp: new Date().toISOString()
+        });
         return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
       }
       console.log(`[Shopify Webhook] HMAC signature verified for company: ${companyId}`);

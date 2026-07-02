@@ -29,6 +29,7 @@ import {
   testShopifyConnection, 
   registerShopifyWebhooksAction,
   syncProductsFromShopify,
+  syncOrdersFromShopify,
   ShopifySettings
 } from "@/actions/shopify";
 
@@ -57,6 +58,7 @@ export default function ShopifyIntegrationPage() {
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncingProducts, setSyncingProducts] = useState(false);
+  const [syncingOrders, setSyncingOrders] = useState(false);
   const [registeringWebhooks, setRegisteringWebhooks] = useState(false);
   const [shopifyLocations, setShopifyLocations] = useState<any[]>([]);
   const [erpWarehouses, setErpWarehouses] = useState<ERPWarehouse[]>([]);
@@ -65,6 +67,7 @@ export default function ShopifyIntegrationPage() {
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle");
   const [connectionError, setConnectionError] = useState("");
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [orderSyncResult, setOrderSyncResult] = useState<string | null>(null);
   const [webhookResult, setWebhookResult] = useState<string | null>(null);
   const [oauthStatus, setOauthStatus] = useState<"idle" | "success" | "error">("idle");
   const [oauthError, setOauthError] = useState("");
@@ -262,6 +265,26 @@ export default function ShopifyIntegrationPage() {
     }
   };
 
+  const handleSyncOrders = async () => {
+    if (!companyId) return;
+    if (!window.confirm("¿Deseas iniciar la importación manual de pedidos de los últimos 7 días? Los pedidos duplicados serán ignorados.")) return;
+
+    setSyncingOrders(true);
+    setOrderSyncResult(null);
+    try {
+      const res = await syncOrdersFromShopify(companyId);
+      if (res.success) {
+        setOrderSyncResult(`Sincronización de pedidos completada. Se importaron ${res.count} pedidos nuevos.`);
+      } else {
+        setOrderSyncResult(`Error en la sincronización de pedidos: ${res.error}`);
+      }
+    } catch (err: any) {
+      setOrderSyncResult(`Error: ${err.message}`);
+    } finally {
+      setSyncingOrders(false);
+    }
+  };
+
   const handleRegisterWebhooks = async () => {
     if (!companyId) return;
     setRegisteringWebhooks(true);
@@ -419,6 +442,53 @@ export default function ShopifyIntegrationPage() {
                         <span>Access Token obtenido exitosamente vía OAuth.</span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Sync Orders Section */}
+                  <div className="flex items-start gap-4 p-4 rounded-lg bg-muted/30 border border-border">
+                    <div className="p-2 rounded-full bg-orange-100 dark:bg-orange-950/30">
+                      <ArrowRightLeft className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      <div>
+                        <h4 className="text-sm font-medium">Sincronizar Pedidos Manualmente</h4>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Importa los pedidos de los últimos 7 días desde Shopify. Útil si algún pedido no se sincronizó automáticamente.
+                        </p>
+                      </div>
+                      
+                      <div className="flex flex-col gap-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSyncOrders}
+                          disabled={syncingOrders || !isActive}
+                          className="w-fit"
+                        >
+                          {syncingOrders ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sincronizando...</>
+                          ) : (
+                            <><RefreshCw className="w-4 h-4 mr-2" /> Sincronizar Pedidos</>
+                          )}
+                        </Button>
+
+                        {orderSyncResult && (
+                          <div className={`p-3 rounded-md text-xs flex items-start gap-2 ${
+                            orderSyncResult.includes("Error") 
+                              ? "bg-destructive/10 text-destructive border border-destructive/20" 
+                              : "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20"
+                          }`}>
+                            {orderSyncResult.includes("Error") ? (
+                              <AlertTriangle className="w-4 h-4 shrink-0" />
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            )}
+                            <p>{orderSyncResult}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (

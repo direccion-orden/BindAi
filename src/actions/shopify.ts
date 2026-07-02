@@ -1,6 +1,6 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
+import { adminDb, admin } from "@/lib/firebase/admin";
 import { ShopifyClient } from "@/lib/shopify/client";
 
 export interface ShopifySettings {
@@ -217,6 +217,27 @@ async function findExistingProductDoc(
     }
   } catch (err) {
     console.error("Error in findExistingProductDoc:", err);
+  }
+  return null;
+}
+
+async function findProductRefByShopifyId(
+  productsCol: any,
+  shopifyProductId: string
+): Promise<any | null> {
+  try {
+    const docRef = productsCol.doc(shopifyProductId);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      return docRef;
+    }
+
+    const q = await productsCol.where("shopifyId", "==", shopifyProductId).limit(1).get();
+    if (!q.empty) {
+      return q.docs[0].ref;
+    }
+  } catch (err) {
+    console.error("Error in findProductRefByShopifyId:", err);
   }
   return null;
 }
@@ -454,5 +475,135 @@ export async function pushProductsToShopify(
   } catch (error: any) {
     console.error("Error pushing products to Shopify:", error);
     return { success: false, created: 0, updated: 0, errors: [], error: error.message };
+  }
+}
+
+export async function syncOrdersFromShopify(
+  companyId: string,
+  daysBack: number = 7
+): Promise<{ success: boolean; count?: number; error?: string }> {
+  if (!adminDb) return { success: false, error: "Firebase Admin is not configured" };
+  try {
+    const settings = await getShopifySettings(companyId);
+    if (!settings || !settings.shopName || (!settings.accessToken && (!settings.clientId || !settings.clientSecret))) {
+      return { success: false, error: "Shopify settings are not configured." };
+    }
+
+    const client = new ShopifyClient({
+      shopName: settings.shopName,
+      accessToken: settings.accessToken,
+      clientId: settings.clientId,
+      clientSecret: settings.clientSecret
+    });
+
+    // Calculate created_at_min
+    const minDate = new Date();
+    minDate.setDate(minDate.getDate() - daysBack);
+    const createdAtMin = minDate.toISOString();
+
+    const response = await client.getOrders({
+      limit: 100,
+      status: "any",
+      created_at_min: createdAtMin
+    });
+
+    const shopifyOrders = response.orders || [];
+    if (shopifyOrders.length === 0) {
+      return { success: true, count: 0 };
+    }
+
+    const remisionesCol = adminDb.collection("companies").doc(companyId).collection("remisiones");
+    let importedCount = 0;
+
+    for (const payload of shopifyOrders) {
+      const orderId = payload.id.toString();
+      const orderNumber = payload.order_number || payload.number;
+
+      // Check if order already exists
+      const existingRem = await remisionesCol.doc(orderId).get();
+      if (existingRem.exists) {
+        continue;
+      }
+
+      // Map to Remision schema (same logic as webhook)
+      const remissionData = {
+        id: orderId,
+        remissionNumber: `Ecom-${orderNumber}`,
+        orderId: null,
+        orderNumber: `SHOPIFY-${orderNumber}`,
+        clientName: payload.customer 
+          ? `${payload.customer.first_name || ""} ${payload.customer.last_name || ""}`.trim() 
+          : "Cliente Shopify",
+        items: (payload.line_items || []).map((item: any) => ({
+          productId: item.product_id?.toString() || "",
+          variantId: item.variant_id?.toString() || "",
+          productName: item.name || item.title || "",
+          variantTitle: item.variant_title || "",
+          quantity: item.quantity || 1,
+          unitPrice: parseFloat(item.price) || 0,
+          discountPercentage: 0,
+          imageUrl: ""
+        })),
+        totalAmount: parseFloat(payload.total_price) || 0,
+        subtotal: parseFloat(payload.subtotal_price) || 0,
+        tax: parseFloat(payload.total_tax) || 0,
+        paidAmount: payload.financial_status === "paid" ? parseFloat(payload.total_price) : 0,
+        locationId: "shopify",
+        locationName: "eCOMMERCE",
+        status: "activa",
+        createdAt: payload.created_at || new Date().toISOString(),
+        createdBy: "Manual Sync",
+        isShopifySale: true
+      };
+
+      await remisionesCol.doc(orderId).set(remissionData);
+      importedCount++;
+
+      // Deduct inventory stock if syncInventory is active
+      if (settings.syncInventory && payload.line_items) {
+        const productsCol = adminDb.collection("companies").doc(companyId).collection("products");
+        for (const item of payload.line_items) {
+          if (!item.product_id || !item.variant_id) continue;
+
+          const prodIdStr = item.product_id.toString();
+          const variantIdStr = item.variant_id.toString();
+          const quantity = item.quantity || 1;
+
+          const prodRef = await findProductRefByShopifyId(productsCol, prodIdStr);
+
+          if (prodRef) {
+            const prodSnap = await prodRef.get();
+            if (prodSnap.exists) {
+              const productData = prodSnap.data() || {};
+              const variants = productData.variants || [];
+              
+              let variantFound = false;
+              const updatedVariants = variants.map((v: any) => {
+                if (v.id === variantIdStr) {
+                  variantFound = true;
+                  return {
+                    ...v,
+                    stock: Math.max(0, (v.stock || 0) - quantity)
+                  };
+                }
+                return v;
+              });
+
+              if (variantFound) {
+                await prodRef.update({ 
+                  variants: updatedVariants,
+                  salesCount: admin.firestore.FieldValue.increment(quantity)
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return { success: true, count: importedCount };
+  } catch (error: any) {
+    console.error("Error syncing orders from Shopify:", error);
+    return { success: false, error: error.message || "Failed to sync orders" };
   }
 }

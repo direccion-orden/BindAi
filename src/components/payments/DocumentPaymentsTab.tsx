@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { Loader2, DollarSign, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,25 +30,108 @@ export function DocumentPaymentsTab({ document: docObj, documentType, companyId,
       return;
     }
 
-    const q = query(
+    // Query 1: Direct payments for this document
+    const q1 = query(
       collection(db, "companies", companyId, "payments"),
       where("documentId", "==", docObj.id),
       where("documentType", "==", documentType)
     );
 
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sort payments by date or createdAt descending
-      list.sort((a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
-      setPayments(list);
-      setLoading(false);
+    // Query 2: Payments linked to this order (via orderId)
+    const q2 = query(
+      collection(db, "companies", companyId, "payments"),
+      where("orderId", "==", docObj.id)
+    );
+
+    let list1: any[] = [];
+    let list2: any[] = [];
+    let list3: any[] = [];
+    let list4: any[] = [];
+    let loaded1 = false;
+    let loaded2 = false;
+    let loaded3 = false;
+    let loaded4 = false;
+
+    const updateCombinedResults = () => {
+      const combined = [...list1];
+      [list2, list3, list4].forEach(l => {
+        l.forEach(p => {
+          if (!combined.some(cp => cp.id === p.id)) {
+            combined.push(p);
+          }
+        });
+      });
+      
+      // Sort by date/createdAt descending
+      combined.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.date).getTime();
+        const dateB = new Date(b.createdAt || b.date).getTime();
+        return dateB - dateA;
+      });
+      
+      setPayments(combined);
+      if (loaded1 && loaded2 && loaded3 && loaded4) setLoading(false);
+    };
+
+    const unsub1 = onSnapshot(q1, (snap) => {
+      list1 = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      loaded1 = true;
+      updateCombinedResults();
     }, (error) => {
-      console.error("Error fetching payments:", error);
-      setLoading(false);
+      console.error("Error Q1:", error);
+      loaded1 = true;
+      updateCombinedResults();
     });
 
-    return () => unsub();
-  }, [docObj?.id, documentType, companyId, isNewDocument]);
+    const unsub2 = onSnapshot(q2, (snap) => {
+      list2 = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      loaded2 = true;
+      updateCombinedResults();
+    }, (error) => {
+      console.error("Error Q2:", error);
+      loaded2 = true;
+      updateCombinedResults();
+    });
+
+    // Query 3: Linked remission payments
+    let unsub3 = () => {};
+    if (documentType === "pedido" && docObj.remissionId) {
+      const q3 = query(
+        collection(db, "companies", companyId, "payments"),
+        where("documentId", "==", docObj.remissionId)
+      );
+      unsub3 = onSnapshot(q3, (snap) => {
+        list3 = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        loaded3 = true;
+        updateCombinedResults();
+      }, () => { loaded3 = true; updateCombinedResults(); });
+    } else {
+      loaded3 = true;
+    }
+
+    // Query 4: Linked invoice payments
+    let unsub4 = () => {};
+    if (documentType === "pedido" && docObj.invoiceId) {
+      const q4 = query(
+        collection(db, "companies", companyId, "payments"),
+        where("documentId", "==", docObj.invoiceId)
+      );
+      unsub4 = onSnapshot(q4, (snap) => {
+        list4 = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        loaded4 = true;
+        updateCombinedResults();
+      }, () => { loaded4 = true; updateCombinedResults(); });
+    } else {
+      loaded4 = true;
+    }
+
+    return () => {
+      unsub1();
+      unsub2();
+      unsub3();
+      unsub4();
+    };
+  }, [docObj.id, docObj.remissionId, docObj.invoiceId, companyId, documentType, isNewDocument]);
 
   if (isNewDocument) {
     return (

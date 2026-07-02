@@ -77,7 +77,7 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
     setLoading(true);
     try {
       // 1. Create payment record
-      const paymentData = {
+      const paymentData: any = {
         amount,
         date,
         method,
@@ -92,6 +92,13 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
         bankAccountId,
         createdAt: new Date().toISOString()
       };
+
+      // Ensure orderId is stored to keep payments linked to the original order
+      if (documentType === "pedido") {
+        paymentData.orderId = document.id;
+      } else if (document.orderId) {
+        paymentData.orderId = document.orderId;
+      }
 
       const paymentRef = await addDoc(collection(db, "companies", companyId, "payments"), paymentData);
 

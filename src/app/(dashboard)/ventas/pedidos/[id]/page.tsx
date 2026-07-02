@@ -33,6 +33,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const [activeTab, setActiveTab] = useState("detalle");
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [orderDate, setOrderDate] = useState("");
   
   const [products, setProducts] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -50,7 +51,11 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
 
     const unsubOrder = onSnapshot(doc(db, "companies", companyId, "pedidos", params.id), (d) => {
       if (d.exists()) {
-        setOrder({ id: d.id, ...d.data() });
+        const data = d.data();
+        setOrder({ id: d.id, ...data });
+        if (data.createdAt) {
+          setOrderDate(data.createdAt.split('T')[0]);
+        }
       }
       setLoading(false);
     });
@@ -198,6 +203,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         globalDiscountAmount: calc.globalDiscountTotal,
         tax: calc.tax,
         totalAmount: calc.total,
+        createdAt: new Date(orderDate + "T" + (order.createdAt?.split('T')[1] || new Date().toISOString().split('T')[1])).toISOString()
       };
 
       await updateDoc(doc(db, "companies", companyId, "pedidos", order.id), updatedOrder);
@@ -541,7 +547,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start pt-2">
-          <div className="md:col-span-6">
+          <div className="md:col-span-4">
             <div className="flex items-center h-5">
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cliente / Empresa</label>
             </div>
@@ -598,8 +604,8 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                               setIsCreatingProject(false);
                             }}
                           >
-                            <p className="text-xs font-bold text-slate-900 truncate">{c.name}</p>
-                            {c.rfc && <p className="text-[9px] text-slate-500 font-medium">RFC: {c.rfc}</p>}
+                            <p className="text-[11px] font-bold text-slate-800">{c.name}</p>
+                            <p className="text-[9px] text-slate-500">{c.rfc}</p>
                           </div>
                         ))
                       )}
@@ -608,10 +614,25 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                 )}
               </div>
             ) : (
-              <>
-                <p className="font-bold text-slate-900 mt-1 leading-tight">{order.clientName || 'Sin Cliente'}</p>
-                {order.rfc && <p className="text-[10px] text-slate-500 mt-0.5 font-medium">RFC: {order.rfc}</p>}
-              </>
+              <p className="text-sm font-black text-slate-800 mt-1">{order.clientName || 'Sin Cliente'}</p>
+            )}
+          </div>
+
+          <div className="md:col-span-3">
+            <div className="flex items-center h-5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fecha del Pedido</label>
+            </div>
+            {isEditing ? (
+              <Input 
+                type="date"
+                value={orderDate}
+                onChange={(e) => setOrderDate(e.target.value)}
+                className="h-8 text-xs font-semibold mt-1"
+              />
+            ) : (
+              <p className="text-sm font-black text-slate-800 mt-1">
+                {order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A'}
+              </p>
             )}
           </div>
 

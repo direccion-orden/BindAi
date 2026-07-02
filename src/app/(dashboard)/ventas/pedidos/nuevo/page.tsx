@@ -74,6 +74,7 @@ export default function NuevoPedidoPage() {
 
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("detalle");
+  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Mobile/Live View States
   const [mobileViewMode, setMobileViewMode] = useState<"clasica" | "live">("clasica");
@@ -376,7 +377,7 @@ export default function NuevoPedidoPage() {
         accountCode: finalAccountCode,
         accountName: finalAccountName,
         status: "por_surtir", 
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(orderDate + "T" + new Date().toISOString().split('T')[1]).toISOString(),
         createdBy: user?.email || "Unknown"
       });
 
@@ -599,10 +600,22 @@ export default function NuevoPedidoPage() {
                   value={clientSearch}
                   onChange={(e) => {
                     setClientSearch(e.target.value);
-                    if (clientId) setClientId(""); 
+                    setClientId(""); 
                   }}
                 />
               </div>
+
+              {/* Date Input */}
+              <div className="mt-3 space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Fecha del Pedido</label>
+                <Input 
+                  type="date"
+                  value={orderDate}
+                  onChange={(e) => setOrderDate(e.target.value)}
+                  className="bg-background h-8 text-xs font-medium border-slate-200"
+                />
+              </div>
+
               {!clientId && clientSearch && (
                 <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y z-50 shadow-xl">
                   {getFilteredClients().map(c => (

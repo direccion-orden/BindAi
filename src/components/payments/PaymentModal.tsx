@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { doc, collection, addDoc, updateDoc, increment, query, onSnapshot } from "firebase/firestore";
+import { doc, collection, addDoc, updateDoc, increment, query, onSnapshot, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { Loader2, DollarSign, Calendar, CreditCard, FileText, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -170,25 +170,71 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
       
       const newPaidAmount = paidAmount + amount;
       const updates: any = {
-        paidAmount: increment(amount)
+        paidAmount: increment(amount),
+        updatedAt: new Date().toISOString()
       };
 
-      // Optional: Update status if fully paid (For facturas mainly, but we can do it for remisiones too)
+      // Optional: Update status if fully paid
       if (newPaidAmount >= totalAmount - 0.01) {
-        if (documentType === "factura" || documentType === "remision") {
-          // Si el estatus actual no es cancelado ni facturado/facturada
+        if (documentType === "factura" || documentType === "remision" || documentType === "pedido") {
           if (
             document.status !== "cancelada" && 
             document.status !== "cancelado" && 
             document.status !== "facturada" && 
             document.status !== "facturado"
           ) {
-            updates.status = "pagada";
+            updates.status = documentType === "pedido" ? "pagado" : "pagada";
           }
         }
       }
 
       await updateDoc(docRef, updates);
+
+      // 3. Propagate to linked documents if it's a pedido
+      if (documentType === "pedido") {
+        if (document.remissionId) {
+          try {
+            const remRef = doc(db, "companies", companyId, "remisiones", document.remissionId);
+            const remSnap = await getDoc(remRef);
+            if (remSnap.exists()) {
+              const remData = remSnap.data();
+              const remPaid = (remData.paidAmount || 0) + amount;
+              const remUpdates: any = {
+                paidAmount: increment(amount),
+                updatedAt: new Date().toISOString()
+              };
+              if (remPaid >= (remData.totalAmount || 0) - 0.01) {
+                remUpdates.status = "pagada";
+              }
+              await updateDoc(remRef, remUpdates);
+              console.log("Pago propagado a remisión:", document.remissionId);
+            }
+          } catch (err) {
+            console.error("Error propagating payment to remission:", err);
+          }
+        }
+        if (document.invoiceId) {
+          try {
+            const invRef = doc(db, "companies", companyId, "facturas", document.invoiceId);
+            const invSnap = await getDoc(invRef);
+            if (invSnap.exists()) {
+              const invData = invSnap.data();
+              const invPaid = (invData.paidAmount || 0) + amount;
+              const invUpdates: any = {
+                paidAmount: increment(amount),
+                updatedAt: new Date().toISOString()
+              };
+              if (invPaid >= (invData.totalAmount || 0) - 0.01) {
+                invUpdates.status = "timbrada"; // Or keep as is if it's already timbrada
+              }
+              await updateDoc(invRef, invUpdates);
+              console.log("Pago propagado a factura:", document.invoiceId);
+            }
+          } catch (err) {
+            console.error("Error propagating payment to invoice:", err);
+          }
+        }
+      }
 
       alert("Pago registrado exitosamente.");
       onClose();

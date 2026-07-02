@@ -59,50 +59,96 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
     
     setCanceling(true);
     try {
+      console.log("Iniciando cancelación de remisión:", remission.id);
+      
       // 1. Update Remission status
-      await updateDoc(doc(db, "companies", companyId, "remisiones", remission.id), {
-        status: "cancelada"
+      const remRef = doc(db, "companies", companyId, "remisiones", remission.id);
+      await updateDoc(remRef, {
+        status: "cancelada",
+        updatedAt: new Date().toISOString()
       });
+      console.log("Paso 1: Remisión marcada como cancelada.");
 
-      // 2. Update Order status back to 'por_surtir'
+      // 2. Update Order status
       const orderId = remission.orderId || remission.idPedido;
+      const orderNumber = remission.orderNumber;
+      
       if (orderId) {
-        await updateDoc(doc(db, "companies", companyId, "pedidos", orderId), {
-          status: "por_surtir",
-          remissionId: deleteField()
-        });
+        try {
+          const orderRef = doc(db, "companies", companyId, "pedidos", orderId);
+          const orderSnap = await getDoc(orderRef);
+          
+          if (orderSnap.exists()) {
+            await updateDoc(orderRef, {
+              status: "por_surtir",
+              remissionId: deleteField(),
+              updatedAt: new Date().toISOString()
+            });
+            console.log("Paso 2: Pedido actualizado por ID.");
+          } else if (orderNumber) {
+            // Fallback: search by orderNumber if ID doesn't exist
+            const { query, collection, where, getDocs } = await import("firebase/firestore");
+            const q = query(collection(db, "companies", companyId, "pedidos"), where("orderNumber", "==", orderNumber));
+            const qSnap = await getDocs(q);
+            if (!qSnap.empty) {
+              await updateDoc(doc(db, "companies", companyId, "pedidos", qSnap.docs[0].id), {
+                status: "por_surtir",
+                remissionId: deleteField(),
+                updatedAt: new Date().toISOString()
+              });
+              console.log("Paso 2: Pedido actualizado por número (fallback).");
+            }
+          }
+        } catch (err) {
+          console.error("Error al actualizar pedido:", err);
+          // We continue to Step 3 even if Step 2 has issues, to at least revert inventory
+        }
       }
 
       // 3. Revert Inventory Deductions
       if (remission.items && Array.isArray(remission.items)) {
+        console.log("Paso 3: Iniciando reversión de inventario para", remission.items.length, "items.");
         for (const item of remission.items) {
-          const productRef = doc(db, "companies", companyId, "products", item.productId);
-          const productDoc = await getDoc(productRef);
-          if (productDoc.exists()) {
-            const productData = productDoc.data();
-            const updatedVariants = productData.variants?.map((v: any) => {
-              if (v.id === (item.variantId || item.id)) {
-                return { ...v, stock: (v.stock || 0) + item.quantity }; // Add back
-              }
-              return v;
-            });
+          try {
+            const productRef = doc(db, "companies", companyId, "products", item.productId);
+            const productDoc = await getDoc(productRef);
             
-            await updateDoc(productRef, { variants: updatedVariants });
-            
-            // Log the reverse movement
-            const movId = crypto.randomUUID();
-            import("firebase/firestore").then(({ setDoc }) => {
-              setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
+            if (productDoc.exists()) {
+              const productData = productDoc.data();
+              const targetVariantId = item.variantId || item.id;
+              const targetSku = item.sku;
+              
+              const updatedVariants = productData.variants?.map((v: any) => {
+                // Match by ID or by SKU if ID is missing (common in migrated data)
+                const isMatch = targetVariantId ? v.id === targetVariantId : (targetSku && v.sku === targetSku);
+                if (isMatch) {
+                  return { ...v, stock: (v.stock || 0) + item.quantity };
+                }
+                return v;
+              });
+              
+              await updateDoc(productRef, { 
+                variants: updatedVariants,
+                updatedAt: new Date().toISOString()
+              });
+              
+              // Log the reverse movement
+              const movId = crypto.randomUUID();
+              const { setDoc } = await import("firebase/firestore");
+              await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
                 id: movId,
                 productId: item.productId,
-                variantId: item.variantId || item.id || "",
+                variantId: targetVariantId || productData.variants?.[0]?.id || "",
                 type: "IN",
                 quantity: item.quantity,
                 reason: `Cancelación de Remisión ${remission.remissionNumber}`,
                 referenceId: remission.id,
                 createdAt: new Date().toISOString()
               });
-            });
+              console.log(`Inventario revertido para producto: ${item.productName}`);
+            }
+          } catch (err) {
+            console.error(`Error al revertir item ${item.productName}:`, err);
           }
         }
       }
@@ -110,7 +156,7 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
       alert("Remisión cancelada exitosamente.");
       window.location.reload();
     } catch (error) {
-      console.error(error);
+      console.error("Error general en handleCancel:", error);
       alert("Error al cancelar la remisión.");
     } finally {
       setCanceling(false);

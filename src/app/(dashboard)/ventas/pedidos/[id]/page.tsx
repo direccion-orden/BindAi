@@ -219,22 +219,21 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
     }
   };
 
-  const updateItem = (lineKeyOrVariantId: string, field: string, value: any) => {
+  const updateItem = (index: number, field: string, value: any) => {
     setIsItemsModified(true);
     setOrder((prev: any) => ({
       ...prev,
-      items: prev.items.map((item: any) => {
-        const matchKey = item.lineKey || item.variantId;
-        return matchKey === lineKeyOrVariantId ? { ...item, [field]: value } : item;
-      })
+      items: prev.items.map((item: any, idx: number) => 
+        idx === index ? { ...item, [field]: value } : item
+      )
     }));
   };
 
-  const removeItem = (lineKeyOrVariantId: string) => {
+  const removeItem = (index: number) => {
     setIsItemsModified(true);
     setOrder((prev: any) => ({
       ...prev,
-      items: prev.items.filter((item: any) => (item.lineKey || item.variantId) !== lineKeyOrVariantId)
+      items: prev.items.filter((_: any, idx: number) => idx !== index)
     }));
   };
 
@@ -775,7 +774,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                                 )}
                                 <textarea
                                   value={item.description || ""}
-                                  onChange={(e) => updateItem(item.lineKey || item.variantId, 'description', e.target.value)}
+                                  onChange={(e) => updateItem(idx, 'description', e.target.value)}
                                   placeholder="Descripción del servicio..."
                                   className="w-full text-xs font-semibold border rounded p-1.5 bg-background resize-y"
                                   rows={2}
@@ -840,18 +839,18 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                               value={item.quantity}
                               onFocus={() => {
                                 if (item.quantity === 1 || item.quantity === "1") {
-                                  updateItem(item.lineKey || item.variantId, 'quantity', "");
+                                  updateItem(idx, 'quantity', "");
                                 }
                               }}
                               onBlur={() => {
                                 if (item.quantity === "") {
-                                  updateItem(item.lineKey || item.variantId, 'quantity', 1);
+                                  updateItem(idx, 'quantity', 1);
                                 }
                               }}
                               onChange={(e) => {
                                 const val = parseInt(e.target.value);
                                 updateItem(
-                                  item.lineKey || item.variantId, 
+                                  idx, 
                                   'quantity', 
                                   e.target.value === "" ? "" : (isNaN(val) ? 1 : Math.max(1, val))
                                 );
@@ -867,21 +866,21 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                                value={item.unitPrice === 0 ? "" : item.unitPrice} 
                                onFocus={() => {
                                  if (item.unitPrice === 0 || item.unitPrice === "0") {
-                                   updateItem(item.lineKey || item.variantId, 'unitPrice', "");
+                                   updateItem(idx, 'unitPrice', "");
                                  }
                                }}
                                onBlur={() => {
                                  if (item.unitPrice === "") {
-                                   updateItem(item.lineKey || item.variantId, 'unitPrice', 0);
+                                   updateItem(idx, 'unitPrice', 0);
                                  }
                                }}
-                               onChange={(e) => updateItem(item.lineKey || item.variantId, 'unitPrice', e.target.value)} 
+                               onChange={(e) => updateItem(idx, 'unitPrice', e.target.value)} 
                                className="w-24 text-right font-medium" 
                              />
                            </div>
                           <div className="flex flex-col gap-1">
                             <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Desc %</label>
-                            <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(item.lineKey || item.variantId, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-20 text-center text-emerald-600 font-bold" />
+                            <Input type="number" min={0} max={100} value={item.discountPercentage} onChange={(e) => updateItem(idx, 'discountPercentage', parseFloat(e.target.value)||0)} className="w-20 text-center text-emerald-600 font-bold" />
                           </div>
                           <div className="flex flex-col gap-1 text-right min-w-[80px]">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importe</label>
@@ -894,12 +893,12 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                               variant="ghost" 
                               size="icon" 
                               className={`${item.comment || item.showComment ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700' : 'text-muted-foreground hover:text-indigo-600'}`}
-                              onClick={() => updateItem(item.lineKey || item.variantId, 'showComment', !item.showComment)}
+                              onClick={() => updateItem(idx, 'showComment', !item.showComment)}
                               title="Agregar nota/comentario"
                             >
                               <MessageSquare className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => removeItem(item.lineKey || item.variantId)}>
+                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => removeItem(idx)}>
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
@@ -923,7 +922,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                         <Input
                           placeholder="Escribe una nota o comentario sobre esta partida..."
                           value={item.comment || ""}
-                          onChange={(e) => updateItem(item.lineKey || item.variantId, 'comment', e.target.value)}
+                          onChange={(e) => updateItem(idx, 'comment', e.target.value)}
                           className="text-xs bg-muted/30 border-slate-200"
                         />
                       </div>

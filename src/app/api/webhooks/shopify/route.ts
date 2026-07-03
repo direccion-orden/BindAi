@@ -228,6 +228,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Order already processed" }, { status: 200 });
       }
 
+      // Resolve locationId using mappings
+      let locationId = "shopify";
+      let locationName = "eCOMMERCE";
+
+      const mappingKeys = Object.keys(settings.locationMappings || {});
+      if (mappingKeys.length > 0) {
+        // Try to get location_id from payload, otherwise use the first mapping
+        const shopifyLocId = payload.location_id?.toString() || mappingKeys[0];
+        const mappedId = settings.locationMappings[shopifyLocId];
+        if (mappedId) {
+          locationId = mappedId;
+        }
+      }
+
       // Map to Remision schema
       const remissionData = {
         id: orderId,
@@ -251,8 +265,8 @@ export async function POST(req: NextRequest) {
         subtotal: parseFloat(payload.subtotal_price) || 0,
         tax: parseFloat(payload.total_tax) || 0,
         paidAmount: payload.financial_status === "paid" ? parseFloat(payload.total_price) : 0,
-        locationId: "shopify",
-        locationName: "eCOMMERCE",
+        locationId,
+        locationName,
         status: "activa",
         createdAt: payload.created_at || new Date().toISOString(),
         createdBy: "Shopify Webhook",

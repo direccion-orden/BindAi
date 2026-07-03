@@ -530,6 +530,20 @@ export async function syncOrdersFromShopify(
       const totalOutstanding = parseFloat(payload.total_outstanding || "0");
       const paidAmount = Math.max(0, totalPrice - totalOutstanding);
 
+      // Resolve locationId using mappings
+      let locationId = "shopify";
+      let locationName = "eCOMMERCE";
+
+      const mappingKeys = Object.keys(settings.locationMappings || {});
+      if (mappingKeys.length > 0) {
+        // Try to get location_id from payload, otherwise use the first mapping
+        const shopifyLocId = payload.location_id?.toString() || mappingKeys[0];
+        const mappedId = settings.locationMappings[shopifyLocId];
+        if (mappedId) {
+          locationId = mappedId;
+        }
+      }
+
       const remissionData: any = {
         id: orderId,
         companyId,
@@ -554,8 +568,8 @@ export async function syncOrdersFromShopify(
         tax: parseFloat(payload.total_tax) || 0,
         paidAmount: paidAmount,
         paymentStatus: payload.financial_status === "paid" ? "paid" : (paidAmount > 0 ? "partial" : "pending"),
-        locationId: "shopify",
-        locationName: "eCOMMERCE",
+        locationId,
+        locationName,
         status: "activa",
         createdAt: payload.created_at || new Date().toISOString(),
         createdBy: "Manual Sync",

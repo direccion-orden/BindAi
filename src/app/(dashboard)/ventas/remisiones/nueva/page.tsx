@@ -14,8 +14,9 @@ import { Client } from "@/app/(dashboard)/clientes/page";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/discountEngine";
 import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
-import { FileText } from "lucide-react";
-import { Percent } from "lucide-react";
+import { QuickClientModal } from "@/components/pos/QuickClientModal";
+import { FileText, Percent } from "lucide-react";
+
 
 interface OrderItem {
   lineKey?: string;
@@ -48,9 +49,8 @@ export default function NuevaRemisionPage() {
   const [clientSearch, setClientSearch] = useState("");
   
   // New Client State
-  const [isNewClient, setIsNewClient] = useState(false);
-  const [newClientName, setNewClientName] = useState("");
-  const [newClientPhone, setNewClientPhone] = useState("");
+  const [showQuickClient, setShowQuickClient] = useState(false);
+
 
   const [appliedDate, setAppliedDate] = useState(() => {
     const today = new Date();
@@ -250,22 +250,9 @@ export default function NuevaRemisionPage() {
   const handleSave = async () => {
     if (!companyId) return;
     
-    let finalClientId = clientId;
-    let finalClientName = "";
-
-    if (isNewClient) {
-      if (!newClientName || !newClientPhone) {
-        alert("El Nombre y Teléfono son obligatorios para crear un cliente nuevo.");
-        return;
-      }
-      finalClientName = newClientName;
-    } else {
-      if (!finalClientId) {
-        alert("Selecciona un cliente válido.");
-        return;
-      }
-      const client = clients.find(c => c.id === finalClientId);
-      finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
+    if (!clientId) {
+      alert("Selecciona un cliente válido.");
+      return;
     }
 
     if (items.length === 0) {
@@ -284,38 +271,12 @@ export default function NuevaRemisionPage() {
 
     setSaving(true);
     try {
-      if (isNewClient) {
-        finalClientId = crypto.randomUUID();
-        const clientRef = doc(db, "companies", companyId, "clients", finalClientId);
-        await setDoc(clientRef, {
-          id: finalClientId,
-          name: newClientName,
-          phone: newClientPhone,
-          email: "",
-          createdAt: new Date().toISOString()
-        });
-      }
-
+      const client = clients.find(c => c.id === clientId);
+      const finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
+      
       let finalProjectId = projectId;
       let finalProjectName = projectId ? (projects.find(p => p.id === projectId)?.name || null) : null;
 
-      if (isCreatingProject) {
-        if (!newProjectName) {
-          alert("El nombre del proyecto es obligatorio.");
-          setSaving(false);
-          return;
-        }
-        finalProjectId = crypto.randomUUID();
-        finalProjectName = newProjectName;
-
-        const projectRef = doc(db, "companies", companyId, "projects", finalProjectId);
-        await setDoc(projectRef, {
-          id: finalProjectId,
-          name: newProjectName,
-          clientId: finalClientId,
-          createdAt: new Date().toISOString()
-        });
-      }
 
       const remId = crypto.randomUUID();
       const remNumber = await getNextSequence(companyId, 'remisiones');
@@ -462,95 +423,76 @@ export default function NuevaRemisionPage() {
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
-          {/* Column 1: Client search or new client inputs */}
-          {isNewClient ? (
-            <div className="space-y-3 bg-emerald-50/30 p-3 rounded-lg border border-emerald-100 col-span-1">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-xs font-semibold text-emerald-900">Nuevo Cliente</label>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-5 px-1 text-[10px] text-emerald-600 font-semibold hover:bg-emerald-50"
-                  onClick={() => {
-                    setIsNewClient(false);
-                    setIsCreatingProject(false);
-                    setNewProjectName("");
-                  }}
-                >
-                  Buscar Existente
-                </Button>
-              </div>
-              <div className="space-y-1">
-                <Input 
-                  placeholder="Nombre del Cliente *" 
-                  value={newClientName}
-                  onChange={(e) => setNewClientName(e.target.value)}
-                  className="bg-white border-emerald-200 h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <Input 
-                  placeholder="Teléfono *" 
-                  value={newClientPhone}
-                  onChange={(e) => setNewClientPhone(e.target.value)}
-                  className="bg-white border-emerald-200 h-8 text-xs"
-                />
-              </div>
+          {/* Column 1: Client search */}
+          <div className="space-y-2 relative col-span-1">
+            <div className="flex justify-between items-center h-5">
+              <label className="text-xs font-medium text-slate-500 uppercase">Cliente *</label>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
+                onClick={() => setShowQuickClient(true)}
+              >
+                + Nuevo Cliente
+              </Button>
             </div>
-          ) : (
-            <div className="space-y-2 relative col-span-1">
-              <div className="flex justify-between items-center h-5">
-                <label className="text-xs font-medium text-slate-500 uppercase">Cliente *</label>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-5 px-1 text-[10px] text-emerald-600 font-semibold hover:bg-emerald-50"
-                  onClick={() => {
-                    setIsNewClient(true);
-                    setIsCreatingProject(false);
-                    setNewProjectName("");
-                  }}
-                >
-                  + Nuevo Cliente
-                </Button>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-2 w-3.5 h-3.5 text-muted-foreground" />
-                <Input 
-                  placeholder="Buscar cliente (Nombre o RFC)..." 
-                  className="pl-8 bg-background h-8 text-xs"
-                  value={clientSearch}
-                  onChange={(e) => {
-                    setClientSearch(e.target.value);
-                    if (clientId) setClientId(""); 
-                  }}
-                />
-              </div>
-              {!clientId && clientSearch && (
-                <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y z-50 shadow-xl">
-                  {getFilteredClients().map(c => (
+            <div className="relative">
+              <Search className="absolute left-3 top-2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input 
+                placeholder="Buscar cliente (Nombre o RFC)..." 
+                className="pl-8 bg-background h-8 text-xs"
+                value={clientSearch}
+                onChange={(e) => {
+                  setClientSearch(e.target.value);
+                  setClientId("");
+                }}
+              />
+            </div>
+
+            {/* Date Input */}
+            <div className="mt-3 space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Fecha Aplicada</label>
+              <Input 
+                type="date"
+                value={appliedDate}
+                onChange={(e) => setAppliedDate(e.target.value)}
+                className="bg-background h-8 text-xs font-medium border-slate-200"
+              />
+            </div>
+
+            {!clientId && clientSearch && (
+              <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y z-50 shadow-xl">
+                {clients
+                  .filter(c => (c.name || "").toLowerCase().includes(clientSearch.toLowerCase()) || (c.rfc || "").toLowerCase().includes(clientSearch.toLowerCase()))
+                  .map(c => (
                     <div 
                       key={c.id} 
                       className="p-2 hover:bg-muted/50 cursor-pointer text-xs" 
-                      onClick={() => handleSelectClient(c)}
+                      onClick={() => {
+                        setClientId(c.id);
+                        setClientSearch(c.name || c.LegalName || "");
+                      }}
                     >
                       <div className="font-medium text-slate-900">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
-                      {(c.RFC || c.rfc) && <div className="text-[10px] text-slate-500">RFC: {c.RFC || c.rfc}</div>}
+                      {(c.rfc || c.RFC) && <div className="text-[10px] text-slate-500">RFC: {c.rfc || c.RFC}</div>}
                     </div>
                   ))}
-                  {getFilteredClients().length === 0 && (
+                  {clients.filter(c => (c.name || "").toLowerCase().includes(clientSearch.toLowerCase()) || (c.rfc || "").toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
                     <div className="p-2 text-xs text-muted-foreground text-center">No se encontraron clientes</div>
                   )}
                 </div>
               )}
-              {selectedClient && (
-                <div className="mt-1.5 p-2 bg-emerald-50/50 border border-emerald-100 rounded text-[11px]">
-                  <p className="font-semibold text-emerald-900 line-clamp-1">{selectedClient.LegalName || selectedClient.CommercialName || selectedClient.name}</p>
-                  <p className="text-emerald-700/80 text-[10px] mt-0.5 line-clamp-1">{selectedClient.Email || selectedClient.email || 'Sin email'}</p>
-                </div>
-              )}
+              {(() => {
+                  const selectedClient = clients.find(c => c.id === clientId);
+                  return selectedClient && (
+                    <div className="mt-1.5 p-2 bg-emerald-50/50 border border-emerald-100 rounded text-[11px]">
+                      <p className="font-semibold text-emerald-900 line-clamp-1">{selectedClient.LegalName || selectedClient.CommercialName || selectedClient.name}</p>
+                      <p className="text-emerald-700/80 text-[10px] mt-0.5 line-clamp-1">{selectedClient.Email || selectedClient.email || 'Sin email'}</p>
+                    </div>
+                  );
+              })()}
             </div>
-          )}
+
 
           {/* Column 2: Sucursal */}
           <div className="space-y-2 col-span-1">
@@ -599,7 +541,7 @@ export default function NuevaRemisionPage() {
                 <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
                 Proyecto (Opcional)
               </label>
-              {(isNewClient || clientId) && (
+              {clientId && (
                 <Button 
                   type="button"
                   variant="ghost" 
@@ -640,10 +582,11 @@ export default function NuevaRemisionPage() {
                 className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm disabled:opacity-50"
                 value={projectId}
                 onChange={e => setProjectId(e.target.value)}
-                disabled={isNewClient || !clientId}
+                disabled={!clientId}
               >
                 <option value="">Ninguno</option>
-                {!isNewClient && clientId && projects.filter(p => p.clientId === clientId).map(p => (
+                {clientId && projects.filter(p => p.clientId === clientId).map(p => (
+
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
@@ -924,7 +867,8 @@ export default function NuevaRemisionPage() {
               <Button 
                 size="lg" 
                 onClick={handleSave} 
-                disabled={saving || items.length === 0 || (!isNewClient && !clientId) || (isNewClient && (!newClientName || !newClientPhone)) || !locationId || !accountId}
+                disabled={saving || items.length === 0 || !clientId || !locationId || !accountId}
+
                 className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 mt-6 text-white"
               >
                 {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
@@ -961,6 +905,19 @@ export default function NuevaRemisionPage() {
           <p className="text-xs">Próximamente en el siguiente sprint.</p>
         </div>
       )}
+      {showQuickClient && (
+        <QuickClientModal 
+          initialSearch={clientSearch}
+          existingClients={clients}
+          onClose={() => setShowQuickClient(false)}
+          onClientCreated={(client) => {
+            setClientId(client.id);
+            setClientSearch(client.name);
+            setShowQuickClient(false);
+          }}
+        />
+      )}
     </div>
   );
 }
+

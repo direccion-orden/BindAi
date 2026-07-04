@@ -19,6 +19,11 @@ import {
 export interface Client {
   id: string;
   name: string;
+  type?: 'general' | 'fiscal';
+  firstName?: string;
+  paternalLastName?: string;
+  maternalLastName?: string;
+  commercialName?: string;
   email: string;
   phone: string;
   // Fiscal Data
@@ -43,6 +48,10 @@ export interface Client {
   address?: string;
 }
 
+const normalizeString = (str: string) => 
+  str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+
 export default function ClientesPage() {
   const { companyId } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
@@ -53,9 +62,11 @@ export default function ClientesPage() {
   const [isViewing, setIsViewing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [currentId, setCurrentId] = useState("");
-  const [formData, setFormData] = useState<Partial<Client>>({});
+  const [formData, setFormData] = useState<Partial<Client>>({ type: 'general' });
+  const [similarClients, setSimilarClients] = useState<Client[]>([]);
   
   const [saving, setSaving] = useState(false);
+
 
   useEffect(() => {
     if (!companyId) return;
@@ -210,10 +221,31 @@ export default function ClientesPage() {
       });
     } else {
       setCurrentId("");
-      setFormData({ name: "", email: "", phone: "", rfc: "", zipCode: "", taxRegime: "", street: "", exteriorNumber: "", interiorNumber: "", neighborhood: "", city: "", state: "" });
+      setFormData({ 
+        type: 'general',
+        name: "", 
+        firstName: "",
+        paternalLastName: "",
+        maternalLastName: "",
+        razonSocial: "",
+        commercialName: "",
+        email: "", 
+        phone: "", 
+        rfc: "", 
+        zipCode: "", 
+        taxRegime: "", 
+        street: "", 
+        exteriorNumber: "", 
+        interiorNumber: "", 
+        neighborhood: "", 
+        city: "", 
+        state: "" 
+      });
     }
+    setSimilarClients([]);
     setIsEditing(true);
   };
+
 
   const handleCloseForm = () => {
     setIsEditing(false);
@@ -224,13 +256,30 @@ export default function ClientesPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!companyId || !formData.name?.trim()) return;
+    
+    let finalName = "";
+    if (formData.type === 'general') {
+      if (!formData.firstName?.trim() || !formData.paternalLastName?.trim()) {
+        alert("Nombre y Apellido Paterno son obligatorios para clientes generales.");
+        return;
+      }
+      finalName = `${formData.firstName.trim()} ${formData.paternalLastName.trim()} ${formData.maternalLastName?.trim() || ""}`.trim();
+    } else {
+      if (!formData.razonSocial?.trim()) {
+        alert("La Razón Social es obligatoria para clientes fiscales.");
+        return;
+      }
+      finalName = formData.razonSocial.trim();
+    }
+
+    if (!companyId) return;
     setSaving(true);
     try {
       const docId = currentId || crypto.randomUUID();
       const ref = doc(db, "companies", companyId, "clients", docId);
       await setDoc(ref, {
-        name: formData.name.trim(),
+        ...formData,
+        name: finalName,
         email: formData.email?.trim() || "",
         phone: formData.phone?.trim() || "",
         rfc: formData.rfc?.trim() || "",
@@ -242,7 +291,8 @@ export default function ClientesPage() {
         neighborhood: formData.neighborhood?.trim() || "",
         city: formData.city?.trim() || "",
         state: formData.state?.trim() || "",
-        createdAt: new Date().toISOString()
+        createdAt: formData.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       }, { merge: true });
       handleCloseForm();
     } catch (error) {
@@ -252,6 +302,32 @@ export default function ClientesPage() {
       setSaving(false);
     }
   };
+
+  // Logic for similarity check
+  useEffect(() => {
+    if (!isEditing || currentId) {
+      setSimilarClients([]);
+      return;
+    }
+
+    const searchStr = formData.type === 'general' 
+      ? `${formData.firstName || ""} ${formData.paternalLastName || ""}`.trim()
+      : (formData.razonSocial || "").trim();
+
+    if (searchStr.length < 3) {
+      setSimilarClients([]);
+      return;
+    }
+
+    const normalizedSearch = normalizeString(searchStr);
+    const matches = clients.filter(c => {
+      const clientName = normalizeString(c.name || c.LegalName || c.CommercialName || "");
+      return clientName.includes(normalizedSearch) || normalizedSearch.includes(clientName);
+    }).slice(0, 5);
+
+    setSimilarClients(matches);
+  }, [formData.firstName, formData.paternalLastName, formData.razonSocial, formData.type, isEditing, clients, currentId]);
+
 
   const handleDelete = async (id: string) => {
     if (!companyId || !window.confirm("¿Seguro que deseas eliminar este cliente?")) return;
@@ -356,19 +432,96 @@ export default function ClientesPage() {
           <h2 className="text-xl font-bold mb-4">{currentId ? (isViewing ? "Ver Cliente" : "Editar Cliente") : "Nuevo Cliente"}</h2>
           <form onSubmit={handleSave} className="space-y-6">
             
+            {/* TIPO DE CLIENTE */}
+            <div className="bg-muted/30 p-4 rounded-lg border border-primary/10">
+              <label className="text-sm font-semibold mb-2 block uppercase tracking-wider text-primary">Tipo de Cliente</label>
+              <div className="flex gap-4">
+                <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-md border-2 cursor-pointer transition-all ${formData.type === 'general' ? 'bg-primary/10 border-primary shadow-sm' : 'bg-background border-transparent hover:border-muted-foreground/20'}`}>
+                  <input type="radio" className="hidden" name="type" value="general" checked={formData.type === 'general'} onChange={() => setFormData({...formData, type: 'general'})} disabled={isViewing} />
+                  <Users className={`w-4 h-4 ${formData.type === 'general' ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className={`text-sm font-bold ${formData.type === 'general' ? 'text-primary' : 'text-muted-foreground'}`}>General (Persona Física)</span>
+                </label>
+                <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-md border-2 cursor-pointer transition-all ${formData.type === 'fiscal' ? 'bg-primary/10 border-primary shadow-sm' : 'bg-background border-transparent hover:border-muted-foreground/20'}`}>
+                  <input type="radio" className="hidden" name="type" value="fiscal" checked={formData.type === 'fiscal'} onChange={() => setFormData({...formData, type: 'fiscal'})} disabled={isViewing} />
+                  <Building className={`w-4 h-4 ${formData.type === 'fiscal' ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className={`text-sm font-bold ${formData.type === 'fiscal' ? 'text-primary' : 'text-muted-foreground'}`}>Fiscal (Persona Moral)</span>
+                </label>
+              </div>
+            </div>
+
             {/* DATOS GENERALES */}
             <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Datos Generales</h3>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Identificación</h3>
+              
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {formData.type === 'general' ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Nombre(s) *</label>
+                      <Input disabled={isViewing} 
+                        required 
+                        value={formData.firstName || ""} 
+                        onChange={e => setFormData({...formData, firstName: e.target.value})} 
+                        placeholder="Ej. Juan" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Apellido Paterno *</label>
+                      <Input disabled={isViewing} 
+                        required 
+                        value={formData.paternalLastName || ""} 
+                        onChange={e => setFormData({...formData, paternalLastName: e.target.value})} 
+                        placeholder="Ej. Pérez" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Apellido Materno (Opcional)</label>
+                      <Input disabled={isViewing} 
+                        value={formData.maternalLastName || ""} 
+                        onChange={e => setFormData({...formData, maternalLastName: e.target.value})} 
+                        placeholder="Ej. García" 
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium">Razón Social *</label>
+                    <Input disabled={isViewing} 
+                      required 
+                      value={formData.razonSocial || ""} 
+                      onChange={e => setFormData({...formData, razonSocial: e.target.value})} 
+                      placeholder="Ej. Empresa Mexicana S.A. de C.V." 
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-2 sm:col-span-2">
-                  <label className="text-sm font-medium">Nombre Completo o Razón Social</label>
+                  <label className="text-sm font-medium">Nombre Comercial (Opcional)</label>
                   <Input disabled={isViewing} 
-                    required 
-                    value={formData.name || ""} 
-                    onChange={e => setFormData({...formData, name: e.target.value})} 
-                    placeholder="Ej. Juan Pérez / Empresa S.A. de C.V." 
+                    value={formData.commercialName || ""} 
+                    onChange={e => setFormData({...formData, commercialName: e.target.value})} 
+                    placeholder="Ej. Mi Tiendita" 
                   />
                 </div>
+
+                {/* SIMILAR CLIENTS ALERT */}
+                {!currentId && similarClients.length > 0 && (
+                  <div className="sm:col-span-2 bg-orange-50 border border-orange-200 rounded-lg p-3 animate-in slide-in-from-top-2">
+                    <p className="text-xs font-bold text-orange-800 mb-2 flex items-center gap-2">
+                      ⚠️ ¡Atención! Ya existen clientes con nombres similares:
+                    </p>
+                    <ul className="space-y-1">
+                      {similarClients.map(c => (
+                        <li key={c.id} className="text-xs text-orange-700 flex items-center justify-between bg-white/50 p-1.5 rounded border border-orange-100">
+                          <span className="font-medium">{c.name || c.LegalName}</span>
+                          {c.rfc && <span className="opacity-70">{c.rfc}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[10px] text-orange-600 mt-2 italic">Por favor, verifica que no sea el mismo cliente antes de continuar.</p>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium flex items-center gap-2">
                     <Mail className="w-4 h-4 text-muted-foreground"/> Correo Electrónico
@@ -393,6 +546,7 @@ export default function ClientesPage() {
                 </div>
               </div>
             </div>
+
 
             {/* DATOS FISCALES (OPCIONALES) */}
             <div className="pt-4 border-t">

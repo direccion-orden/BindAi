@@ -117,11 +117,16 @@ export function ClientSelector() {
   };
 
   const handleClientCreated = (client: Client) => {
-    setAllClients(prev => [client, ...prev]);
+    // If it's an existing client (selected from duplicates), don't add to allClients
+    const exists = allClients.find(c => c.id === client.id);
+    if (!exists) {
+      setAllClients(prev => [client, ...prev]);
+    }
     setClient(client);
     setShowQuickClient(false);
     setSearch("");
   };
+
 
   return (
     <>
@@ -246,6 +251,7 @@ export function ClientSelector() {
       {showQuickClient && (
         <QuickClientModal 
           initialSearch={search}
+          existingClients={allClients}
           onClose={() => setShowQuickClient(false)}
           onClientCreated={handleClientCreated}
         />

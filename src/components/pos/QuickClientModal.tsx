@@ -1,30 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, UserPlus, Loader2 } from "lucide-react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Client } from "@/components/pos/ClientSelector";
+interface Client {
+  id: string;
+  name?: string;
+  LegalName?: string;
+  CommercialName?: string;
+  ClientName?: string;
+  rfc?: string;
+  RFC?: string;
+  email?: string;
+  Email?: string;
+  phone?: string;
+  Phone?: string;
+  points?: number;
+  walletBalance?: number;
+  preferences?: string;
+}
 
 interface QuickClientModalProps {
   onClose: () => void;
-  onClientCreated: (client: Client) => void;
+  onClientCreated: (client: any) => void;
   initialSearch: string;
+  existingClients?: any[];
 }
 
-export function QuickClientModal({ onClose, onClientCreated, initialSearch }: QuickClientModalProps) {
+
+const normalizeString = (str: string) => 
+  str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+export function QuickClientModal({ onClose, onClientCreated, initialSearch, existingClients = [] }: QuickClientModalProps) {
   const { companyId } = useAuth();
-  const [name, setName] = useState(initialSearch || "");
+  
+  const [type, setType] = useState<'general' | 'fiscal'>('general');
+  const [firstName, setFirstName] = useState(initialSearch || "");
+  const [paternalLastName, setPaternalLastName] = useState("");
+  const [maternalLastName, setMaternalLastName] = useState("");
+  const [razonSocial, setRazonSocial] = useState("");
+  const [commercialName, setCommercialName] = useState("");
+  
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [similarClients, setSimilarClients] = useState<Client[]>([]);
+
+  // Similarity Check
+  useEffect(() => {
+    const searchStr = type === 'general' 
+      ? `${firstName} ${paternalLastName}`.trim()
+      : razonSocial.trim();
+
+    if (searchStr.length < 3 || existingClients.length === 0) {
+      setSimilarClients([]);
+      return;
+    }
+
+    const normalizedSearch = normalizeString(searchStr);
+    const matches = existingClients.filter(c => {
+      const displayName = c.name || c.LegalName || c.CommercialName || c.ClientName || "";
+      const normalizedName = normalizeString(displayName);
+      return normalizedName.includes(normalizedSearch) || normalizedSearch.includes(normalizedName);
+    }).slice(0, 3);
+
+
+    setSimilarClients(matches);
+  }, [firstName, paternalLastName, razonSocial, type, existingClients]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) {
-      setError("Nombre y celular son requeridos.");
+    
+    let finalName = "";
+    if (type === 'general') {
+      if (!firstName.trim() || !paternalLastName.trim()) {
+        setError("Nombre y Apellido Paterno son obligatorios.");
+        return;
+      }
+      finalName = `${firstName.trim()} ${paternalLastName.trim()} ${maternalLastName.trim()}`.trim();
+    } else {
+      if (!razonSocial.trim()) {
+        setError("La Razón Social es obligatoria.");
+        return;
+      }
+      finalName = razonSocial.trim();
+    }
+
+    if (!phone.trim()) {
+      setError("El teléfono es requerido.");
       return;
     }
 
@@ -33,10 +99,16 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch }: Qu
 
     try {
       const newClientData = {
-        name: name.trim(),
+        type,
+        firstName: type === 'general' ? firstName.trim() : "",
+        paternalLastName: type === 'general' ? paternalLastName.trim() : "",
+        maternalLastName: type === 'general' ? maternalLastName.trim() : "",
+        razonSocial: type === 'fiscal' ? razonSocial.trim() : "",
+        commercialName: commercialName.trim(),
+        name: finalName,
         phone: phone.trim(),
         email: email.trim(),
-        rfc: "XAXX010101000", // Default público general para ventas rápidas
+        rfc: type === 'fiscal' ? "" : "XAXX010101000",
         points: 0,
         walletBalance: 0,
         preferences: "",
@@ -65,6 +137,7 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch }: Qu
     }
   };
 
+
   return (
     <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-card w-full max-w-md rounded-xl shadow-xl border overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -81,48 +154,161 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch }: Qu
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
           {error && (
             <div className="bg-destructive/10 text-destructive text-sm p-2 rounded border border-destructive/20">
               {error}
             </div>
           )}
 
+          {/* TIPO SELECTOR */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-muted rounded-lg">
+            <button
+              type="button"
+              onClick={() => setType('general')}
+              className={`py-1.5 text-xs font-bold rounded-md transition-all ${type === 'general' ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              General
+            </button>
+            <button
+              type="button"
+              onClick={() => setType('fiscal')}
+              className={`py-1.5 text-xs font-bold rounded-md transition-all ${type === 'fiscal' ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Fiscal
+            </button>
+          </div>
+
+          {type === 'general' ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1 col-span-2">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">Nombre(s) *</label>
+                <input 
+                  autoFocus
+                  type="text" 
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Ej. Juan"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">Apellido Paterno *</label>
+                <input 
+                  type="text" 
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Ej. Pérez"
+                  value={paternalLastName}
+                  onChange={(e) => setPaternalLastName(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">Apellido Materno</label>
+                <input 
+                  type="text" 
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Ej. García"
+                  value={maternalLastName}
+                  onChange={(e) => setMaternalLastName(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-muted-foreground">Razón Social *</label>
+              <input 
+                autoFocus
+                type="text" 
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="Ej. Empresa S.A. de C.V."
+                value={razonSocial}
+                onChange={(e) => setRazonSocial(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+          )}
+
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Nombre Completo *</label>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground">Nombre Comercial (Opcional)</label>
             <input 
-              autoFocus
               type="text" 
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="Ej. Juan Pérez"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="Ej. Mi Tiendita"
+              value={commercialName}
+              onChange={(e) => setCommercialName(e.target.value)}
               disabled={loading}
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Celular (WhatsApp) *</label>
-            <input 
-              type="tel" 
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="10 dígitos"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              disabled={loading}
-            />
-          </div>
+          {/* SIMILAR CLIENTS ALERT */}
+          {similarClients.length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-2.5 space-y-2 animate-in slide-in-from-top-2">
+              <p className="text-[10px] font-bold text-orange-800 flex items-center gap-1.5">
+                ⚠️ POSIBLES DUPLICADOS DETECTADOS:
+              </p>
+              <div className="space-y-1.5">
+                {similarClients.map(c => (
+                  <div 
+                    key={c.id} 
+                    className="text-[10px] text-orange-700 flex items-center justify-between bg-white/60 p-2 rounded border border-orange-100 cursor-pointer hover:bg-orange-200/50 hover:border-orange-300 transition-all group"
+                    onClick={() => {
+                      onClientCreated({
+                        id: c.id,
+                        name: c.name || c.LegalName || c.CommercialName || c.ClientName || "Sin nombre",
+                        phone: c.phone || c.Phone || "",
+                        email: c.email || c.Email || "",
+                        rfc: c.rfc || c.RFC || "XAXX010101000",
+                        points: c.points || 0,
+                        walletBalance: c.walletBalance || 0,
+                        preferences: c.preferences || ""
+                      });
+                    }}
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-bold truncate max-w-[200px]">
+                        {c.name || c.LegalName || c.CommercialName || c.ClientName || "Sin nombre"}
+                      </span>
+                      <span className="text-[8px] font-medium opacity-0 group-hover:opacity-100 transition-opacity text-orange-600">
+                        Hacer clic para usar este cliente
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-medium">{c.phone || c.Phone || ""}</div>
+                      <div className="opacity-70">{c.rfc || c.RFC || ""}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Correo Electrónico (Opcional)</label>
-            <input 
-              type="email" 
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="juan@ejemplo.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={loading}
-            />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-muted-foreground">Celular *</label>
+              <input 
+                type="tel" 
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="10 dígitos"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-muted-foreground">Correo (Opcional)</label>
+              <input 
+                type="email" 
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="email@ejemplo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+              />
+            </div>
           </div>
 
           <div className="pt-2 flex gap-2 justify-end">
@@ -144,6 +330,7 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch }: Qu
             </button>
           </div>
         </form>
+
 
       </div>
     </div>

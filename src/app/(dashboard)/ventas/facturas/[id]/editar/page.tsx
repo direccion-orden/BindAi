@@ -14,6 +14,8 @@ import { Client } from "@/app/(dashboard)/clientes/page";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/discountEngine";
 import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
+import { QuickClientModal } from "@/components/pos/QuickClientModal";
+
 
 interface OrderItem {
   lineKey?: string;
@@ -48,10 +50,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
   const [clientId, setClientId] = useState("");
   const [clientSearch, setClientSearch] = useState("");
   
-  // New Client State
-  const [isNewClient, setIsNewClient] = useState(false);
-  const [newClientName, setNewClientName] = useState("");
-  const [newClientPhone, setNewClientPhone] = useState("");
+  const [showQuickClient, setShowQuickClient] = useState(false);
+
 
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<any[]>([]);
@@ -128,14 +128,13 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
     return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubD(); unsubW(); };
   }, [companyId, params.id]);
 
-  const getFilteredClients = () => {
-    if (!clientSearch) return [];
-    const term = clientSearch.toLowerCase();
-    return clients.filter(c => {
-      const nameVal = (c.LegalName || c.CommercialName || c.name || "").toLowerCase();
-      const rfcVal = (c.RFC || c.rfc || "").toLowerCase();
-      return nameVal.includes(term) || rfcVal.includes(term);
-    });
+  const handleSelectClient = (c: Client) => {
+    setClientId(c.id);
+    const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";
+    setClientSearch(clientName);
+    setProjectId("");
+    setIsCreatingProject(false);
+    setNewProjectName("");
   };
 
   const getFilteredProducts = () => {
@@ -145,15 +144,6 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
       p.title.toLowerCase().includes(term) || 
       p.variants.some(v => v.sku.toLowerCase().includes(term) || v.barcode?.includes(term))
     );
-  };
-
-  const handleSelectClient = (c: Client) => {
-    setClientId(c.id);
-    const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";
-    setClientSearch(clientName);
-    setProjectId("");
-    setIsCreatingProject(false);
-    setNewProjectName("");
   };
 
   const handleAddProduct = (product: ShopifyProduct, variant: any) => {
@@ -242,29 +232,12 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
   const tax = totals.tax;
   const total = totals.total;
 
-  const selectedClient = clients.find(c => c.id === clientId);
-
   const handleSave = async () => {
-    if (!companyId) return;
+    if (!companyId || !params.id) return;
     
-    let finalClientId = clientId;
-    let finalClientName = "";
-    let clientRefDoc = null;
-
-    if (isNewClient) {
-      if (!newClientName || !newClientPhone) {
-        alert("El Nombre y Teléfono son obligatorios para crear un cliente nuevo.");
-        return;
-      }
-      finalClientName = newClientName;
-    } else {
-      if (!finalClientId) {
-        alert("Selecciona un cliente válido.");
-        return;
-      }
-      const client = clients.find(c => c.id === finalClientId);
-      finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
-      clientRefDoc = client;
+    if (!clientId) {
+      alert("Selecciona un cliente válido.");
+      return;
     }
 
     if (items.length === 0) {
@@ -273,28 +246,16 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
     }
 
     if (!locationId || !warehouseId) {
-      alert("Debes seleccionar una Sucursal y un Almacén.");
-      return;
-    }
-
-    if (!window.confirm("¿Guardar cambios en la factura y prepararla para timbrar?")) {
+      alert("La Sucursal y el Almacén son obligatorios.");
       return;
     }
 
     setSaving(true);
     try {
-      if (isNewClient) {
-        finalClientId = crypto.randomUUID();
-        const clientRef = doc(db, "companies", companyId, "clients", finalClientId);
-        await setDoc(clientRef, {
-          id: finalClientId,
-          name: newClientName,
-          phone: newClientPhone,
-          email: "",
-          createdAt: new Date().toISOString()
-        });
-      }
-
+      const client = clients.find(c => c.id === clientId);
+      const finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
+      const clientRefDoc = client;
+      
       let finalProjectId = projectId;
       let finalProjectName = projectId ? (projects.find(p => p.id === projectId)?.name || null) : null;
 
@@ -311,7 +272,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         await setDoc(projectRef, {
           id: finalProjectId,
           name: newProjectName,
-          clientId: finalClientId,
+          clientId: clientId,
           createdAt: new Date().toISOString()
         });
       }
@@ -376,7 +337,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
 
       const invRef = doc(db, "companies", companyId, "facturas", params.id);
       await updateDoc(invRef, {
-        clientId: finalClientId,
+        clientId: clientId,
         clientName: finalClientName,
         items: items.map(i => ({
           ...i,
@@ -396,9 +357,6 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         cfdiPayload: cfdiPayload,
         updatedAt: new Date().toISOString()
       });
-
-      // Notice: Inventory changes during edit of direct invoices are not yet fully re-calculated.
-      // For now, we skip generating new inventory deductions when editing, assuming it's mostly fiscal metadata changes.
 
       alert(`Factura actualizada y lista para timbrar.`);
       router.push(`/ventas/facturas/${params.id}`);
@@ -466,93 +424,53 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
-          {/* Column 1 & 2: Client search or new client inputs */}
-          {isNewClient ? (
-            <div className="space-y-3 bg-blue-50/30 p-3 rounded-lg border border-blue-100 col-span-1 md:col-span-2">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-xs font-semibold text-blue-900">Nuevo Cliente</label>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
-                  onClick={() => {
-                    setIsNewClient(false);
-                    setIsCreatingProject(false);
-                    setNewProjectName("");
-                  }}
-                >
-                  Buscar Existente
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Input 
-                  placeholder="Nombre del Cliente *" 
-                  value={newClientName}
-                  onChange={(e) => setNewClientName(e.target.value)}
-                  className="bg-white border-blue-200 h-8 text-xs"
-                />
-                <Input 
-                  placeholder="Teléfono *" 
-                  value={newClientPhone}
-                  onChange={(e) => setNewClientPhone(e.target.value)}
-                  className="bg-white border-blue-200 h-8 text-xs"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2 relative col-span-1 md:col-span-2">
-              <div className="flex justify-between items-center h-5">
-                <label className="text-xs font-medium text-slate-500 uppercase">Cliente *</label>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-5 px-1 text-[10px] text-blue-600 font-semibold hover:bg-blue-50"
-                  onClick={() => {
-                    setIsNewClient(true);
-                    setIsCreatingProject(false);
-                    setNewProjectName("");
-                  }}
-                >
-                  + Nuevo Cliente
-                </Button>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-2 w-3.5 h-3.5 text-muted-foreground" />
-                <Input 
-                  placeholder="Buscar cliente (Nombre o RFC)..." 
-                  className="pl-8 bg-background h-8 text-xs"
-                  value={clientSearch}
-                  onChange={(e) => {
-                    setClientSearch(e.target.value);
-                    if (clientId) setClientId(""); 
-                  }}
-                />
-              </div>
+          {/* Column 1 & 2: Client search */}
+          <div className="space-y-4 col-span-1 md:col-span-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Buscar cliente..." 
+                className="pl-9 h-8 text-xs"
+                value={clientSearch}
+                onChange={(e) => {
+                  setClientSearch(e.target.value);
+                  if (clientId) setClientId(""); 
+                }}
+              />
               {!clientId && clientSearch && (
-                <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y z-50 shadow-xl">
-                  {getFilteredClients().map(c => (
+                <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-60 overflow-y-auto bg-background divide-y z-50 shadow-lg">
+                  {clients
+                    .filter(c => (c.name || "").toLowerCase().includes(clientSearch.toLowerCase()) || (c.rfc || "").toLowerCase().includes(clientSearch.toLowerCase()))
+                    .map(c => (
                     <div 
                       key={c.id} 
-                      className="p-2 hover:bg-muted/50 cursor-pointer text-xs" 
+                      className="p-3 hover:bg-muted/50 cursor-pointer text-xs" 
                       onClick={() => handleSelectClient(c)}
                     >
-                      <div className="font-medium text-slate-900">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
+                      <div className="font-bold text-slate-900">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
                       {(c.RFC || c.rfc) && <div className="text-[10px] text-slate-500">RFC: {c.RFC || c.rfc}</div>}
                     </div>
                   ))}
-                  {getFilteredClients().length === 0 && (
+                  {clients.filter(c => (c.name || "").toLowerCase().includes(clientSearch.toLowerCase()) || (c.rfc || "").toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
                     <div className="p-2 text-xs text-muted-foreground text-center">No se encontraron clientes</div>
                   )}
                 </div>
               )}
-              {selectedClient && (
-                <div className="mt-1.5 p-2 bg-blue-50/50 border border-blue-100 rounded text-[11px]">
-                  <p className="font-semibold text-blue-900 line-clamp-1">{selectedClient.LegalName || selectedClient.CommercialName || selectedClient.name}</p>
-                  <p className="text-blue-700/80 text-[10px] mt-0.5 line-clamp-1">{selectedClient.Email || selectedClient.email || 'Sin email'}</p>
-                </div>
-              )}
+              {(() => {
+                  const sc = clients.find(c => c.id === clientId);
+                  return sc && (
+                    <div className="mt-1.5 p-2 bg-blue-50/50 border border-blue-100 rounded text-[11px] flex justify-between items-center animate-in fade-in slide-in-from-top-1">
+                      <div>
+                        <p className="font-semibold text-blue-900 line-clamp-1">{sc.LegalName || sc.CommercialName || sc.name}</p>
+                        <p className="text-blue-700/80 text-[10px] mt-0.5 line-clamp-1">{sc.Email || sc.email || 'Sin email'}</p>
+                      </div>
+                      <button type="button" onClick={() => setShowQuickClient(true)} className="text-indigo-600 font-bold hover:underline transition-all shrink-0 ml-2">+ Nuevo Cliente</button>
+                    </div>
+                  );
+              })()}
+
             </div>
-          )}
+          </div>
 
           {/* Column 3: Sucursal */}
           <div className="space-y-2 col-span-1">
@@ -600,7 +518,7 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
                 <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
                 Proyecto (Opcional)
               </label>
-              {(isNewClient || clientId) && (
+              {clientId && (
                 <Button 
                   type="button"
                   variant="ghost" 
@@ -641,10 +559,11 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
                 className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm disabled:opacity-50"
                 value={projectId}
                 onChange={e => setProjectId(e.target.value)}
-                disabled={isNewClient || !clientId}
+                disabled={!clientId}
               >
                 <option value="">Ninguno</option>
-                {!isNewClient && clientId && projects.filter(p => p.clientId === clientId).map(p => (
+                {clientId && projects.filter(p => p.clientId === clientId).map(p => (
+
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
@@ -875,7 +794,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
               <Button 
                 size="lg" 
                 onClick={handleSave} 
-                disabled={saving || items.length === 0 || (!isNewClient && !clientId) || (isNewClient && (!newClientName || !newClientPhone))}
+                disabled={saving || items.length === 0 || !clientId}
+
                 className="w-full gap-2 bg-blue-600 hover:bg-blue-700 mt-6 text-white"
               >
                 {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
@@ -913,6 +833,19 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
           <p className="text-xs">Próximamente en el siguiente sprint.</p>
         </div>
       )}
+      {showQuickClient && (
+        <QuickClientModal 
+          initialSearch={clientSearch}
+          existingClients={clients}
+          onClose={() => setShowQuickClient(false)}
+          onClientCreated={(client) => {
+            setClientId(client.id);
+            setClientSearch(client.name);
+            setShowQuickClient(false);
+          }}
+        />
+      )}
     </div>
   );
 }
+

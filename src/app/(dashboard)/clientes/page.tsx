@@ -46,6 +46,8 @@ export interface Client {
   Phone?: string;
   RFC?: string;
   address?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 const normalizeString = (str: string) => 

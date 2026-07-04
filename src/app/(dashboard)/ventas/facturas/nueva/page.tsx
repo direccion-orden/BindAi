@@ -120,12 +120,6 @@ export default function NuevaFacturaPage() {
     return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubD(); unsubW(); };
   }, [companyId]);
 
-  const handleSelectClient = (c: Client) => {
-    setClientId(c.id);
-    const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";
-    setClientSearch(clientName);
-  };
-
   const getFilteredProducts = () => {
     if (!productSearch) return [];
     const term = productSearch.toLowerCase();

@@ -293,7 +293,7 @@ export default function ClientesPage() {
         neighborhood: formData.neighborhood?.trim() || "",
         city: formData.city?.trim() || "",
         state: formData.state?.trim() || "",
-        createdAt: formData.createdAt || new Date().toISOString(),
+        createdAt: (formData as any).createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }, { merge: true });
       handleCloseForm();

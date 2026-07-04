@@ -159,6 +159,15 @@ export default function NuevoPedidoPage() {
     return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubW(); unsubD(); unsubO(); };
   }, [companyId]);
 
+  const getFilteredProducts = () => {
+    if (!productSearch) return [];
+    const term = productSearch.toLowerCase();
+    return products.filter(p => 
+      p.title.toLowerCase().includes(term) || 
+      p.variants.some(v => v.sku.toLowerCase().includes(term) || v.barcode?.includes(term))
+    );
+  };
+
   const handleSelectClient = (c: Client) => {
     setClientId(c.id);
     const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";

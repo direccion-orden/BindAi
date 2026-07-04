@@ -124,6 +124,15 @@ export default function NuevaCotizacionPage() {
 
     return () => { unsubC(); unsubP(); unsubProj(); unsubD(); unsubLoc(); unsubW(); };
   }, [companyId]);
+  
+  const getFilteredProducts = () => {
+    if (!productSearch) return [];
+    const term = productSearch.toLowerCase();
+    return products.filter(p => 
+      p.title.toLowerCase().includes(term) || 
+      p.variants.some(v => v.sku.toLowerCase().includes(term) || v.barcode?.includes(term))
+    );
+  };
 
   const handleSelectClient = (c: Client) => {
     setClientId(c.id);
@@ -232,6 +241,8 @@ export default function NuevaCotizacionPage() {
 
     setSaving(true);
     try {
+      const finalClientId = clientId;
+      const finalClientName = clients.find(c => c.id === clientId)?.name || clientSearch || "Cliente desconocido";
       let finalProjectId = projectId;
       let finalProjectName = projectId ? (projects.find(p => p.id === projectId)?.name || null) : null;
 

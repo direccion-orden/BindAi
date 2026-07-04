@@ -244,6 +244,7 @@ export default function NuevaFacturaPage() {
 
     setSaving(true);
     try {
+      const finalClientId = clientId;
       const client = clients.find(c => c.id === clientId);
       const finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
       const clientRefDoc = client;

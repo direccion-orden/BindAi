@@ -256,13 +256,18 @@ export default function PrintLabelsPage() {
 
   // Generate the flattened array of barcodes to render
   const barcodesToRender = printQueue.flatMap(item => 
-    Array.from({ length: item.quantity }).map((_, i) => ({
-      key: `${item.product.id}-${i}`,
-      title: item.product.title,
-      sku: item.product.variants?.[0]?.sku || "N/A",
-      price: item.product.variants?.[0]?.price || "0.00",
-      barcode: item.product.variants?.[0]?.barcode || ""
-    }))
+    Array.from({ length: item.quantity }).map((_, i) => {
+      const rawPrice = item.product.variants?.[0]?.price || 0;
+      const priceWithIva = Math.round(rawPrice * 1.16);
+      
+      return {
+        key: `${item.product.id}-${i}`,
+        title: item.product.title,
+        sku: item.product.variants?.[0]?.sku || "N/A",
+        price: priceWithIva.toString(),
+        barcode: item.product.variants?.[0]?.barcode || ""
+      };
+    })
   );
 
   return (
@@ -352,7 +357,7 @@ export default function PrintLabelsPage() {
                 <div key={item.product.id} className="flex items-center justify-between p-3 border rounded-lg bg-background">
                   <div className="flex-1">
                     <p className="font-medium text-sm line-clamp-1">{item.product.title}</p>
-                    <p className="text-xs text-muted-foreground">Precio: ${item.product.variants[0]?.price}</p>
+                    <p className="text-xs text-muted-foreground">Precio: ${Math.round((item.product.variants[0]?.price || 0) * 1.16)} (c/IVA)</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center border rounded-md">

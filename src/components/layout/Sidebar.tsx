@@ -9,7 +9,10 @@ import { Button } from "@/components/ui/button";
 export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolean; onCloseMobile?: () => void }) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const [openCategories, setOpenCategories] = useState<string[]>([]);
+
+  const effectiveCollapsed = isCollapsed && !isHovered;
 
   const toggleCategory = (title: string) => {
     if (isCollapsed) {
@@ -143,8 +146,11 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
           onClick={onCloseMobile}
         />
       )}
-      <aside className={`fixed md:sticky top-16 z-[60] md:z-40 border-r bg-card min-h-[calc(100vh-4rem)] md:translate-x-0 md:flex flex-col overflow-y-auto transition-all duration-300 ease-in-out ${
-        isMobileOpen ? "translate-x-0 w-64" : (isCollapsed ? "w-16 -translate-x-full md:translate-x-0" : "w-64 -translate-x-full md:translate-x-0")
+      <aside 
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={`fixed top-16 z-[60] md:z-[100] border-r bg-card/70 backdrop-blur-lg shadow-xl h-[calc(100vh-4rem)] md:translate-x-0 md:flex flex-col overflow-y-auto no-scrollbar transition-all duration-300 ease-in-out ${
+        isMobileOpen ? "translate-x-0 w-64" : (effectiveCollapsed ? "w-16 -translate-x-full md:translate-x-0" : "w-64 -translate-x-full md:translate-x-0")
       }`}>
         
         {/* Toggle Buttons */}
@@ -179,9 +185,9 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
                 (pathname === "/dashboard" || pathname === "/")
                   ? "bg-accent/15 text-accent font-medium shadow-sm"
                   : "text-foreground hover:bg-muted"
-              } ${isCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={isCollapsed ? "Noticias" : undefined}>
+              } ${effectiveCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={effectiveCollapsed ? "Noticias" : undefined}>
                 <Newspaper className={`h-5 w-5 ${(pathname === "/dashboard" || pathname === "/") ? 'text-accent' : 'text-muted-foreground'}`} />
-                {!isCollapsed && <span>Noticias</span>}
+                {!effectiveCollapsed && <span>Noticias</span>}
               </div>
             </Link>
           </div>
@@ -193,9 +199,9 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
                 pathname?.startsWith("/movil")
                   ? "bg-accent/15 text-accent font-medium shadow-sm"
                   : "text-foreground hover:bg-muted"
-              } ${isCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={isCollapsed ? "Vista Móvil" : undefined}>
+              } ${effectiveCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={effectiveCollapsed ? "Vista Móvil" : undefined}>
                 <Smartphone className={`h-5 w-5 ${pathname?.startsWith("/movil") ? 'text-accent' : 'text-muted-foreground'}`} />
-                {!isCollapsed && <span>Vista Móvil</span>}
+                {!effectiveCollapsed && <span>Vista Móvil</span>}
               </div>
             </Link>
           </div>
@@ -212,39 +218,43 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
                   isCategoryActive
                     ? "bg-accent/15 text-accent shadow-sm font-bold"
                     : "text-foreground hover:bg-muted/50"
-                } ${isCollapsed ? 'justify-center px-0' : 'justify-between'}`}
+                } ${effectiveCollapsed ? 'justify-center px-0' : 'justify-between'}`}
                 onClick={() => toggleCategory(cat.title)}
-                title={isCollapsed ? cat.title : undefined}
+                title={effectiveCollapsed ? cat.title : undefined}
               >
                 <div className="flex items-center gap-2">
-                  {isCollapsed ? <cat.icon className="w-4 h-4" /> : (
+                  {effectiveCollapsed ? <cat.icon className="w-4 h-4" /> : (
                     <>
                       <cat.icon className="w-4 h-4" />
                       <span>{cat.title}</span>
                     </>
                   )}
                 </div>
-                {!isCollapsed && (
+                {!effectiveCollapsed && (
                   isOpen ? <ChevronDown className="w-4 h-4 opacity-50" /> : <ChevronRight className="w-4 h-4 opacity-50" />
                 )}
               </div>
               
-              {(isOpen || isCollapsed) && (
+              {(isOpen || (isHovered && isCollapsed)) && (
                 cat.items.length > 0 ? (
-                  <nav className={`space-y-1 ${isCollapsed ? "" : "pl-3"}`}>
+                  <nav className={`space-y-1 ${effectiveCollapsed ? "" : "pl-3"}`}>
                     {cat.items.map((item: any) => {
                       const isActive = item.exact 
                         ? pathname === item.href 
                         : pathname === item.href || pathname?.startsWith(item.href + "/");
                       return (
-                        <Link key={item.href} href={item.href} onClick={onCloseMobile}>
+                        <Link key={item.href} href={item.href} onClick={() => {
+                          onCloseMobile?.();
+                          setIsCollapsed(true);
+                          setIsHovered(false);
+                        }}>
                           <div className={`flex items-center px-3 py-2 rounded-md text-sm transition-colors ${
                             isActive 
                               ? "bg-accent/15 text-accent font-medium shadow-sm" 
                               : "text-foreground hover:bg-muted"
-                          } ${isCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={isCollapsed ? item.label : undefined}>
-                            <item.icon className={`h-5 w-5 ${isActive ? 'text-accent' : 'text-muted-foreground'}`} />
-                            {!isCollapsed && <span>{item.label}</span>}
+                          } ${effectiveCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={effectiveCollapsed ? item.label : undefined}>
+                            <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-accent' : 'text-foreground/70'}`} />
+                            {!effectiveCollapsed && <span>{item.label}</span>}
                           </div>
                         </Link>
                       );

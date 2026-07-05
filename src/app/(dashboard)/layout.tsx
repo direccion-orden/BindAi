@@ -20,7 +20,7 @@ export default function DashboardLayout({
       <Navbar onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       <div className="flex flex-1 relative">
         <Sidebar isMobileOpen={isMobileMenuOpen} onCloseMobile={() => setIsMobileMenuOpen(false)} />
-        <main className="flex-1 p-6 md:p-8 lg:p-10 w-full overflow-x-hidden">
+        <main className="flex-1 p-6 md:p-8 lg:p-10 w-full overflow-x-hidden md:pl-[calc(4rem+2rem)] lg:pl-[calc(4rem+2.5rem)]">
           <div className="w-full">
             <AuthGuard>
               {children}

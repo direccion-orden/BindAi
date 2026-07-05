@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 
 export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolean; onCloseMobile?: () => void }) {
   const pathname = usePathname();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [openCategories, setOpenCategories] = useState<string[]>([]);
 

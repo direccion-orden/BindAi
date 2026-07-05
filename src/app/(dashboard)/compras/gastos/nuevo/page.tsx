@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { getLocalDateString } from "@/lib/utils";
 import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save, Upload, Receipt, X, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
@@ -62,7 +63,7 @@ function NuevoGastoForm() {
   const [costCenters, setCostCenters] = useState<any[]>([]);
 
   // Form Fields
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getLocalDateString());
   const [vendorId, setVendorId] = useState("");
   const [vendorSearchQuery, setVendorSearchQuery] = useState("");
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, DollarSign, ArrowUpRight, Search, FileText, PlusCircle, Calendar, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,13 +31,6 @@ export default function IngresosPage() {
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
     
-    const getLocalDateString = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
     const now = new Date();
     
     if (option === "all") {
@@ -135,15 +129,7 @@ export default function IngresosPage() {
     }
     // 3. Date filter
     if (dateFrom || dateTo) {
-      const localDate = (() => {
-        if (p.date) return p.date;
-        const d = p.createdAt ? new Date(p.createdAt) : null;
-        if (!d || isNaN(d.getTime())) return "";
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      })();
+      const localDate = p.date || (p.createdAt ? getLocalDateString(new Date(p.createdAt)) : "");
       if (dateFrom && localDate < dateFrom) return false;
       if (dateTo && localDate > dateTo) return false;
     }
@@ -218,6 +204,8 @@ export default function IngresosPage() {
 
   const getDocumentLabel = (type: string, number: string) => {
     const num = number || "N/A";
+    if (num.includes("-")) return num; // If it already has a prefix like REM- or PED-, return it
+    
     switch (type) {
       case "pedido": return `PED-${num}`;
       case "remision": return `REM-${num}`;
@@ -225,6 +213,23 @@ export default function IngresosPage() {
       case "pos": return `POS-${num}`;
       default: return `DOC-${num}`;
     }
+  };
+
+  const getCleanReference = (ref: string) => {
+    if (!ref) return '-';
+    // Match "Venta POS .* (Ref: YYY)"
+    const match = ref.match(/Venta POS .*\(Ref: (.*)\)/i);
+    let cleanRef = match ? match[1] : ref;
+    
+    // If it's just "Venta POS XXX", return '-'
+    if (cleanRef.toLowerCase().startsWith("venta pos")) return '-';
+    
+    // Simplify UUIDs to the last 8 characters
+    if (cleanRef.includes('-') && cleanRef.length > 20) {
+      return cleanRef.slice(-8);
+    }
+    
+    return cleanRef;
   };
 
   if (loading) {
@@ -462,9 +467,6 @@ export default function IngresosPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs font-semibold capitalize border">
-                            {payment.documentType}
-                          </span>
                           {docLink ? (
                             <Link href={docLink} target="_blank" className="text-indigo-600 hover:text-indigo-800 hover:underline flex items-center font-medium">
                               {getDocumentLabel(payment.documentType, payment.documentNumber)} <ArrowUpRight className="w-3 h-3 ml-0.5" />
@@ -480,7 +482,7 @@ export default function IngresosPage() {
                         {payment.method}
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs">
-                        {payment.reference || '-'}
+                        {getCleanReference(payment.reference)}
                       </td>
                       <td className="px-4 py-3">
                         {payment.status === "cancelado" ? (

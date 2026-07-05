@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { collection, onSnapshot, query } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { getLocalDateString } from "@/lib/utils";
 import { Loader2, DollarSign, Calendar, CreditCard, FileText, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,7 @@ export function EditPaymentModal({ isOpen, onClose, payment, document, companyId
   useEffect(() => {
     if (isOpen && payment) {
       setAmount(payment.amount || 0);
-      setDate(payment.date || new Date().toISOString().split("T")[0]);
+      setDate(payment.date || getLocalDateString());
       setMethod(payment.method || "Transferencia");
       setReference(payment.reference || "");
       setBankAccountId(payment.bankAccountId || "");

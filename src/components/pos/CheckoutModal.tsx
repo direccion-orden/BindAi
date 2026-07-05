@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { usePOS } from "@/context/POSContext";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
+import { getLocalDateString } from "@/lib/utils";
 import { X, Banknote, CreditCard, Landmark, Loader2, CheckCircle2, MessageCircle, Mail, Gift, Wallet, Trash2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -355,16 +356,25 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                           inserted = data.transaction.payinReceived / 100;
                       }
                       
-                      setCurrentAmount(inserted.toString());
-                      
+                      // Simplify UUID reference to the last 8 characters for better readability
+                      let finalReference = txId;
+                      if (finalReference && finalReference.includes('-')) {
+                          // Extract the last 8 characters of the UUID
+                          finalReference = finalReference.length > 8 ? finalReference.slice(-8) : finalReference;
+                          console.log("[POS Recycler] Using simplified UUID reference:", finalReference);
+                      }
+
                       // Automatically add the payment after a brief delay
                       setTimeout(() => {
-                          const appliedAmount = (inserted === targetAmount && targetAmount === Math.round(remaining)) ? remaining : round2(inserted);
+                          // BUG FIX: Only record the amount intended to be charged (targetAmount/remaining), not the excess inserted
+                          // The recycler handles the change physically, so we only account for the net payment.
+                          const amountToCharge = currentAmount ? parseFloat(currentAmount) : remaining;
+                          const appliedAmount = (inserted >= targetAmount) ? amountToCharge : round2(inserted);
                           
                           setPayments(prev => [...prev, {
                             method: 'Efectivo',
                             amount: appliedAmount,
-                            reference: txId || undefined
+                            reference: finalReference || undefined
                           }]);
                           
                           setCurrentMethod(null);
@@ -757,9 +767,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         // Registrar pago en la colección global de Ingresos (payments)
         await addDoc(collection(db, "companies", companyId, "payments"), sanitizeFirestoreData({
           amount: p.amount,
-          date: new Date().toISOString().split("T")[0],
+          date: getLocalDateString(),
           method: p.method,
-          reference: p.reference ? `Venta POS ${remNumber} (Ref: ${p.reference})` : `Venta POS ${remNumber}`,
+          reference: p.reference || null,
           paymentReference: p.reference || null,
           documentId: remId,
           documentType: "remision",

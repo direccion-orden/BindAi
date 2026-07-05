@@ -3,6 +3,7 @@ import { doc, collection, addDoc, updateDoc, increment, query, onSnapshot } from
 import { db } from "@/lib/firebase/client";
 import { Loader2, DollarSign, Calendar, CreditCard, FileText, BookOpen } from "lucide-react";
 import { findBankAccountingAccount } from "@/app/(dashboard)/bancos/components/ReconcilePanel";
+import { getLocalDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -23,7 +24,7 @@ export function ExpensePaymentModal({ isOpen, onClose, document, documentType, c
   const saldoPendiente = totalAmount - paidAmount;
 
   const [amount, setAmount] = useState<number>(0);
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getLocalDateString());
   const [method, setMethod] = useState("Transferencia");
   const [reference, setReference] = useState("");
 
@@ -38,7 +39,7 @@ export function ExpensePaymentModal({ isOpen, onClose, document, documentType, c
   useEffect(() => {
     if (isOpen) {
       setAmount(Number(saldoPendiente.toFixed(2)));
-      setDate(new Date().toISOString().split("T")[0]);
+      setDate(getLocalDateString());
       setMethod("Transferencia");
       setReference("");
       setBankAccountId("");

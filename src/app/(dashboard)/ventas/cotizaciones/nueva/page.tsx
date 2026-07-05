@@ -13,6 +13,7 @@ import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
 import { generateQuoteImage } from "@/actions/generate-image";
 import { getNextSequence } from "@/lib/firebase/counters";
+import { getLocalDateString } from "@/lib/utils";
 import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/discountEngine";
 import { QuickClientModal } from "@/components/pos/QuickClientModal";
 import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
@@ -47,11 +48,11 @@ export default function NuevaCotizacionPage() {
   // Form State
   const [clientId, setClientId] = useState("");
   const [clientSearch, setClientSearch] = useState("");
-  const [quoteDate, setQuoteDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [quoteDate, setQuoteDate] = useState(getLocalDateString());
   const [validUntil, setValidUntil] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 15); // Default 15 days validity
-    return d.toISOString().split('T')[0];
+    return getLocalDateString(d);
   });
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<any[]>([]);

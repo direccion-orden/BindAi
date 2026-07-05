@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { collection, query, onSnapshot, orderBy, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,13 +35,6 @@ export default function GastosManualesPage() {
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
     
-    const getLocalDateString = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
     const now = new Date();
     
     if (option === "all") {

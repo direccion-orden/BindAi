@@ -16,6 +16,7 @@ import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/di
 import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
 import { QuickClientModal } from "@/components/pos/QuickClientModal";
 import { FileText } from "lucide-react";
+import { getLocalDateString } from "@/lib/utils";
 
 
 interface OrderItem {
@@ -267,7 +268,7 @@ export default function NuevaFacturaPage() {
         PaymentForm: "01",
         PaymentMethod: "PUE",
         Currency: "MXN",
-        Date: new Date().toISOString().split('.')[0],
+        Date: getLocalDateString(),
         ExpeditionPlace: "64753",
         Items: items.map((item: any) => {
           const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { collection, query, getDocs, addDoc, updateDoc, doc, increment, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { Loader2, DollarSign, Calendar, CreditCard, FileText, Search, BookOpen } from "lucide-react";
+import { getLocalDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UNIFIED_PAYMENT_METHODS } from "@/lib/constants/paymentMethods";
@@ -27,7 +28,7 @@ export function NewIncomeModal({ isOpen, onClose, companyId }: NewIncomeModalPro
   const [selectedDocId, setSelectedDocId] = useState<string>("");
 
   const [amount, setAmount] = useState<number>(0);
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getLocalDateString());
   const [method, setMethod] = useState("Efectivo");
   const [reference, setReference] = useState("");
 
@@ -75,7 +76,7 @@ export function NewIncomeModal({ isOpen, onClose, companyId }: NewIncomeModalPro
     setDocuments([]);
     setSelectedDocId("");
     setAmount(0);
-    setDate(new Date().toISOString().split("T")[0]);
+    setDate(getLocalDateString());
     setMethod("Efectivo");
     setReference("");
     setBankAccountId("");

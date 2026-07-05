@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { collection, query, getDocs, addDoc, updateDoc, doc, increment, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { getLocalDateString } from "@/lib/utils";
 import { Loader2, DollarSign, Calendar, CreditCard, FileText, Search, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +24,7 @@ export function NewOutflowModal({ isOpen, onClose, companyId }: NewOutflowModalP
   const [showDocDropdown, setShowDocDropdown] = useState(false);
 
   const [amount, setAmount] = useState<number>(0);
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getLocalDateString());
   const [method, setMethod] = useState("Transferencia");
   const [reference, setReference] = useState("");
 

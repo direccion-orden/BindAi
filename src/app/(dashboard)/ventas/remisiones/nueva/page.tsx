@@ -16,6 +16,7 @@ import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/di
 import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
 import { QuickClientModal } from "@/components/pos/QuickClientModal";
 import { FileText, Percent } from "lucide-react";
+import { getLocalDateString } from "@/lib/utils";
 
 
 interface OrderItem {
@@ -52,13 +53,7 @@ export default function NuevaRemisionPage() {
   const [showQuickClient, setShowQuickClient] = useState(false);
 
 
-  const [appliedDate, setAppliedDate] = useState(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
+  const [appliedDate, setAppliedDate] = useState(getLocalDateString());
 
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<any[]>([]);

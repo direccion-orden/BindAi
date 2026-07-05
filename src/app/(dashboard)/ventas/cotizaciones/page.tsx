@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, Plus, FileText, MoreHorizontal, Calendar, User, DollarSign, Package, Table, LayoutGrid, Search, Copy, Eye, FileDown, Ban, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -111,13 +112,6 @@ export default function CotizacionesCRMPage() {
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
     
-    const getLocalDateString = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
     const now = new Date();
     
     if (option === "all") {
@@ -190,14 +184,7 @@ export default function CotizacionesCRMPage() {
     }
     // 3. Date range
     if (dateFrom || dateTo) {
-      const localDate = (() => {
-        const d = new Date(quote.createdAt);
-        if (isNaN(d.getTime())) return "";
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      })();
+      const localDate = quote.createdAt ? getLocalDateString(new Date(quote.createdAt)) : "";
       if (dateFrom && localDate < dateFrom) return false;
       if (dateTo && localDate > dateTo) return false;
     }

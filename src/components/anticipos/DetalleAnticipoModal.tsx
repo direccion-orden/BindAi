@@ -8,6 +8,7 @@ import { Loader2, FileText, X, Trash2, Save } from "lucide-react";
 import { doc, updateDoc, deleteDoc, collection, query as firestoreQuery, orderBy, onSnapshot, increment, addDoc, getDoc } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
+import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { CheckCircle2, AlertCircle, Landmark } from "lucide-react";
 
@@ -36,7 +37,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
   useEffect(() => {
     if (anticipo) {
       setReference(anticipo.reference || "");
-      setReceivedAt(anticipo.receivedAt || (anticipo.createdAt?.toDate ? anticipo.createdAt.toDate().toISOString().split("T")[0] : ""));
+      setReceivedAt(anticipo.receivedAt || (anticipo.createdAt?.toDate ? getLocalDateString(anticipo.createdAt.toDate()) : ""));
       setEditingAppIndex(null);
       setIsReconciling(false);
       setSelectedTransactionId("manual");

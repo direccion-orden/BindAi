@@ -75,6 +75,7 @@ export default function RemisionesPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [locations, setLocations] = useState<any[]>([]);
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
 
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
@@ -169,6 +170,11 @@ export default function RemisionesPage() {
       if (dateFrom && localDate < dateFrom) return false;
       if (dateTo && localDate > dateTo) return false;
     }
+    // 4. Payment Method filter
+    if (paymentMethodFilter !== "all") {
+      const pm = remission.paymentMethod || (remission as any).payments?.[0]?.method || (remission.status === 'pagada' ? 'Desconocido' : 'Pendiente');
+      if (pm !== paymentMethodFilter) return false;
+    }
     return true;
   });
 
@@ -197,6 +203,13 @@ export default function RemisionesPage() {
   };
 
   const sortedRemissions = [...filteredRemissions].sort((a, b) => {
+    if (sortField === "paymentType") {
+      const getPM = (r: Remission) => r.paymentMethod || r.payments?.[0]?.method || (r.status === 'pagada' ? 'Desconocido' : 'Pendiente');
+      const pmA = getPM(a);
+      const pmB = getPM(b);
+      return sortDirection === "asc" ? pmA.localeCompare(pmB, "es") : pmB.localeCompare(pmA, "es");
+    }
+
     let aVal = a[sortField as keyof Remission] || "";
     let bVal = b[sortField as keyof Remission] || "";
 
@@ -301,6 +314,27 @@ export default function RemisionesPage() {
               {locations.map(l => (
                 <option key={l.id} value={l.id}>{l.name}</option>
               ))}
+            </select>
+          </div>
+
+          <div className="space-y-1 w-full sm:w-40">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Tipo de Pago
+            </span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={paymentMethodFilter}
+              onChange={(e) => setPaymentMethodFilter(e.target.value)}
+            >
+              <option value="all">Cualquier método</option>
+              <option value="Efectivo">Efectivo</option>
+              <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+              <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Tarjeta de Regalo">Tarjeta de Regalo</option>
+              <option value="Monedero Electrónico">Monedero Electrónico</option>
+              <option value="Pendiente">Pendiente</option>
+              <option value="Desconocido">Desconocido</option>
             </select>
           </div>
 
@@ -409,7 +443,15 @@ export default function RemisionesPage() {
                     {renderSortIcon("status")}
                   </div>
                 </th>
-                <th className="px-6 py-4">Tipo de Pago</th>
+                <th 
+                  className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  onClick={() => handleSort("paymentType")}
+                >
+                  <div className="flex items-center">
+                    Tipo de Pago
+                    {renderSortIcon("paymentType")}
+                  </div>
+                </th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
@@ -495,8 +537,9 @@ export default function RemisionesPage() {
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
+                );
+              })
+            )}
             </tbody>
           </table>
         </div>

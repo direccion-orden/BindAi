@@ -1,22 +1,25 @@
 
-import { db } from "../../../lib/firebase/client";
-import { collection, getDocs, writeBatch, doc } from "firebase/firestore";
+import { adminDb } from "../../../lib/firebase/admin";
 import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
+    if (!adminDb) {
+      throw new Error("Firebase Admin SDK no está configurado correctamente.");
+    }
+
     const companyId = "0cb93750-138e-4b7d-832e-3a37b95c5093";
-    const clientsRef = collection(db, "companies", companyId, "clients");
-    const snapshot = await getDocs(clientsRef);
+    const clientsRef = adminDb.collection("companies").doc(companyId).collection("clients");
+    const snapshot = await clientsRef.get();
     
-    console.log(`Encontrados ${snapshot.size} clientes para migrar.`);
+    console.log(`Encontrados ${snapshot.size} clientes para migrar con Admin SDK.`);
     
     const batches: any[] = [];
-    let currentBatch = writeBatch(db);
+    let currentBatch = adminDb.batch();
     let count = 0;
     let totalUpdated = 0;
 
-    snapshot.forEach((clientDoc) => {
+    snapshot.docs.forEach((clientDoc) => {
       const data = clientDoc.data();
       const updates: any = {};
       let changed = false;
@@ -35,13 +38,13 @@ export async function GET() {
       });
 
       if (changed) {
-        currentBatch.update(doc(db, "companies", companyId, "clients", clientDoc.id), updates);
+        currentBatch.update(clientDoc.ref, updates);
         count++;
         totalUpdated++;
         
         if (count === 450) {
           batches.push(currentBatch);
-          currentBatch = writeBatch(db);
+          currentBatch = adminDb.batch();
           count = 0;
         }
       }
@@ -55,11 +58,11 @@ export async function GET() {
 
     return NextResponse.json({ 
       success: true, 
-      message: `Migración completada. Se actualizaron ${totalUpdated} clientes de un total de ${snapshot.size}.` 
+      message: `Migración completada exitosamente con Admin SDK. Se actualizaron ${totalUpdated} clientes de un total de ${snapshot.size}.` 
     });
 
   } catch (error: any) {
-    console.error("Error en migración:", error);
+    console.error("Error en migración Admin:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

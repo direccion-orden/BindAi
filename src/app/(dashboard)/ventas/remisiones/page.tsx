@@ -20,6 +20,9 @@ interface Remission {
   status: string; // 'activa', 'facturada', 'cancelada'
   createdAt: string;
   createdBy: string;
+  locationName?: string;
+  paymentMethod?: string;
+  payments?: any[];
 }
 
 export default function RemisionesPage() {
@@ -406,43 +409,49 @@ export default function RemisionesPage() {
                     {renderSortIcon("status")}
                   </div>
                 </th>
+                <th className="px-6 py-4">Tipo de Pago</th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {sortedRemissions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
+                  <td colSpan={8} className="px-6 py-10 text-center text-slate-400">
                     <Truck className="w-12 h-12 mx-auto mb-3 opacity-20" />
                     No se encontraron remisiones con los filtros aplicados.
                   </td>
                 </tr>
               ) : (
-                sortedRemissions.map((remission) => (
-                  <tr key={remission.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-900">{remission.remissionNumber}</td>
-                    <td className="px-6 py-4 font-medium text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-slate-400" />
-                        {remission.clientName}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 text-sm">
-                      {(remission as any).locationName || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-emerald-700">
-                      ${remission.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}
-                    </td>
-                    <td className="px-6 py-4 text-muted-foreground text-xs">
-                      {new Date(remission.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td className="px-6 py-4">
-                      {remission.status === 'activa' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200"><CheckCircle2 className="w-3 h-3" /> Activa</span>}
-                      {remission.status === 'pagada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200"><DollarSign className="w-3 h-3" /> Pagada</span>}
-                      {remission.status === 'facturada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200"><Receipt className="w-3 h-3" /> Facturada</span>}
-                      {remission.status === 'cancelada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 text-xs font-bold border border-red-200"><XCircle className="w-3 h-3" /> Cancelada</span>}
-                    </td>
-                    <td className="px-6 py-4 text-right">
+                sortedRemissions.map((remission) => {
+                  const paymentType = remission.paymentMethod || remission.payments?.[0]?.method || (remission.status === 'pagada' ? 'Desconocido' : 'Pendiente');
+                  return (
+                    <tr key={remission.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 font-bold text-slate-900">{remission.remissionNumber}</td>
+                      <td className="px-6 py-4 font-medium text-slate-700">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-slate-400" />
+                          {remission.clientName}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600 text-sm">
+                        {remission.locationName || "N/A"}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-emerald-700">
+                        ${remission.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}
+                      </td>
+                      <td className="px-6 py-4 text-muted-foreground text-xs">
+                        {new Date(remission.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="px-6 py-4">
+                        {remission.status === 'activa' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200"><CheckCircle2 className="w-3 h-3" /> Activa</span>}
+                        {remission.status === 'pagada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200"><DollarSign className="w-3 h-3" /> Pagada</span>}
+                        {remission.status === 'facturada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200"><Receipt className="w-3 h-3" /> Facturada</span>}
+                        {remission.status === 'cancelada' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 text-xs font-bold border border-red-200"><XCircle className="w-3 h-3" /> Cancelada</span>}
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-slate-600">
+                        {paymentType}
+                      </td>
+                      <td className="px-6 py-4 text-right">
                       <div className="flex justify-end items-center gap-1">
                         <Link href={`/ventas/remisiones/${remission.id}`} target="_blank">
                           <Button

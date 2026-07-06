@@ -1,5 +1,5 @@
 
-import { db } from "../../../lib/firebase";
+import { db } from "../../../lib/firebase/client";
 import { collection, getDocs, writeBatch, doc } from "firebase/firestore";
 import { NextResponse } from "next/server";
 

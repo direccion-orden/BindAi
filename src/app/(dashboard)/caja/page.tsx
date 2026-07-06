@@ -254,7 +254,6 @@ export default function CajaPage() {
       }
     }, (error) => {
       console.error("Error listening to remisiones in page.tsx:", error);
-      setIsFetchingErp(false);
       setIsFetchingDailySales(false);
     });
 

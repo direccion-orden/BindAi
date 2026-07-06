@@ -126,17 +126,52 @@ export function AbrirTurnoForm({
     return () => unsubscribe();
   }, [companyId]);
 
+  // Vault Adjustments state
+  const [pendingVaultAdjustments, setPendingVaultAdjustments] = useState<any[]>([]);
+  const [loadingVault, setLoadingVault] = useState(false);
+
+  useEffect(() => {
+    if (!companyId || !selectedLocationId) {
+      setPendingVaultAdjustments([]);
+      return;
+    }
+
+    setLoadingVault(true);
+    const q = query(
+      collection(db, "companies", companyId, "cash_transactions"),
+      where("locationId", "==", selectedLocationId),
+      where("isVaultAdjustment", "==", true),
+      where("sessionId", "==", null)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPendingVaultAdjustments(data);
+      setLoadingVault(false);
+    }, (err) => {
+      console.error("Error fetching vault adjustments:", err);
+      setLoadingVault(false);
+    });
+
+    return () => unsubscribe();
+  }, [companyId, selectedLocationId]);
+
   const handleCountChange = (valStr: string, qtyStr: string) => {
     const qty = parseInt(qtyStr, 10) || 0;
     setCounts(prev => ({ ...prev, [valStr]: Math.max(0, qty) }));
   };
 
   const calculateTotal = () => {
-    return DENOMINATIONS.reduce((acc, denom) => {
+    const countsTotal = DENOMINATIONS.reduce((acc, denom) => {
       const qty = counts[denom.value.toString()] || 0;
       return acc + (qty * denom.value);
     }, 0);
+    return countsTotal;
   };
+
+  const vaultAdjustmentsTotal = pendingVaultAdjustments.reduce((acc, adj) => {
+    return acc + (adj.type === "INCOME" ? adj.amount : -adj.amount);
+  }, 0);
 
   const handleOpenShift = async () => {
     if (!selectedLocationId) {
@@ -185,6 +220,18 @@ export function AbrirTurnoForm({
       };
 
       const docRef = await addDoc(collection(db, "companies", companyId, "cash_sessions"), sessionData);
+      
+      // Link pending vault adjustments to this new session
+      if (pendingVaultAdjustments.length > 0) {
+        const batchPromises = pendingVaultAdjustments.map(adj => 
+          updateDoc(doc(db, "companies", companyId, "cash_transactions", adj.id), {
+            sessionId: docRef.id,
+            isVaultAdjustment: false // No longer pending
+          })
+        );
+        await Promise.all(batchPromises);
+      }
+
       onOpened({ id: docRef.id, ...sessionData, openedAt: new Date() });
     } catch (error) {
       console.error("Error al abrir turno:", error);
@@ -244,6 +291,24 @@ export function AbrirTurnoForm({
            </select>
         )}
       </div>
+
+      {pendingVaultAdjustments.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl flex items-start gap-3 animate-in slide-in-from-top duration-300">
+          <Loader2 className="h-5 w-5 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+          <div className="space-y-1">
+            <h4 className="text-sm font-bold text-amber-800">Ajustes de Tesorería Detectados</h4>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              Se han detectado <strong>{pendingVaultAdjustments.length}</strong> movimientos realizados por Tesorería fuera de turno.
+              Al abrir la caja, estos movimientos se vincularán automáticamente a tu historial.
+            </p>
+            <div className="pt-1">
+               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${vaultAdjustmentsTotal >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                 Impacto en fondo: {vaultAdjustmentsTotal >= 0 ? '+' : ''}{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(vaultAdjustmentsTotal)}
+               </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-rows-6 md:grid-flow-col gap-x-8 gap-y-4">
         {DENOMINATIONS.map((denom) => {

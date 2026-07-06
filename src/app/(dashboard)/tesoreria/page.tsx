@@ -35,10 +35,13 @@ export default function TesoreriaPage() {
     const { user, companyId } = useAuth();
     const [mockMode, setMockMode] = useState(false);
 
-    // Cash Sessions Integration
+    // Cash Sessions & Locations Integration
+    const [locations, setLocations] = useState<any[]>([]);
+    const [selectedLocationId, setSelectedLocationId] = useState<string>("");
     const [openSessions, setOpenSessions] = useState<any[]>([]);
-    const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-    const activeCashSession = openSessions.find(s => s.id === selectedSessionId) || openSessions[0] || null;
+    
+    const activeCashSession = openSessions.find(s => s.locationId === selectedLocationId) || null;
+    const selectedLocation = locations.find(l => l.id === selectedLocationId) || null;
 
     // Mock Recycler Inventory Levels (pesos)
     const [mockSystemCash, setMockSystemCash] = useState(157500); // $1,575.00
@@ -59,9 +62,6 @@ export default function TesoreriaPage() {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setOpenSessions(data);
-            if (data.length > 0 && !selectedSessionId) {
-                setSelectedSessionId(data[0].id);
-            }
         }, (err) => {
             console.error("Error fetching open sessions:", err);
         });
@@ -70,8 +70,6 @@ export default function TesoreriaPage() {
     }, [companyId]);
 
     // Withdrawal Authorization Integration
-    const [locations, setLocations] = useState<any[]>([]);
-    const [selectedLocationId, setSelectedLocationId] = useState("");
     const [withdrawalAmount, setWithdrawalAmount] = useState("");
     const [generatedCode, setGeneratedCode] = useState("");
     const [withdrawals, setWithdrawals] = useState<any[]>([]);
@@ -355,7 +353,15 @@ export default function TesoreriaPage() {
     };
 
     const startSession = async (requestType: string, message: string) => {
+        // Critical: Ensure we have a location to link the movement
+        if (!selectedLocationId) {
+            alert("Por favor seleccione una sucursal para operar el reciclador.");
+            return;
+        }
+
         setActionLoading(true);
+        console.log(`[Treasury] Starting recycler session: ${requestType} for location: ${selectedLocation?.name || selectedLocationId}`);
+        
         if (mockMode) {
             // Simulated Recycler Session
             setActiveSession(requestType);
@@ -511,25 +517,34 @@ export default function TesoreriaPage() {
             }
 
             // --- Control de Caja Integration ---
-            if (sessionAmount > 0 && companyId && activeCashSession) {
+            if (sessionAmount > 0 && companyId && selectedLocationId) {
                 const isIncome = activeSession === 'RefillCash';
                 const txPayload = {
-                    sessionId: activeCashSession.id,
+                    sessionId: activeCashSession?.id || null, // Link to session if open, else null
+                    locationId: selectedLocationId,
+                    locationName: selectedLocation?.name || "Sucursal",
+                    isVaultAdjustment: !activeCashSession, // Mark as out-of-shift if no active session
                     type: isIncome ? "INCOME" : "EXPENSE",
                     category: isIncome ? "INGRESO_FONDO" : "RETIRO_FONDO",
                     amount: sessionAmount,
                     reference: activeSession === 'RefillCash' 
-                        ? "Refill Reciclador (Tesorería)"
+                        ? `Refill Reciclador - Tesorería (${selectedLocation?.name || 'Bóveda'})`
                         : activeSession === 'CollectAllCash'
-                            ? "Corte Parcial Reciclador (Tesorería)"
-                            : "Retiro Total Reciclador (Tesorería)",
+                            ? `Corte Parcial Reciclador - Tesorería (${selectedLocation?.name || 'Bóveda'})`
+                            : `Retiro Total Reciclador - Tesorería (${selectedLocation?.name || 'Bóveda'})`,
                     paymentMethod: "CASH",
                     createdAt: serverTimestamp(),
                     createdBy: user?.email || "Tesorero"
                 };
 
                 await addDoc(collection(db, "companies", companyId, "cash_transactions"), txPayload);
-                console.log("[Treasury] Cash transaction registered in Control de Caja:", txPayload);
+                console.log("[Treasury] Transaction registered:", txPayload);
+                
+                const targetMsg = activeCashSession 
+                    ? `en la caja de ${activeCashSession.locationName}`
+                    : `como AJUSTE DE BÓVEDA en ${selectedLocation?.name || 'la sucursal'}`;
+                    
+                alert(`Movimiento registrado automáticamente ${targetMsg} por ${formatMoney(sessionAmount)}`);
             }
 
             setActiveSession(null);
@@ -643,6 +658,25 @@ export default function TesoreriaPage() {
 
             {/* Banners de Estado y Conexión */}
             <div className="space-y-4">
+                <div className="bg-card border rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <span className="text-sm font-bold text-muted-foreground uppercase whitespace-nowrap ml-2">Sucursal a Gestionar:</span>
+                        <select 
+                            value={selectedLocationId} 
+                            onChange={(e) => setSelectedLocationId(e.target.value)}
+                            className="bg-background border border-border rounded-lg text-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary font-bold min-w-[250px]"
+                        >
+                            <option value="">Seleccione Sucursal...</option>
+                            {locations.map((loc) => (
+                                <option key={loc.id} value={loc.id}>
+                                    {loc.name || loc.Name || loc.nombre || loc.id}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse"><Loader2 className="w-4 h-4 animate-spin" /> Sincronizando...</div>}
+                </div>
+
                 {mockMode && (
                     <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
                         <div className="flex items-center gap-3">
@@ -667,45 +701,46 @@ export default function TesoreriaPage() {
                         </Button>
                     </div>
                 )}
-                {activeCashSession ? (
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
-                        <div className="flex items-center gap-3 w-full md:w-auto">
-                            <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500 shrink-0">
-                                <CheckCircle2 className="w-5 h-5" />
+                
+                {selectedLocationId && (
+                    activeCashSession ? (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
+                            <div className="flex items-center gap-3 w-full md:w-auto">
+                                <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500 shrink-0">
+                                    <CheckCircle2 className="w-5 h-5" />
+                                </div>
+                                <div className="space-y-0.5">
+                                    <h4 className="font-semibold text-emerald-700 dark:text-emerald-400">Turno de Caja Vinculado</h4>
+                                    <p className="text-sm text-emerald-600 dark:text-emerald-500">
+                                        Sucursal activa: <strong className="text-emerald-800 dark:text-emerald-300">{activeCashSession.locationName}</strong> ({activeCashSession.openedByEmail})
+                                    </p>
+                                </div>
                             </div>
-                            <div className="space-y-0.5">
-                                <h4 className="font-semibold text-emerald-700 dark:text-emerald-400">Turno de Caja Vinculado</h4>
-                                <p className="text-sm text-emerald-600 dark:text-emerald-500">
-                                    Sucursal activa: <strong className="text-emerald-800 dark:text-emerald-300">{activeCashSession.locationName}</strong> ({activeCashSession.openedByEmail})
+                        </div>
+                    ) : (
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top duration-300">
+                            <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-500 shrink-0">
+                                <Vault className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-blue-700 dark:text-blue-400">Modo Bóveda (Fuera de Turno)</h4>
+                                <p className="text-sm text-blue-600 dark:text-blue-500 mt-0.5">
+                                    No hay un turno de caja abierto en <strong>{selectedLocation?.name || 'esta sucursal'}</strong>. La operación se registrará como un <strong>Ajuste de Bóveda</strong> para la próxima apertura.
                                 </p>
                             </div>
                         </div>
-                        {openSessions.length > 1 && (
-                            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                                <span className="text-xs font-semibold text-muted-foreground uppercase whitespace-nowrap">Cambiar Caja:</span>
-                                <select 
-                                    value={selectedSessionId} 
-                                    onChange={(e) => setSelectedSessionId(e.target.value)}
-                                    className="bg-background border border-border rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary font-medium"
-                                >
-                                    {openSessions.map((session) => (
-                                        <option key={session.id} value={session.id}>
-                                            {session.locationName} ({session.openedByEmail?.split('@')[0]})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top duration-300">
-                        <div className="w-10 h-10 bg-rose-500/20 rounded-full flex items-center justify-center text-rose-500 shrink-0">
+                    )
+                )}
+
+                {!selectedLocationId && (
+                    <div className="bg-slate-500/10 border border-slate-500/20 rounded-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top duration-300">
+                        <div className="w-10 h-10 bg-slate-500/20 rounded-full flex items-center justify-center text-slate-500 shrink-0">
                             <ShieldAlert className="w-5 h-5" />
                         </div>
                         <div>
-                            <h4 className="font-semibold text-rose-700 dark:text-rose-400">Sin Turno de Caja Activo</h4>
-                            <p className="text-sm text-rose-600 dark:text-rose-500 mt-0.5">
-                                No hay un turno de caja abierto en ninguna sucursal. Las operaciones de bóveda se realizarán físicamente, pero <strong>no se registrarán contablemente</strong> en el control de caja.
+                            <h4 className="font-semibold text-slate-700 dark:text-slate-400">Seleccione Sucursal</h4>
+                            <p className="text-sm text-slate-600 dark:text-slate-500 mt-0.5">
+                                Debe seleccionar una sucursal para poder operar el hardware y registrar los movimientos.
                             </p>
                         </div>
                     </div>

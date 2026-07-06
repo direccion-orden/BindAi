@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { collection, query, where, getDocs, limit, Timestamp, doc, updateDoc, onSnapshot } from "firebase/firestore";
+import { collection, query, where, getDocs, limit, Timestamp, doc, updateDoc, onSnapshot, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, Plus, Banknote, Download, Search, RefreshCcw, CheckCircle2 } from "lucide-react";
@@ -51,16 +51,19 @@ export default function CajaPage() {
   const fetchSession = async () => {
     if (!user || !companyId) return;
     try {
+      // Fetch the last 10 sessions ordered by opening date
       const q = query(
         collection(db, "companies", companyId, "cash_sessions"),
-        where("status", "==", "open")
+        orderBy("openedAt", "desc"),
+        limit(10)
       );
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
         const sessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          
         setAllOpenSessions(sessions);
         
-        // Mantener la sesión activa seleccionada si sigue abierta, si no, tomar la primera
+        // Select the most recent one by default if none is selected
         setActiveSession((current: any) => {
           if (current && sessions.some(s => s.id === current.id)) {
             return sessions.find(s => s.id === current.id);
@@ -72,7 +75,7 @@ export default function CajaPage() {
         setActiveSession(null);
       }
     } catch (error) {
-      console.error("Error fetching session:", error);
+      console.error("Error fetching sessions:", error);
     } finally {
       setLoading(false);
     }
@@ -83,9 +86,7 @@ export default function CajaPage() {
   }, [user, companyId]);
 
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [bindSales, setBindSales] = useState(0);
-  const [isFetchingErp, setIsFetchingErp] = useState(false);
-
+  
   const [totalDailySales, setTotalDailySales] = useState<number | null>(null);
   const [isFetchingDailySales, setIsFetchingDailySales] = useState(false);
   
@@ -147,17 +148,23 @@ export default function CajaPage() {
   };
 
   useEffect(() => {
-    if (activeSession?.liveAudit && !hasMounted.current) {
+    if (!activeSession) return;
+
+    // Reset or populate based on session status
+    if (activeSession.status === 'closed') {
+        setLiveCardSales(activeSession.cardTotalSales?.toString() || "");
+        setLiveCounts(activeSession.closingDenominations || {});
+    } else if (activeSession.liveAudit) {
         setLiveCardSales(activeSession.liveAudit.cardSales || "");
         setLiveCounts(activeSession.liveAudit.counts || {});
-        hasMounted.current = true;
-    } else if (activeSession && !hasMounted.current) {
-        if (activeSession.openingDenominations) {
-            setLiveCounts(activeSession.openingDenominations);
-        }
-        hasMounted.current = true;
+    } else if (activeSession.openingDenominations) {
+        setLiveCounts(activeSession.openingDenominations);
+        setLiveCardSales("");
+    } else {
+        setLiveCounts({});
+        setLiveCardSales("");
     }
-  }, [activeSession]);
+  }, [activeSession?.id, activeSession?.status]);
 
   useEffect(() => {
      if (!activeSession?.id || !hasMounted.current) return;
@@ -202,12 +209,10 @@ export default function CajaPage() {
   // Listen to local sales (remisiones) since shift open in real-time
   useEffect(() => {
     if (!companyId || !activeSession?.openedAt || !activeSession?.locationId) {
-      setBindSales(0);
       setTotalDailySales(null);
       return;
     }
 
-    setIsFetchingErp(true);
     setIsFetchingDailySales(true);
 
     let openedAtDate;
@@ -236,19 +241,6 @@ export default function CajaPage() {
           rem.status === "activa"
         );
 
-        // Sum cash sales
-        let cashSales = 0;
-        filtered.forEach((rem: any) => {
-          if (rem.payments) {
-            rem.payments.forEach((p: any) => {
-              if (p.method?.toLowerCase() === "efectivo") {
-                cashSales += p.amount || 0;
-              }
-            });
-          }
-        });
-        setBindSales(cashSales);
-
         // Sum total overall sales
         let totalSales = 0;
         filtered.forEach((rem: any) => {
@@ -258,7 +250,6 @@ export default function CajaPage() {
       } catch (err) {
         console.error("Error computing sales from Firestore:", err);
       } finally {
-        setIsFetchingErp(false);
         setIsFetchingDailySales(false);
       }
     }, (error) => {
@@ -353,16 +344,15 @@ export default function CajaPage() {
     );
   }
 
-  // Cálculos del turno activo
+  const isClosed = activeSession?.status === "closed";
+  
   const totalFondo = activeSession?.initialFloat || 0;
   const totalIngresos = transactions.filter(t => t.type === "INCOME").reduce((acc, t) => acc + t.amount, 0);
-  const totalCancelaciones = transactions.filter(t => t.type === "EXPENSE" && t.category === "RETIRO_CANCELACION").reduce((acc, t) => acc + t.amount, 0);
   const totalRetiros = transactions.filter(t => t.type === "EXPENSE" && t.category !== "RETIRO_CANCELACION").reduce((acc, t) => acc + t.amount, 0);
   
-  const liveCardVouchers = parseFloat(liveCardSales) || 0;
-  const estimatedCashSales = Math.max(0, bindSales - totalCancelaciones);
+  const liveCardVouchers = isClosed ? (activeSession.closingCardSales || 0) : (parseFloat(liveCardSales) || 0);
 
-  const expectedCash = totalFondo + totalIngresos + estimatedCashSales - totalRetiros;
+  const expectedCash = totalFondo + totalIngresos - totalRetiros;
 
   const countedCash = DENOMINATIONS.reduce((acc, denom) => {
     const qty = liveCounts[denom.value.toString()] || 0;
@@ -392,7 +382,7 @@ export default function CajaPage() {
               >
                 {allOpenSessions.map(session => (
                   <option key={session.id} value={session.id}>
-                    Caja Activa: {session.locationName || 'Sin sucursal'}
+                    {session.status === 'open' ? '🟢 Abierto' : '⚪ Cerrado'}: {session.locationName || 'Sucursal'} ({session.openedAt?.seconds ? new Date(session.openedAt.seconds * 1000).toLocaleDateString('es-MX') : ''})
                   </option>
                 ))}
               </select>
@@ -424,19 +414,42 @@ export default function CajaPage() {
       {activeTab === 'operacion' ? (
         activeSession ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            <div className="bg-card border rounded-lg p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            {!isClosed && (
+                <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-destructive">Finalizar Turno</h3>
+                    <p className="text-sm text-muted-foreground">Esta acción cerrará el arqueo actual y bloqueará nuevos movimientos para esta sesión.</p>
+                  </div>
+                  <Button 
+                    variant="destructive" 
+                    size="lg" 
+                    className="font-bold"
+                    onClick={() => setIsClosingModalOpen(true)}
+                  >
+                    Efectuar Arqueo y Cerrar Turno
+                  </Button>
+                </div>
+             )}
+            <div className={`bg-card border rounded-lg p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 ${isClosed ? 'border-amber-200 bg-amber-50/30' : ''}`}>
               <div>
                 <h2 className="text-xl font-bold flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-green-500 animate-pulse"></span>
-                  Turno Abierto
+                  <span className={`h-3 w-3 rounded-full ${isClosed ? 'bg-slate-400' : 'bg-green-500 animate-pulse'}`}></span>
+                  {isClosed ? 'Turno Finalizado (Archivo)' : 'Turno Abierto'}
                 </h2>
-                <p className="text-sm text-muted-foreground mt-1">Responsable: <span className="font-medium text-foreground">{activeSession.openedByEmail}</span></p>
-                <p className="text-sm text-muted-foreground mt-1">Sucursal: <span className="font-medium text-foreground">{activeSession.locationName || 'Nacional'}</span></p>
-                <div className="flex items-center gap-3 mt-2">
-                  <p className="text-xs text-muted-foreground">Apertura: {activeSession.openedAt?.seconds ? new Date(activeSession.openedAt.seconds * 1000).toLocaleString('es-MX') : 'Reciente'}</p>
-                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-[10px] text-emerald-700 font-semibold select-none">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Base de Datos Sincronizada
+                <div className="space-y-1 mt-1">
+                  <p className="text-sm text-muted-foreground">Responsable: <span className="font-medium text-foreground">{isClosed ? activeSession.closedByEmail : activeSession.openedByEmail}</span></p>
+                  <p className="text-sm text-muted-foreground">Sucursal: <span className="font-medium text-foreground">{activeSession.locationName || 'Nacional'}</span></p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <p className="text-xs text-muted-foreground">Apertura: {activeSession.openedAt?.seconds ? new Date(activeSession.openedAt.seconds * 1000).toLocaleString('es-MX') : 'Reciente'}</p>
+                    {isClosed && activeSession.closedAt && (
+                       <p className="text-xs text-amber-700 font-medium">Cierre: {activeSession.closedAt.seconds ? new Date(activeSession.closedAt.seconds * 1000).toLocaleString('es-MX') : new Date(activeSession.closedAt).toLocaleString('es-MX')}</p>
+                    )}
+                    {!isClosed && (
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-[10px] text-emerald-700 font-semibold select-none">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Base de Datos Sincronizada
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -458,17 +471,11 @@ export default function CajaPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                <div className="bg-card border rounded-lg p-5 shadow-sm">
-                  <p className="text-sm text-muted-foreground whitespace-nowrap">Entradas Manuales</p>
+                  <p className="text-sm text-muted-foreground whitespace-nowrap">Efectivo Recibido</p>
                   <p className="text-2xl font-bold text-foreground">
                    + {totalIngresos.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
-                 </p>
-               </div>
-               <div className="bg-card border rounded-lg p-5 shadow-sm relative">
-                  <p className="text-sm text-muted-foreground flex justify-between whitespace-nowrap" title="Total exacto de ventas en efectivo extraído de los diarios contables de Bind ERP.">Efectivo Mínimo x Ventas {isFetchingErp && <Loader2 className="w-4 h-4 animate-spin text-primary"/>}</p>
-                  <p className="text-2xl font-bold text-foreground">
-                   + {estimatedCashSales.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
                  </p>
                </div>
                <div className="bg-card border rounded-lg p-5 shadow-sm">
@@ -477,9 +484,9 @@ export default function CajaPage() {
                    - {totalRetiros.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
                  </p>
                </div>
-               <div className="bg-primary/5 border border-primary/20 rounded-lg p-5 shadow-sm">
-                  <p className="text-sm text-primary font-semibold whitespace-nowrap">Esperado en Caja</p>
-                  <p className="text-2xl font-bold text-primary">
+               <div className={`bg-primary/5 border rounded-lg p-5 shadow-sm ${isClosed ? 'border-slate-200 bg-slate-50' : 'border-primary/20'}`}>
+                  <p className={`text-sm font-semibold whitespace-nowrap ${isClosed ? 'text-slate-600' : 'text-primary'}`}>{isClosed ? 'Saldo Final de Cierre' : 'Esperado en Caja'}</p>
+                  <p className={`text-2xl font-bold ${isClosed ? 'text-slate-700' : 'text-primary'}`}>
                    = {expectedCash.toLocaleString('es-MX', {style:'currency', currency:'MXN'})}
                  </p>
                </div>
@@ -491,7 +498,7 @@ export default function CajaPage() {
                <div className="flex items-center justify-between border-b pb-2 mb-4">
                  <div className="flex items-center gap-3">
                    <h3 className="font-semibold text-lg">Arqueo Físico Simultáneo (Sin Cerrar)</h3>
-                   {recyclerConnected && (
+                   {recyclerConnected && !isClosed && (
                      <Button
                        type="button"
                        variant="outline"
@@ -511,8 +518,8 @@ export default function CajaPage() {
                      </Button>
                    )}
                  </div>
-                 {syncStatus === 'syncing' && <span className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Sincronizando...</span>}
-                 {syncStatus === 'saved' && <span className="text-xs text-green-600 flex items-center gap-1 font-medium"><CheckCircle2 className="w-3 h-3"/> Activo en la Nube</span>}
+                 {!isClosed && syncStatus === 'syncing' && <span className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Sincronizando...</span>}
+                 {!isClosed && syncStatus === 'saved' && <span className="text-xs text-green-600 flex items-center gap-1 font-medium"><CheckCircle2 className="w-3 h-3"/> Activo en la Nube</span>}
                </div>
                <div className="flex flex-col xl:flex-row gap-6">
                  
@@ -522,7 +529,8 @@ export default function CajaPage() {
                        <Input 
                          type="number" 
                          placeholder="0.00"
-                         value={liveCardSales}
+                         disabled={isClosed}
+                         value={isClosed ? liveCardVouchers : liveCardSales}
                          onChange={(e) => setLiveCardSales(e.target.value)}
                          className="w-32 text-right bg-background"
                        />
@@ -538,6 +546,7 @@ export default function CajaPage() {
                               type="number"
                               min="0"
                               placeholder="0"
+                              disabled={isClosed}
                               className="h-7 text-center flex-1 px-1"
                               value={qty}
                               onChange={(e) => handleLiveCountChange(denom.value.toString(), e.target.value)}
@@ -548,14 +557,14 @@ export default function CajaPage() {
                     </div>
                  </div>
 
-                 <div className={`xl:w-64 p-5 rounded-lg border flex flex-col justify-center items-center shadow-sm transition-colors ${Math.abs(liveDiscrepancy) > 0 ? 'bg-destructive/10 border-destructive/30' : 'bg-green-500/10 border-green-500/30'}`}>
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1 text-center">Efectivo Físico Contado</p>
+                 <div className={`xl:w-64 p-5 rounded-lg border flex flex-col justify-center items-center shadow-sm transition-colors ${isClosed ? 'bg-slate-100 border-slate-200' : (Math.abs(liveDiscrepancy) > 0 ? 'bg-destructive/10 border-destructive/30' : 'bg-green-500/10 border-green-500/30')}`}>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1 text-center">{isClosed ? 'Efectivo Contado al Cierre' : 'Efectivo Físico Contado'}</p>
                     <p className="text-3xl font-black mb-4">{(countedCash).toLocaleString('es-MX', {style:'currency', currency:'MXN'})}</p>
                     
                     <div className="border-t border-foreground/10 pt-4 text-center w-full">
-                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Descuadre Actual</p>
-                       <p className={`text-xl font-bold ${liveDiscrepancy === 0 ? 'text-green-600' : 'text-destructive'}`}>
-                         {liveDiscrepancy === 0 ? 'CUADRADO' : `${liveDiscrepancy > 0 ? '+' : ''}${(liveDiscrepancy).toLocaleString('es-MX', {style:'currency', currency:'MXN'})}`}
+                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{isClosed ? 'Diferencia Final' : 'Descuadre Actual'}</p>
+                       <p className={`text-xl font-bold ${liveDiscrepancy === 0 ? (isClosed ? 'text-slate-700' : 'text-green-600') : 'text-destructive'}`}>
+                         {liveDiscrepancy === 0 ? 'SIN DIFERENCIA' : `${liveDiscrepancy > 0 ? '+' : ''}${(liveDiscrepancy).toLocaleString('es-MX', {style:'currency', currency:'MXN'})}`}
                        </p>
                     </div>
                  </div>
@@ -567,9 +576,11 @@ export default function CajaPage() {
               <div className="p-4 border-b flex items-center justify-between bg-muted/20">
                 <h3 className="font-semibold text-lg">Movimientos Físicos (Caja)</h3>
                 <div className="flex gap-2">
-                   <Button onClick={() => setIsTxModalOpen(true)} variant="secondary" size="sm" className="gap-1">
-                     <Plus className="h-4 w-4" /> Registrar Movimiento
-                   </Button>
+                   {!isClosed && (
+                     <Button onClick={() => setIsTxModalOpen(true)} variant="secondary" size="sm" className="gap-1">
+                       <Plus className="h-4 w-4" /> Registrar Movimiento
+                     </Button>
+                   )}
                 </div>
               </div>
               <div className="overflow-x-auto">

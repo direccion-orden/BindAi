@@ -174,7 +174,7 @@ export default function ClientesPage() {
             for (const record of records) {
               const ref = doc(collection(db, "companies", companyId, "clients"));
               currentBatch.set(ref, {
-                name: record["Razón Social"] || record["Nombre Comercial"] || record["Razn Social"] || "",
+                name: (record["Razón Social"] || record["Nombre Comercial"] || record["Razn Social"] || "").trim().toUpperCase(),
                 rfc: record.RFC || "",
                 email: record.Email || "",
                 phone: record["Teléfonos"] || record["Telfonos"] || "",
@@ -265,13 +265,13 @@ export default function ClientesPage() {
         alert("Nombre y Apellido Paterno son obligatorios para clientes generales.");
         return;
       }
-      finalName = `${formData.firstName.trim()} ${formData.paternalLastName.trim()} ${formData.maternalLastName?.trim() || ""}`.trim();
+      finalName = `${formData.firstName.trim()} ${formData.paternalLastName.trim()} ${formData.maternalLastName?.trim() || ""}`.trim().toUpperCase();
     } else {
       if (!formData.razonSocial?.trim()) {
         alert("La Razón Social es obligatoria para clientes fiscales.");
         return;
       }
-      finalName = formData.razonSocial.trim();
+      finalName = formData.razonSocial.trim().toUpperCase();
     }
 
     if (!companyId) return;
@@ -281,6 +281,11 @@ export default function ClientesPage() {
       const ref = doc(db, "companies", companyId, "clients", docId);
       await setDoc(ref, {
         ...formData,
+        firstName: formData.firstName?.trim().toUpperCase() || "",
+        paternalLastName: formData.paternalLastName?.trim().toUpperCase() || "",
+        maternalLastName: formData.maternalLastName?.trim().toUpperCase() || "",
+        razonSocial: formData.razonSocial?.trim().toUpperCase() || "",
+        commercialName: formData.commercialName?.trim().toUpperCase() || "",
         name: finalName,
         email: formData.email?.trim() || "",
         phone: formData.phone?.trim() || "",

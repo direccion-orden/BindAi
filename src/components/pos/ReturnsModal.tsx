@@ -212,7 +212,7 @@ export function ReturnsModal({ onClose }: ReturnsModalProps) {
     setProcessing(true);
     try {
       const newClientData = {
-        name: newClientName.trim(),
+        name: newClientName.trim().toUpperCase(),
         phone: newClientPhone.trim(),
         email: newClientEmail.trim(),
         rfc: "XAXX010101000",

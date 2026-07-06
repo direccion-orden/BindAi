@@ -243,7 +243,7 @@ export default function ImportarHistorialPage() {
     const clientId = clientRef.id;
 
     clientBatch.set(clientRef, {
-      name: cleanedName,
+      name: cleanedName.toUpperCase(),
       rfc: "",
       email: "",
       phone: "",

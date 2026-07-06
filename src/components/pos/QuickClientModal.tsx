@@ -80,13 +80,13 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch, exis
         setError("Nombre y Apellido Paterno son obligatorios.");
         return;
       }
-      finalName = `${firstName.trim()} ${paternalLastName.trim()} ${maternalLastName.trim()}`.trim();
+      finalName = `${firstName.trim()} ${paternalLastName.trim()} ${maternalLastName.trim()}`.trim().toUpperCase();
     } else {
       if (!razonSocial.trim()) {
         setError("La Razón Social es obligatoria.");
         return;
       }
-      finalName = razonSocial.trim();
+      finalName = razonSocial.trim().toUpperCase();
     }
 
     if (!phone.trim()) {
@@ -100,11 +100,11 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch, exis
     try {
       const newClientData = {
         type,
-        firstName: type === 'general' ? firstName.trim() : "",
-        paternalLastName: type === 'general' ? paternalLastName.trim() : "",
-        maternalLastName: type === 'general' ? maternalLastName.trim() : "",
-        razonSocial: type === 'fiscal' ? razonSocial.trim() : "",
-        commercialName: commercialName.trim(),
+        firstName: type === 'general' ? firstName.trim().toUpperCase() : "",
+        paternalLastName: type === 'general' ? paternalLastName.trim().toUpperCase() : "",
+        maternalLastName: type === 'general' ? maternalLastName.trim().toUpperCase() : "",
+        razonSocial: type === 'fiscal' ? razonSocial.trim().toUpperCase() : "",
+        commercialName: commercialName.trim().toUpperCase(),
         name: finalName,
         phone: phone.trim(),
         email: email.trim(),

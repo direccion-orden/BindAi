@@ -699,7 +699,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
           try {
             await updateDoc(doc(db, "companies", companyId, "expenses_inbox", invoice.satInvoiceId), {
               paidAmount: increment(diffPaidAmount),
-              status: "pending"
+              status: "processed"
             });
           } catch (err) {
             console.warn("Failed to update related SAT invoice:", err);
@@ -709,7 +709,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         // XML directly
         await updateDoc(doc(db, "companies", companyId, "expenses_inbox", invoice.id), {
           paidAmount: increment(diffPaidAmount),
-          status: "pending"
+          status: invoice.expenseId ? "processed" : null
         });
 
         // Also update linked manual expense if it exists

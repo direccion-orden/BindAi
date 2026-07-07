@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, onSnapshot, orderBy, doc, updateDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -113,9 +113,35 @@ export default function GastosManualesPage() {
     if (!confirmCancel) return;
 
     try {
-      await updateDoc(doc(db, "companies", companyId, "expenses", expenseId), {
+      const expenseRef = doc(db, "companies", companyId, "expenses", expenseId);
+      const expenseSnap = await getDoc(expenseRef);
+      const expenseData = expenseSnap.data();
+
+      await updateDoc(expenseRef, {
         status: "cancelado"
       });
+
+      // If linked to a SAT Invoice, revert it to pending
+      if (expenseData?.satInvoiceId) {
+        const satId = expenseData.satInvoiceId;
+        const idToCheck = [satId, satId.toLowerCase(), satId.toUpperCase()];
+        for (const testId of idToCheck) {
+          try {
+            const satRef = doc(db, "companies", companyId, "expenses_inbox", testId);
+            const snap = await getDoc(satRef);
+            if (snap.exists()) {
+              await updateDoc(satRef, {
+                status: null, // Reset to Pending
+                paidAmount: 0,
+                expenseId: null
+              });
+            }
+          } catch (e) {
+            console.error(`Error reverting SAT invoice ${testId}:`, e);
+          }
+        }
+      }
+
       alert("Gasto cancelado exitosamente.");
     } catch (error) {
       console.error("Error canceling expense:", error);

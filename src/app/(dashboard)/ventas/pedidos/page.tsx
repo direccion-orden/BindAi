@@ -25,7 +25,7 @@ interface Order {
 }
 
 export default function PedidosPage() {
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,13 +36,42 @@ export default function PedidosPage() {
     try {
       const newId = crypto.randomUUID();
       const orderNumber = await getNextSequence(companyId, 'pedidos');
+      
+      // Clean up fields that shouldn't be inherited
+      const { 
+        id, 
+        orderNumber: oldNum, 
+        createdAt, 
+        status, 
+        paidAmount, 
+        payments,
+        reconciledAmount,
+        createdBy,
+        updatedAt,
+        migrated,
+        ...rest 
+      } = order;
+
       const newOrder = {
-        ...order,
+        ...rest,
         id: newId,
         orderNumber,
         status: 'por_surtir',
+        paidAmount: 0,
+        payments: [],
+        reconciledAmount: 0,
         createdAt: new Date().toISOString(),
+        createdBy: user?.email || 'IA System',
+        updatedAt: new Date().toISOString(),
+        // Ensure global discount fields are present
+        globalDiscountType: rest.globalDiscountType || "none",
+        globalDiscountValue: rest.globalDiscountValue || 0,
+        // Reset migration flag so it behaves as a native order
+        migrated: false,
+        isCopy: true,
+        sourceOrderId: order.id
       };
+
       await setDoc(doc(db, "companies", companyId, "pedidos", newId), newOrder);
       alert(`Pedido duplicado con éxito bajo el folio ${orderNumber}`);
     } catch (error) {

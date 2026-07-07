@@ -408,7 +408,7 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         </div>
 
         <div className="flex items-center gap-3">
-          {order.status === 'por_surtir' && (
+          {(order.status === 'por_surtir' || order.status === 'pagado') && (
             <>
               {isEditing ? null : (
                 <div className="relative">
@@ -516,6 +516,11 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
               {order.status === 'por_surtir' && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 uppercase">
                   Por Surtir
+                </span>
+              )}
+              {order.status === 'pagado' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                  Pagado
                 </span>
               )}
               {order.status === 'cancelado' && (

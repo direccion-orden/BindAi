@@ -442,6 +442,7 @@ export default function PedidosPage() {
         let estatusStr = "Activo";
         if (order.status === "surtido") estatusStr = "Surtido";
         else if (order.status === "remisionado") estatusStr = "Remisionado";
+        else if (order.status === "pagado") estatusStr = "Pagado";
         else if (order.status === "cancelado") estatusStr = "Cancelado";
 
         const truncateText = (text: string, widthLimit: number) => {
@@ -503,6 +504,7 @@ export default function PedidosPage() {
         let estatusStr = "Activo";
         if (order.status === "surtido") estatusStr = "Surtido";
         else if (order.status === "remisionado") estatusStr = "Remisionado";
+        else if (order.status === "pagado") estatusStr = "Pagado";
         else if (order.status === "cancelado") estatusStr = "Cancelado";
 
         return [
@@ -594,6 +596,7 @@ export default function PedidosPage() {
         {order.status === 'por_surtir' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">Activo</span>}
         {order.status === 'surtido' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold">Surtido</span>}
         {order.status === 'remisionado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">Remisionado</span>}
+        {order.status === 'pagado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold">Pagado</span>}
         {order.status === 'cancelado' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold">Cancelado</span>}
       </td>
       <td className="px-6 py-4 text-right">

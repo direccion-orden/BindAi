@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark } from "lucide-react";
 import { BankTransaction } from "@/types/bank";
-import { CSVUploadModal } from "./components/CSVUploadModal";
+import { BankImportModal } from "./components/BankImportModal";
 import { TransferModal } from "./components/TransferModal";
 import { AdjustmentModal } from "./components/AdjustmentModal";
 import { ReconcilePanel } from "./components/ReconcilePanel";
@@ -35,7 +35,7 @@ export default function BancosPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const [isCSVModalOpen, setIsCSVModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
 
@@ -233,8 +233,8 @@ export default function BancosPage() {
         </div>
         
         <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setIsCSVModalOpen(true)} disabled={!selectedAccountId}>
-                <UploadCloud className="w-4 h-4 text-indigo-600" /> Importar Estado de Cuenta (CSV)
+            <Button variant="outline" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setIsImportModalOpen(true)} disabled={!selectedAccountId}>
+                <UploadCloud className="w-4 h-4 text-indigo-600" /> Importar Estado de Cuenta (CSV/PDF)
             </Button>
             <Button variant="outline" className="gap-2" onClick={() => setIsAdjustmentModalOpen(true)} disabled={!selectedAccountId}>
                 <Settings2 className="w-4 h-4" /> Ajuste Manual
@@ -547,11 +547,11 @@ export default function BancosPage() {
               </div>
           </div>
 
-      {isCSVModalOpen && selectedAccount && (
-          <CSVUploadModal 
+      {isImportModalOpen && selectedAccount && (
+          <BankImportModal 
               accounts={accounts}
               initialAccountId={selectedAccountId}
-              onClose={() => setIsCSVModalOpen(false)} 
+              onClose={() => setIsImportModalOpen(false)} 
           />
       )}
 

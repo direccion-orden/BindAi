@@ -189,7 +189,9 @@ export function PaymentModal({ isOpen, onClose, document, documentType, companyI
             document.status !== "cancelada" && 
             document.status !== "cancelado" && 
             document.status !== "facturada" && 
-            document.status !== "facturado"
+            document.status !== "facturado" &&
+            document.status !== "remisionado" &&
+            document.status !== "surtido"
           ) {
             updates.status = documentType === "pedido" ? "pagado" : "pagada";
           }

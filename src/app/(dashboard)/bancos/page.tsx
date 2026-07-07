@@ -32,6 +32,8 @@ export default function BancosPage() {
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const [isCSVModalOpen, setIsCSVModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -144,13 +146,26 @@ export default function BancosPage() {
   }, [selectedAccount, transactions]);
 
   const filteredTransactions = useMemo(() => {
-    if (!searchQuery) return transactions;
-    const lowerQ = searchQuery.toLowerCase();
-    return transactions.filter(t => 
-      t.concept.toLowerCase().includes(lowerQ) || 
-      (t.reference && t.reference.toLowerCase().includes(lowerQ))
-    );
-  }, [transactions, searchQuery]);
+    let filtered = transactions;
+
+    if (searchQuery) {
+      const lowerQ = searchQuery.toLowerCase();
+      filtered = filtered.filter(t => 
+        t.concept.toLowerCase().includes(lowerQ) || 
+        (t.reference && t.reference.toLowerCase().includes(lowerQ))
+      );
+    }
+
+    if (startDate) {
+      filtered = filtered.filter(t => t.date >= startDate);
+    }
+
+    if (endDate) {
+      filtered = filtered.filter(t => t.date <= endDate);
+    }
+
+    return filtered;
+  }, [transactions, searchQuery, startDate, endDate]);
 
   const displayedTransactions = useMemo(() => {
     if (activeTab === "reconcile") {
@@ -286,15 +301,50 @@ export default function BancosPage() {
                           )}
                       </button>
                   </div>
-                  <div className="relative w-64">
-                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input 
-                          type="search" 
-                          placeholder="Buscar concepto o referencia..." 
-                          className="pl-9 bg-background h-9"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                      />
+                  <div className="flex items-center gap-2">
+                      <div className="flex items-center bg-background border rounded-md px-2 gap-2 h-9 shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Desde</span>
+                        <input 
+                          type="date" 
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="bg-transparent border-none text-xs font-semibold outline-none focus:ring-0 p-0 w-28"
+                        />
+                      </div>
+                      <div className="flex items-center bg-background border rounded-md px-2 gap-2 h-9 shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Hasta</span>
+                        <input 
+                          type="date" 
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="bg-transparent border-none text-xs font-semibold outline-none focus:ring-0 p-0 w-28"
+                        />
+                      </div>
+                      <div className="relative w-64">
+                          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input 
+                              type="search" 
+                              placeholder="Buscar concepto o referencia..." 
+                              className="pl-9 bg-background h-9 text-xs font-medium"
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                          />
+                      </div>
+                      {(searchQuery || startDate || endDate) && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => {
+                            setSearchQuery("");
+                            setStartDate("");
+                            setEndDate("");
+                          }}
+                          className="h-9 px-2 text-slate-400 hover:text-slate-600"
+                          title="Limpiar filtros"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
+                      )}
                   </div>
               </div>
 

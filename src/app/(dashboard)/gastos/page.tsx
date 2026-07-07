@@ -118,11 +118,12 @@ export default function GastosPage() {
       (inv.folio || "").toLowerCase().includes(searchTerm.toLowerCase());
       
     const isPaid = (inv.paidAmount || 0) >= (inv.total || 0) - 0.01;
+    const isProcessed = inv.status === "processed" || inv.status === "received" || isPaid;
     let matchesStatus = true;
     if (statusFilter === "pendientes") {
-      matchesStatus = !isPaid;
+      matchesStatus = !isProcessed;
     } else if (statusFilter === "pagados") {
-      matchesStatus = isPaid;
+      matchesStatus = isProcessed;
     }
     
     // Date range filter
@@ -647,6 +648,12 @@ export default function GastosPage() {
                                               Pago Parcial
                                             </span>
                                           );
+                                        } else if (inv.status === "processed" || inv.status === "received") {
+                                          return (
+                                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-800 bg-blue-100 px-2.5 py-1 rounded-full border border-blue-200">
+                                              Procesada
+                                            </span>
+                                          );
                                         } else {
                                           return (
                                             <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-200">
@@ -658,7 +665,7 @@ export default function GastosPage() {
                                   </td>
                                   <td className="px-4 py-3 text-center">
                                       <div className="flex items-center justify-center gap-2">
-                                        {(!inv.paidAmount || inv.paidAmount < inv.total - 0.01) && (
+                                        {(!inv.paidAmount || inv.paidAmount < inv.total - 0.01) && inv.status !== "processed" && inv.status !== "received" && (
                                           <>
                                             <Button 
                                               asChild

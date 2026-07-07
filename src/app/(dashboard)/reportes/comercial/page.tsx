@@ -315,6 +315,7 @@ export default function ReporteComercialPage() {
     // Backlog (pedidos pending delivery 'por_surtir')
     const pendingOrders = activePedidos.filter(p => p.status === 'por_surtir');
     const backlogAmount = pendingOrders.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+    const backlogBalance = pendingOrders.reduce((sum, p) => sum + ((p.totalAmount || 0) - (p.paidAmount || 0)), 0);
 
     // Ticket Promedio
     const salesCount = activeRemisiones.length + activeFacturas.length;
@@ -447,6 +448,7 @@ export default function ReporteComercialPage() {
       avgTicket,
       pendingOrdersCount: pendingOrders.length,
       backlogAmount,
+      backlogBalance,
       winRate,
       totalGoalAmount,
       goalAttainment,
@@ -813,9 +815,16 @@ export default function ReporteComercialPage() {
               <Clock className="w-5 h-5 text-amber-600" />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-4 font-semibold text-slate-600">
-            {stats.pendingOrdersCount} pedidos pendientes de entrega
-          </p>
+          <div className="mt-4 space-y-1">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground font-semibold">Pedidos:</span>
+              <span className="text-slate-700 font-bold">{stats.pendingOrdersCount}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground font-semibold">Por cobrar:</span>
+              <span className="text-rose-600 font-black">{formatMoney(stats.backlogBalance)}</span>
+            </div>
+          </div>
         </div>
 
         {/* KPI 3: Win Rate */}

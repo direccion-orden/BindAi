@@ -11,8 +11,7 @@ export async function parseBBVAPdf(file: File): Promise<BankTransaction[]> {
   const pdfjs = await import("pdfjs-dist");
   
   // Set worker source (standard for pdfjs-dist in browser)
-  // We use the version from the package.json if possible, or a compatible one.
-  pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js`;
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@6.1.200/build/pdf.worker.min.mjs`;
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;

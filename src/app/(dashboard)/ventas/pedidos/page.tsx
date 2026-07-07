@@ -5,7 +5,7 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, getDoc 
 import { db } from "@/lib/firebase/client";
 import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Copy, Eye, FileDown, Ban, DollarSign, FileSpreadsheet, ChevronRight, ChevronDown } from "lucide-react";
+import { Loader2, Package, Truck, CheckCircle2, User, FileText, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Copy, Eye, FileDown, Ban, DollarSign, FileSpreadsheet, ChevronRight, ChevronDown, AlertCircle } from "lucide-react";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ interface Order {
   subtotal: number;
   tax: number;
   totalAmount: number;
+  paidAmount?: number;
   status: string; // 'por_surtir', 'surtido', 'entregado', 'remisionado'
   createdAt: string;
   createdBy: string;
@@ -388,8 +389,8 @@ export default function PedidosPage() {
       y += boxH + 6;
 
       // --- Table Headers ---
-      const colWidths = [22, 63, 33, 27, 25, 18];
-      const colHeaders = ["Folio", "Cliente", "Sucursal", "Fecha", "Total", "Estatus"];
+      const colWidths = [18, 50, 28, 25, 23, 23, 23, 16];
+      const colHeaders = ["Folio", "Cliente", "Sucursal", "Fecha", "Total", "Pagado", "Saldo", "Estatus"];
 
       const renderTableHeader = (yPos: number) => {
         doc.setFillColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
@@ -399,7 +400,7 @@ export default function PedidosPage() {
         doc.setTextColor(240, 238, 235);
         let hx = margin + 2;
         colHeaders.forEach((header, i) => {
-          if (i === 4) {
+          if (i === 4 || i === 5 || i === 6) {
             doc.text(header, hx + colWidths[i] - 4, yPos + 5, { align: "right" });
           } else {
             doc.text(header, hx, yPos + 5);
@@ -438,6 +439,8 @@ export default function PedidosPage() {
         const sucursal = String((order as any).locationName || locations.find(l => l.id === (order as any).locationId)?.name || "N/A");
         const fecha = new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const total = `$${(order.totalAmount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+        const pagado = `$${(order.paidAmount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+        const saldo = `$${((order.totalAmount || 0) - (order.paidAmount || 0)).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
         
         let estatusStr = "Activo";
         if (order.status === "surtido") estatusStr = "Surtido";
@@ -457,11 +460,13 @@ export default function PedidosPage() {
           truncateText(sucursal, colWidths[2]),
           fecha,
           total,
+          pagado,
+          saldo,
           estatusStr
         ];
 
         rowData.forEach((text, i) => {
-          if (i === 4) {
+          if (i === 4 || i === 5 || i === 6) {
             doc.text(text, cx + colWidths[i] - 4, y + 4, { align: "right" });
           } else {
             doc.text(text, cx, y + 4);
@@ -483,7 +488,7 @@ export default function PedidosPage() {
     if (sortedOrders.length === 0) return;
 
     try {
-      const headers = ["No. Pedido", "Cliente", "Sucursal", "Fecha", "Total", "Estatus"];
+      const headers = ["No. Pedido", "Cliente", "Sucursal", "Fecha", "Total", "Pagado", "Saldo Pendiente", "Estatus"];
       
       const escapeCSVField = (val: any) => {
         if (val === null || val === undefined) return '""';
@@ -500,6 +505,8 @@ export default function PedidosPage() {
         const sucursal = (order as any).locationName || locations.find(l => l.id === (order as any).locationId)?.name || "N/A";
         const fecha = new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const total = (order.totalAmount || 0).toFixed(2);
+        const pagado = (order.paidAmount || 0).toFixed(2);
+        const saldo = ((order.totalAmount || 0) - (order.paidAmount || 0)).toFixed(2);
         
         let estatusStr = "Activo";
         if (order.status === "surtido") estatusStr = "Surtido";
@@ -513,6 +520,8 @@ export default function PedidosPage() {
           escapeCSVField(sucursal),
           escapeCSVField(fecha),
           total,
+          pagado,
+          saldo,
           escapeCSVField(estatusStr)
         ].join(",");
       });
@@ -591,6 +600,12 @@ export default function PedidosPage() {
       </td>
       <td className="px-6 py-4 font-bold text-emerald-700">
         ${order.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}
+      </td>
+      <td className="px-6 py-4 text-blue-700 font-medium">
+        ${(order.paidAmount || 0).toLocaleString('es-MX', {minimumFractionDigits:2})}
+      </td>
+      <td className={`px-6 py-4 font-bold ${((order.totalAmount || 0) - (order.paidAmount || 0)) > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+        ${((order.totalAmount || 0) - (order.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}
       </td>
       <td className="px-6 py-4">
         {order.status === 'por_surtir' && <span className="inline-flex items-center px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">Activo</span>}
@@ -685,14 +700,48 @@ export default function PedidosPage() {
       </div>
 
       {/* Summary Metrics Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-card border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
+          <div className="p-3 bg-slate-50 text-slate-600 rounded-lg">
+            <Package className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pedidos Filtrados</p>
+            <p className="text-xl font-bold text-slate-800">{filteredOrders.length}</p>
+          </div>
+        </div>
+        
+        <div className="bg-card border rounded-xl p-5 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
             <DollarSign className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Monto Total Filtrado</p>
-            <p className="text-xl font-bold text-slate-800">${totalFilteredAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total de Pedidos</p>
+            <p className="text-xl font-bold text-emerald-700">${totalFilteredAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+          </div>
+        </div>
+
+        <div className="bg-card border rounded-xl p-5 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Monto Pagado</p>
+            <p className="text-xl font-bold text-blue-700">
+              ${filteredOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-card border rounded-xl p-5 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-rose-50 text-rose-600 rounded-lg">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Saldo Pendiente</p>
+            <p className="text-xl font-bold text-rose-700">
+              ${filteredOrders.reduce((sum, o) => sum + ((o.totalAmount || 0) - (o.paidAmount || 0)), 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+            </p>
           </div>
         </div>
       </div>
@@ -859,6 +908,12 @@ export default function PedidosPage() {
                     {renderSortIcon("totalAmount")}
                   </div>
                 </th>
+                <th className="px-6 py-4 text-slate-500 uppercase text-xs font-semibold">
+                  Pagado
+                </th>
+                <th className="px-6 py-4 text-slate-500 uppercase text-xs font-semibold">
+                  Saldo
+                </th>
                 <th 
                   className="px-6 py-4 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors"
                   onClick={() => handleSort("status")}
@@ -874,7 +929,7 @@ export default function PedidosPage() {
             <tbody className="divide-y">
                {sortedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
+                  <td colSpan={9} className="px-6 py-10 text-center text-slate-400">
                     <Package className="w-12 h-12 mx-auto mb-3 opacity-20" />
                     No se encontraron pedidos con los filtros aplicados.
                   </td>
@@ -890,7 +945,7 @@ export default function PedidosPage() {
                         className="bg-indigo-50/20 hover:bg-indigo-50/40 cursor-pointer transition-colors border-y"
                         onClick={() => toggleGroup(group.key)}
                       >
-                        <td colSpan={7} className="px-6 py-3 select-none">
+                        <td colSpan={9} className="px-6 py-3 select-none">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               {isExpanded ? (

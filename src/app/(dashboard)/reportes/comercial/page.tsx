@@ -98,6 +98,14 @@ export default function ReporteComercialPage() {
       const p = productsMap[prodId];
       if (p.Category1ID) return p.Category1ID;
       if (p.categoryId) return p.categoryId;
+      if (p.productType) {
+        // Try to find the category ID by its name (stored in productType)
+        const nameLower = String(p.productType).toLowerCase().trim();
+        const foundCat = Object.entries(categories).find(
+          ([_, name]) => name.toLowerCase().trim() === nameLower
+        );
+        if (foundCat) return foundCat[0];
+      }
     }
     
     // 2. Look up using item.categoryIds (e.g. from remisiones)
@@ -191,7 +199,8 @@ export default function ReporteComercialPage() {
             Category1ID: data.Category1ID || null,
             Category2ID: data.Category2ID || null,
             Category3ID: data.Category3ID || null,
-            categoryId: data.categoryId || null
+            categoryId: data.categoryId || null,
+            productType: data.productType || null
           };
         });
         setProductsMap(prods);

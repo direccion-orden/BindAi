@@ -958,6 +958,66 @@ export default function MigrationPage() {
     }
   };
 
+  const fixMissingProductTypes = async () => {
+    if (!companyId) return;
+    setLoadingTask("fix_categories");
+    addLog("🛠️ Iniciando reparación de categorías (Category1ID -> productType)...");
+
+    try {
+      // 1. Load categories to have a map of ID -> Name
+      const catSnap = await getDocs(collection(db, "companies", companyId, "categories"));
+      const catMap: Record<string, string> = {};
+      catSnap.docs.forEach(d => {
+        const data = d.data();
+        catMap[d.id] = data.Title || data.Name || data.name || "";
+      });
+
+      addLog(`  -> ${Object.keys(catMap).length} categorías cargadas para mapeo.`);
+
+      // 2. Load all products
+      const prodSnap = await getDocs(collection(db, "companies", companyId, "products"));
+      let fixCount = 0;
+      let batch = writeBatch(db);
+      let opCount = 0;
+
+      for (const docSnap of prodSnap.docs) {
+        const data = docSnap.data();
+        const categoryId = data.Category1ID || data.categoryId;
+        const currentType = data.productType || "";
+
+        // If productType is empty but we have a categoryId
+        if (!currentType.trim() && categoryId && catMap[categoryId]) {
+          const categoryName = catMap[categoryId];
+          batch.update(docSnap.ref, {
+            productType: categoryName,
+            updatedAt: new Date()
+          });
+          fixCount++;
+          opCount++;
+
+          if (opCount >= 400) {
+            await batch.commit();
+            batch = writeBatch(db);
+            opCount = 0;
+            addLog(`  -> ${fixCount} productos actualizados progresivamente...`);
+          }
+        }
+      }
+
+      if (opCount > 0) {
+        await batch.commit();
+      }
+
+      addLog(`✅ REPARACIÓN COMPLETADA. Se actualizaron ${fixCount} productos con su nombre de categoría.`);
+      alert(`Se actualizaron ${fixCount} productos exitosamente.`);
+    } catch (e: any) {
+      addLog(`❌ Error durante la reparación: ${e.message}`);
+      alert(`Error durante la reparación: ${e.message}`);
+    } finally {
+      setLoadingTask(null);
+    }
+  };
+
   const percentProgress = overallProgress 
     ? Math.round((overallProgress.current / overallProgress.total) * 100)
     : 0;
@@ -1008,6 +1068,16 @@ export default function MigrationPage() {
           >
             {isNuking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
             Limpiar Datos de Prueba
+          </Button>
+
+          <Button 
+            variant="outline" 
+            className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-medium rounded-xl transition-all"
+            onClick={fixMissingProductTypes} 
+            disabled={loadingTask !== null || isNuking || isDeletingProducts || !companyId}
+          >
+            {loadingTask === "fix_categories" ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
+            Migrar Categorías (Fix)
           </Button>
         </div>
       </div>

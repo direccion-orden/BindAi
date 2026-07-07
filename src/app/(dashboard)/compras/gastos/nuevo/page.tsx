@@ -687,7 +687,7 @@ function NuevoGastoForm() {
 
       await setDoc(doc(db, "companies", companyId, "expenses", expenseId), expenseDoc);
 
-      // If linked to a SAT Invoice, update it to fully paid/reconciled so it gets processed
+      // If linked to a SAT Invoice, update it to reflect it's been processed
       if (linkedSatInvoiceId) {
         const idToCheck = [linkedSatInvoiceId, linkedSatInvoiceId.toLowerCase(), linkedSatInvoiceId.toUpperCase()];
         for (const testId of idToCheck) {
@@ -695,9 +695,12 @@ function NuevoGastoForm() {
             const satRef = doc(db, "companies", companyId, "expenses_inbox", testId);
             const snap = await getDoc(satRef);
             if (snap.exists()) {
+              // If paid immediately, we can mark as paid. 
+              // Otherwise, just 'processed' to indicate the gasto document exists.
               await updateDoc(satRef, {
-                status: "paid",
-                paidAmount: totalCost
+                status: isPaidImmediately ? "paid" : "processed",
+                paidAmount: isPaidImmediately ? totalCost : 0,
+                expenseId: expenseId // Link back to the expense document
               });
             }
           } catch (e) {

@@ -1392,32 +1392,63 @@ export function ReconcilePanel({
                       </div>
                     </div>
 
-                    {/* Items list */}
+                              {/* Items list */}
                     <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
-                      {selectedDoc.items && selectedDoc.items.length > 0 ? (
-                        selectedDoc.items.map((item: any, idx: number) => {
-                          const itemName = item.productName || item.concept || item.description || item.name || "Concepto sin nombre";
-                          const qty = item.quantity || 1;
-                          const price = item.unitPrice || item.unitCost || item.price || item.cost || 0;
-                          const total = item.total || item.lineTotal || (qty * price);
+                      {((selectedDoc.items && selectedDoc.items.length > 0) || (selectedDoc.conceptos && selectedDoc.conceptos.length > 0)) ? (
+                        (() => {
+                          const docItems = selectedDoc.items || [];
+                          const docConceptos = selectedDoc.conceptos || [];
+                          
+                          if (docItems.length > 0) {
+                            return docItems.map((item: any, idx: number) => {
+                              const itemName = item.productName || item.concept || item.description || item.name || "Concepto sin nombre";
+                              const qty = item.quantity || 1;
+                              const price = item.unitPrice || item.unitCost || item.price || item.cost || 0;
+                              const total = item.total || item.lineTotal || (qty * price);
 
-                          return (
-                            <div key={idx} className="flex justify-between items-start text-xs pb-2 border-b border-slate-100 last:border-0 last:pb-0 gap-3">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-bold text-slate-800 truncate" title={itemName}>
-                                  {itemName}
-                                </p>
-                                {item.variantTitle && (
-                                  <p className="text-[10px] text-slate-400 font-medium">{item.variantTitle}</p>
-                                )}
-                              </div>
-                              <div className="text-right shrink-0 font-mono text-[11px] text-slate-500">
-                                <span>{qty} x ${price.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                <span className="block font-black text-slate-700">${total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              </div>
-                            </div>
-                          );
-                        })
+                              return (
+                                <div key={idx} className="flex justify-between items-start text-xs pb-2 border-b border-slate-100 last:border-0 last:pb-0 gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-slate-800 truncate" title={itemName}>
+                                      {itemName}
+                                    </p>
+                                    {item.variantTitle && (
+                                      <p className="text-[10px] text-slate-400 font-medium">{item.variantTitle}</p>
+                                    )}
+                                  </div>
+                                  <div className="text-right shrink-0 font-mono text-[11px] text-slate-500">
+                                    <span>{qty} x ${price.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    <span className="block font-black text-slate-700">${total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          } else {
+                            return docConceptos.map((item: any, idx: number) => {
+                              const itemName = item.descripcion || item.concept || item.productName || "Concepto sin nombre";
+                              const qty = item.cantidad || 1;
+                              const price = item.valorUnitario || item.unitCost || item.price || 0;
+                              const total = item.importe || (qty * price);
+
+                              return (
+                                <div key={idx} className="flex justify-between items-start text-xs pb-2 border-b border-slate-100 last:border-0 last:pb-0 gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-slate-800 truncate" title={itemName}>
+                                      {itemName}
+                                    </p>
+                                    {item.claveProdServ && (
+                                      <p className="text-[10px] text-slate-400 font-medium">Clave: {item.claveProdServ}</p>
+                                    )}
+                                  </div>
+                                  <div className="text-right shrink-0 font-mono text-[11px] text-slate-500">
+                                    <span>{qty} x ${price.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    <span className="block font-black text-slate-700">${total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          }
+                        })()
                       ) : (
                         <div className="flex justify-between items-center text-xs text-slate-600 py-1">
                           <span className="font-medium">{selectedDoc.concept || "Concepto general"}</span>

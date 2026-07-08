@@ -54,9 +54,9 @@ export const StrategicTreeView: React.FC<StrategicTreeViewProps> = ({
 
   return (
     <div className="space-y-4 pb-20">
-      {branches.map(branch => {
-        const branchVisions = visions.filter(v => v.branchId === branch.id);
-        const branchStrategies = strategies.filter(s => s.branchId === branch.id);
+      {branches.map((branch: any) => {
+        const branchVisions = visions.filter((v: StrategicVision) => v.branchId === branch.id);
+        const branchStrategies = strategies.filter((s: Strategy) => s.branchId === branch.id);
         
         if (branchVisions.length === 0 && branchStrategies.length === 0) return null;
 
@@ -143,7 +143,7 @@ const BranchNode = ({ branch, visions, strategies, goals, tactics, kpis, onAddGo
             <VisionNode 
               key={vision.id} 
               vision={vision}
-              strategies={strategies.filter(s => s.visionId === vision.id)}
+              strategies={strategies.filter((s: Strategy) => s.visionId === vision.id)}
               goals={goals}
               tactics={tactics}
               kpis={kpis}
@@ -154,15 +154,15 @@ const BranchNode = ({ branch, visions, strategies, goals, tactics, kpis, onAddGo
           ))}
 
           {/* Legacy/Orphaned Strategies (No Vision) */}
-          {strategies.filter(s => !s.visionId).length > 0 && (
+          {strategies.filter((s: Strategy) => !s.visionId).length > 0 && (
             <div className="space-y-4 pt-4 border-t border-dashed border-slate-100">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Estrategias sin Visión asignada</h4>
-              {strategies.filter(s => !s.visionId).map((strategy: Strategy) => (
+              {strategies.filter((s: Strategy) => !s.visionId).map((strategy: Strategy) => (
                 <StrategyNode 
                   key={strategy.id} 
                   strategy={strategy} 
-                  goals={goals.filter(g => g.strategyId === strategy.id)}
-                  tactics={tactics.filter(t => t.strategyId === strategy.id)}
+                  goals={goals.filter((g: CommercialGoal) => g.strategyId === strategy.id)}
+                  tactics={tactics.filter((t: Tactic) => t.strategyId === strategy.id)}
                   kpis={kpis}
                   onAddGoal={onAddGoal}
                   onAddTactic={onAddTactic}
@@ -221,8 +221,8 @@ const VisionNode = ({ vision, strategies, goals, tactics, kpis, onAddGoal, onAdd
               <StrategyNode 
                 key={strategy.id} 
                 strategy={strategy} 
-                goals={goals.filter(g => g.strategyId === strategy.id)}
-                tactics={tactics.filter(t => t.strategyId === strategy.id)}
+                goals={goals.filter((g: CommercialGoal) => g.strategyId === strategy.id)}
+                tactics={tactics.filter((t: Tactic) => t.strategyId === strategy.id)}
                 kpis={kpis}
                 onAddGoal={onAddGoal}
                 onAddTactic={onAddTactic}

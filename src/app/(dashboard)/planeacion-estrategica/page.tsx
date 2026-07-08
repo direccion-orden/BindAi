@@ -155,10 +155,10 @@ export default function PlaneacionEstrategicaPage() {
     if (!companyId || visions.length === 0 || strategies.length === 0) return;
 
     visions.forEach(async (vision) => {
-      const visionStrategies = strategies.filter(s => s.visionId === vision.id);
+      const visionStrategies = strategies.filter((s: Strategy) => s.visionId === vision.id);
       if (visionStrategies.length === 0) return;
 
-      const avgProgress = visionStrategies.reduce((acc, s) => acc + (s.progress || 0), 0) / visionStrategies.length;
+      const avgProgress = visionStrategies.reduce((acc: number, s: Strategy) => acc + (s.progress || 0), 0) / visionStrategies.length;
       
       // Only update if it changed significantly
       if (Math.abs((vision.progress || 0) - avgProgress) > 0.1) {
@@ -268,7 +268,7 @@ export default function PlaneacionEstrategicaPage() {
               <DropdownMenuContent align="end" className="w-56">
                 <div className="p-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sucursal</div>
                 <DropdownMenuItem onClick={() => setSelectedBranch("all")}>Todas</DropdownMenuItem>
-                {branches.map(b => (
+                {branches.map((b: any) => (
                   <DropdownMenuItem key={b.id} onClick={() => setSelectedBranch(b.id)}>{b.name || b.Name || b.id}</DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -300,7 +300,7 @@ export default function PlaneacionEstrategicaPage() {
                       </div>
                       <div className="h-12 w-[1px] bg-white/20" />
                       <div>
-                        <div className="text-4xl font-black">{kpis.filter(k => k.statusColor === 'rojo').length}</div>
+                        <div className="text-4xl font-black">{kpis.filter((k: KPI) => k.statusColor === 'rojo').length}</div>
                         <div className="text-xs text-indigo-100 uppercase mt-1">KPIs en Riesgo</div>
                       </div>
                     </div>
@@ -319,16 +319,16 @@ export default function PlaneacionEstrategicaPage() {
 
             {/* Listado de Sucursales y sus Estrategias */}
             {branches.map(branch => {
-              const branchVisions = visions.filter(v => v.branchId === branch.id);
-              const branchStrategies = strategies.filter(s => s.branchId === branch.id);
+              const branchVisions = visions.filter((v: StrategicVision) => v.branchId === branch.id);
+              const branchStrategies = strategies.filter((s: Strategy) => s.branchId === branch.id);
               
               if (branchVisions.length === 0 && branchStrategies.length === 0 && selectedBranch !== "all" && selectedBranch !== branch.id) return null;
               if (selectedBranch !== "all" && branch.id !== selectedBranch) return null;
 
               const avgBranchProgress = branchVisions.length > 0
-                ? branchVisions.reduce((acc, v) => acc + (v.progress || 0), 0) / branchVisions.length
+                ? branchVisions.reduce((acc: number, v: StrategicVision) => acc + (v.progress || 0), 0) / branchVisions.length
                 : branchStrategies.length > 0
-                  ? branchStrategies.reduce((acc, s) => acc + (s.progress || 0), 0) / branchStrategies.length
+                  ? branchStrategies.reduce((acc: number, s: Strategy) => acc + (s.progress || 0), 0) / branchStrategies.length
                   : 0;
 
               return (

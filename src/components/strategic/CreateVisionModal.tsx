@@ -160,7 +160,7 @@ export function CreateVisionModal({ isOpen, onClose, branches, vision }: CreateV
                   <SelectValue placeholder="Seleccionar sucursal" />
                 </SelectTrigger>
                 <SelectContent>
-                  {branches.map(b => (
+                  {branches.map((b: any) => (
                     <SelectItem key={b.id} value={b.id}>{b.name || b.Name || b.id}</SelectItem>
                   ))}
                 </SelectContent>

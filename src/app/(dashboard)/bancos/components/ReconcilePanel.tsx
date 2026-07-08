@@ -313,6 +313,27 @@ export function ReconcilePanel({
     }
   }, [sortedAndMatchedDocs]);
 
+  const selectedDoc = useMemo(() => {
+    if (!selectedDocId || reconcileMode !== "match") return null;
+    return sortedAndMatchedDocs.find(d => d.id === selectedDocId);
+  }, [selectedDocId, sortedAndMatchedDocs, reconcileMode]);
+
+  const searchableDocs = useMemo(() => {
+    return sortedAndMatchedDocs.map(doc => {
+      const isManualLabel = doc._type === "gasto_manual" ? " (Manual)" : "";
+      const partnerName = doc.vendorName || doc.emisorName || doc.clientName || "Proveedor/Cliente";
+      const docNumber = doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
+      const matchLabel = doc.isExactMatch ? "⭐ [SUGERIDO] " : "";
+      const dateDisplay = doc.docDateStr ? ` [${doc.docDateStr}]` : "";
+
+      return {
+        id: doc.id,
+        name: `${matchLabel}${partnerName} - #${docNumber}${isManualLabel}${dateDisplay}`,
+        subtitle: `Pendiente: $${doc.docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: $${doc.docTotal.toLocaleString('es-MX')}`
+      };
+    });
+  }, [sortedAndMatchedDocs]);
+
   // Auto-select first categorization account if empty and we switch to direct
   useEffect(() => {
     if (reconcileMode === "direct" && accountingAccounts.length > 0 && !selectedExpenseOrIncomeAccountId) {
@@ -1329,27 +1350,89 @@ export function ReconcilePanel({
               </div>
             ) : (
               <div className="space-y-3">
-                <select
-                  value={selectedDocId}
-                  onChange={(e) => setSelectedDocId(e.target.value)}
-                  className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
+                <SearchableSelect
+                  label="Seleccionar Documento Pendiente"
+                  placeholder="Busca por cliente/proveedor, folio, total..."
+                  items={searchableDocs}
+                  selectedId={selectedDocId}
+                  onSelect={setSelectedDocId}
                   required
-                >
-                  <option value="" disabled>Selecciona un documento pendiente...</option>
-                  {sortedAndMatchedDocs.map(doc => {
-                    const isManualLabel = doc._type === "gasto_manual" ? " (Manual)" : "";
-                    const partnerName = doc.vendorName || doc.emisorName || doc.clientName || "Proveedor/Cliente";
-                    const docNumber = doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
-                    const matchLabel = doc.isExactMatch ? "⭐ [SUGERIDO]" : "";
-                    const dateDisplay = doc.docDateStr ? ` [${doc.docDateStr}]` : "";
+                />
 
-                    return (
-                      <option key={doc.id} value={doc.id} className={doc.isExactMatch ? "font-bold text-emerald-700 bg-emerald-50" : ""}>
-                        {matchLabel} {partnerName} - #{docNumber}{isManualLabel}{dateDisplay} (Pendiente: ${doc.docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: ${doc.docTotal.toLocaleString('es-MX')})
-                      </option>
-                    );
-                  })}
-                </select>
+                {/* Details box of the selected invoice/document */}
+                {selectedDoc && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 animate-in fade-in duration-200 mt-2">
+                    <div className="flex justify-between items-start border-b border-slate-200 pb-2.5">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            Documento Seleccionado
+                          </span>
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase ${
+                            selectedDoc._type === "factura" 
+                              ? "bg-emerald-100 text-emerald-800" 
+                              : "bg-blue-100 text-blue-800"
+                          }`}>
+                            {selectedDoc._type === "factura" ? "Factura emit." : "Gasto / Compra"}
+                          </span>
+                        </div>
+                        <p className="text-xs font-black text-slate-800 mt-0.5">
+                          {selectedDoc.vendorName || selectedDoc.emisorName || selectedDoc.clientName || "Proveedor/Cliente"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-mono font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg">
+                          #{selectedDoc.invoiceNumber || selectedDoc.folio || selectedDoc.uuid?.substring(0, 8) || selectedDoc.id}
+                        </span>
+                        {(selectedDoc.docDateStr || selectedDoc.date) && (
+                          <span className="block text-[10px] font-bold text-slate-500 mt-1">
+                            {selectedDoc.docDateStr || selectedDoc.date}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Items list */}
+                    <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                      {selectedDoc.items && selectedDoc.items.length > 0 ? (
+                        selectedDoc.items.map((item: any, idx: number) => {
+                          const itemName = item.productName || item.concept || item.description || item.name || "Concepto sin nombre";
+                          const qty = item.quantity || 1;
+                          const price = item.unitPrice || item.unitCost || item.price || item.cost || 0;
+                          const total = item.total || item.lineTotal || (qty * price);
+
+                          return (
+                            <div key={idx} className="flex justify-between items-start text-xs pb-2 border-b border-slate-100 last:border-0 last:pb-0 gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-bold text-slate-800 truncate" title={itemName}>
+                                  {itemName}
+                                </p>
+                                {item.variantTitle && (
+                                  <p className="text-[10px] text-slate-400 font-medium">{item.variantTitle}</p>
+                                )}
+                              </div>
+                              <div className="text-right shrink-0 font-mono text-[11px] text-slate-500">
+                                <span>{qty} x ${price.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="block font-black text-slate-700">${total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="flex justify-between items-center text-xs text-slate-600 py-1">
+                          <span className="font-medium">{selectedDoc.concept || "Concepto general"}</span>
+                          <span className="font-mono font-bold">${(selectedDoc.docTotal || selectedDoc.amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Totals */}
+                    <div className="border-t border-slate-200 pt-2.5 flex justify-between items-center font-bold text-slate-800 text-xs">
+                      <span>Total del Documento</span>
+                      <span className="font-mono text-sm text-slate-900">${(selectedDoc.docTotal || selectedDoc.amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Highlight exact match */}
                 {sortedAndMatchedDocs.find(d => d.isExactMatch) && (

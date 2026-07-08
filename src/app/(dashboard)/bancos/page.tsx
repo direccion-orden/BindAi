@@ -26,7 +26,7 @@ interface BankAccount {
 export default function BancosPage() {
   const { companyId } = useAuth();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountIdState] = useState<string>("");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
@@ -39,7 +39,7 @@ export default function BancosPage() {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
 
-  const [activeTab, setActiveTabState] = useState<"history" | "reconcile">("history");
+  const [activeTab, setActiveTab] = useState<"history" | "reconcile">("history");
   const [selectedTxs, setSelectedTxs] = useState<BankTransaction[]>([]);
 
   // Sync state from URL on mount
@@ -48,29 +48,34 @@ export default function BancosPage() {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab") as "history" | "reconcile";
       const account = params.get("account");
-      if (tab) setActiveTabState(tab);
-      if (account) setSelectedAccountIdState(account);
+      if (tab) setActiveTab(tab);
+      if (account) setSelectedAccountId(account);
     }
   }, []);
 
-  // Wrappers to update state and URL query params
-  const setActiveTab = (tab: "history" | "reconcile") => {
-    setActiveTabState(tab);
+  // Sync state to URL in a side-effect (safe from React render phase warning)
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      params.set("tab", tab);
-      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
-    }
-  };
+      let changed = false;
 
-  const setSelectedAccountId = (accountId: string) => {
-    setSelectedAccountIdState(accountId);
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      params.set("account", accountId);
-      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+      const currentTab = params.get("tab");
+      if (activeTab && currentTab !== activeTab) {
+        params.set("tab", activeTab);
+        changed = true;
+      }
+
+      const currentAccount = params.get("account");
+      if (selectedAccountId && currentAccount !== selectedAccountId) {
+        params.set("account", selectedAccountId);
+        changed = true;
+      }
+
+      if (changed) {
+        window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+      }
     }
-  };
+  }, [activeTab, selectedAccountId]);
 
   useEffect(() => {
     setSelectedTxs([]);
@@ -87,10 +92,12 @@ export default function BancosPage() {
     if (!companyId) return;
     const q = query(collection(db, "companies", companyId, "bankAccounts"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BankAccount));
+      const data = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as BankAccount))
+        .sort((a, b) => (a.Name || a.name || "").localeCompare(b.Name || b.name || "", "es"));
       setAccounts(data);
       
-      setSelectedAccountIdState(current => {
+      setSelectedAccountId(current => {
         let urlAccount = "";
         if (typeof window !== "undefined") {
           urlAccount = new URLSearchParams(window.location.search).get("account") || "";
@@ -98,13 +105,7 @@ export default function BancosPage() {
         
         const activeId = current || urlAccount;
         if (data.length > 0 && !activeId) {
-          const firstId = data[0].id;
-          if (typeof window !== "undefined") {
-            const params = new URLSearchParams(window.location.search);
-            params.set("account", firstId);
-            window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
-          }
-          return firstId;
+          return data[0].id;
         }
         return activeId;
       });
@@ -330,20 +331,32 @@ export default function BancosPage() {
 
       <div className="w-full bg-card border rounded-xl shadow-sm flex flex-col h-[850px]">
               <div className="p-2 border-b flex items-center justify-between gap-4 bg-slate-50/50 rounded-t-xl shrink-0">
-                  <div className="flex gap-2">
+                  <div className="flex gap-1.5 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60">
                       <button
                           onClick={() => setActiveTab("history")}
-                          className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'history' ? 'bg-white border shadow text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-800'}`}
+                          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            activeTab === 'history' 
+                              ? 'bg-purple-600 text-white font-extrabold shadow-sm' 
+                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
+                          }`}
                       >
                           Historial de Movimientos
                       </button>
                       <button
                           onClick={() => setActiveTab("reconcile")}
-                          className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'reconcile' ? 'bg-white border shadow text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-800'}`}
+                          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                            activeTab === 'reconcile' 
+                              ? 'bg-purple-600 text-white font-extrabold shadow-sm' 
+                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
+                          }`}
                       >
                           Conciliación Pendiente
                           {filteredTransactions.filter(t => !t.reconciled).length > 0 && (
-                            <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-700 animate-pulse">
+                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-full transition-colors ${
+                              activeTab === 'reconcile'
+                                ? 'bg-purple-800 text-purple-100'
+                                : 'bg-purple-100 text-purple-700 animate-pulse'
+                            }`}>
                               {filteredTransactions.filter(t => !t.reconciled).length}
                             </span>
                           )}

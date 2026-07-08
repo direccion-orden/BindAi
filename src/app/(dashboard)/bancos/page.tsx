@@ -26,7 +26,7 @@ interface BankAccount {
 export default function BancosPage() {
   const { companyId } = useAuth();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [selectedAccountId, setSelectedAccountIdState] = useState<string>("");
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
@@ -39,8 +39,38 @@ export default function BancosPage() {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"history" | "reconcile">("history");
+  const [activeTab, setActiveTabState] = useState<"history" | "reconcile">("history");
   const [selectedTxs, setSelectedTxs] = useState<BankTransaction[]>([]);
+
+  // Sync state from URL on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab") as "history" | "reconcile";
+      const account = params.get("account");
+      if (tab) setActiveTabState(tab);
+      if (account) setSelectedAccountIdState(account);
+    }
+  }, []);
+
+  // Wrappers to update state and URL query params
+  const setActiveTab = (tab: "history" | "reconcile") => {
+    setActiveTabState(tab);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      params.set("tab", tab);
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    }
+  };
+
+  const setSelectedAccountId = (accountId: string) => {
+    setSelectedAccountIdState(accountId);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      params.set("account", accountId);
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    }
+  };
 
   useEffect(() => {
     setSelectedTxs([]);
@@ -59,13 +89,31 @@ export default function BancosPage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BankAccount));
       setAccounts(data);
-      if (data.length > 0 && !selectedAccountId) {
-        setSelectedAccountId(data[0].id);
-      }
+      
+      setSelectedAccountIdState(current => {
+        let urlAccount = "";
+        if (typeof window !== "undefined") {
+          urlAccount = new URLSearchParams(window.location.search).get("account") || "";
+        }
+        
+        const activeId = current || urlAccount;
+        if (data.length > 0 && !activeId) {
+          const firstId = data[0].id;
+          if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            params.set("account", firstId);
+            window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+          }
+          return firstId;
+        }
+        return activeId;
+      });
+      
       setLoadingAccounts(false);
     });
     return () => unsubscribe();
   }, [companyId]);
+
 
   useEffect(() => {
     if (!companyId || !selectedAccountId) {

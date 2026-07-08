@@ -63,21 +63,50 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
       }
     } else if (file.name.endsWith(".csv")) {
       setFileType("csv");
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          if (results.meta.fields) {
-            setCsvHeaders(results.meta.fields);
-            setCsvData(results.data);
-            guessCSVColumns(results.meta.fields);
-            setStep(2);
-          } else {
-            setError("El archivo CSV no tiene formato de columnas válido.");
+      setLoading(true);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const arrayBuffer = event.target?.result as ArrayBuffer;
+          let text = "";
+          try {
+            const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+            text = utf8Decoder.decode(arrayBuffer);
+          } catch (e) {
+            // Fallback to ISO-8859-1 (Latin1)
+            const latin1Decoder = new TextDecoder("iso-8859-1");
+            text = latin1Decoder.decode(arrayBuffer);
           }
-        },
-        error: (err) => setError("Error al leer CSV: " + err.message)
-      });
+
+          Papa.parse(text, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+              setLoading(false);
+              if (results.meta.fields) {
+                setCsvHeaders(results.meta.fields);
+                setCsvData(results.data);
+                guessCSVColumns(results.meta.fields);
+                setStep(2);
+              } else {
+                setError("El archivo CSV no tiene formato de columnas válido.");
+              }
+            },
+            error: (err: any) => {
+              setLoading(false);
+              setError("Error al procesar CSV: " + err.message);
+            }
+          });
+        } catch (err: any) {
+          setLoading(false);
+          setError("Error al leer el archivo: " + err.message);
+        }
+      };
+      reader.onerror = () => {
+        setLoading(false);
+        setError("Error al cargar el archivo.");
+      };
+      reader.readAsArrayBuffer(file);
     } else {
       setError("Solo se admiten archivos .csv y .pdf (BBVA).");
     }

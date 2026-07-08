@@ -114,14 +114,21 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
       ]
     },
     {
+      title: "Estructura Organizacional",
+      icon: Building2,
+      items: [
+        { href: "/configuracion/sucursales", label: "Sucursales", icon: Building2 },
+        { href: "/configuracion/almacenes", label: "Almacenes", icon: Warehouse },
+        { href: "/categorias", label: "Categorías", icon: Tags },
+        { href: "/configuracion/lineas-negocio", label: "Líneas de Negocio", icon: Layers },
+      ]
+    },
+    {
       title: "Configuración",
       icon: Receipt,
       items: [
         { href: "/configuracion/perfil", label: "Perfil de la Empresa", icon: FileText },
-        { href: "/configuracion/sucursales", label: "Sucursales", icon: FileText },
-        { href: "/configuracion/almacenes", label: "Almacenes", icon: Package },
         { href: "/configuracion/cuentas", label: "Cuentas Bancarias", icon: Banknote },
-        { href: "/categorias", label: "Categorías", icon: Tags },
         { href: "/catalogos/etapas-produccion", label: "Etapas Producción", icon: ClipboardList },
         { href: "/configuracion/dispositivos", label: "Dispositivos y Hardware", icon: Cpu },
         { href: "/configuracion/disenador-ticket", label: "Diseñador de Tickets", icon: Printer },

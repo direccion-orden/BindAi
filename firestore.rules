@@ -222,6 +222,9 @@ service cloud.firestore {
       match /strategic_visions/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /business_lines/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
       match /strategic_strategies/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }

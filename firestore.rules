@@ -219,6 +219,27 @@ service cloud.firestore {
       match /sales_goals/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /strategic_visions/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /strategic_strategies/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /strategic_goals/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /strategic_tactics/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /strategic_kpis/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /strategic_kpi_records/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
+      match /strategic_comments/{docId} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
     }
     
     // Por seguridad, cualquier otra colecciÃƒÆ’Ã‚Â³n global queda bloqueada

@@ -69,6 +69,53 @@ export default function BancosPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [dateFilterOption, setDateFilterOption] = useState<string>("all");
+
+  const handleDateFilterChange = (option: string) => {
+    setDateFilterOption(option);
+    
+    const getLocalDateString = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const now = new Date();
+    
+    if (option === "all") {
+      setStartDate("");
+      setEndDate("");
+    } else if (option === "today") {
+      const todayStr = getLocalDateString(now);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (option === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+      setStartDate(yesterdayStr);
+      setEndDate(yesterdayStr);
+    } else if (option === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(getLocalDateString(startOfMonth));
+      setEndDate(getLocalDateString(now));
+    } else if (option === "last_month") {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setStartDate(getLocalDateString(startOfLastMonth));
+      setEndDate(getLocalDateString(endOfLastMonth));
+    } else if (option === "this_year") {
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      setStartDate(getLocalDateString(startOfYear));
+      setEndDate(getLocalDateString(now));
+    } else if (option === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      setStartDate(getLocalDateString(thirtyDaysAgo));
+      setEndDate(getLocalDateString(now));
+    }
+  };
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -403,25 +450,45 @@ export default function BancosPage() {
                           )}
                       </button>
                   </div>
-                  <div className="flex items-center gap-2">
-                      <div className="flex items-center bg-background border rounded-md px-2 gap-2 h-9 shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Desde</span>
-                        <input 
-                          type="date" 
-                          value={startDate}
-                          onChange={(e) => setStartDate(e.target.value)}
-                          className="bg-transparent border-none text-xs font-semibold outline-none focus:ring-0 p-0 w-28"
-                        />
+                  <div className="flex items-center gap-2">                       <div className="flex items-center bg-background border rounded-md px-1.5 h-9 shadow-sm">
+                        <select
+                          className="bg-transparent border-none text-xs font-semibold outline-none focus:ring-0 p-1 cursor-pointer text-slate-700 w-36"
+                          value={dateFilterOption}
+                          onChange={(e) => handleDateFilterChange(e.target.value)}
+                        >
+                          <option value="all">Cualquier fecha</option>
+                          <option value="today">Hoy</option>
+                          <option value="yesterday">Ayer</option>
+                          <option value="this_month">Mes a la Fecha</option>
+                          <option value="last_month">Mes Pasado</option>
+                          <option value="last_30_days">Últimos 30 Días</option>
+                          <option value="this_year">Este Año</option>
+                          <option value="custom">Rango Personalizado</option>
+                        </select>
                       </div>
-                      <div className="flex items-center bg-background border rounded-md px-2 gap-2 h-9 shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Hasta</span>
-                        <input 
-                          type="date" 
-                          value={endDate}
-                          onChange={(e) => setEndDate(e.target.value)}
-                          className="bg-transparent border-none text-xs font-semibold outline-none focus:ring-0 p-0 w-28"
-                        />
-                      </div>
+
+                      {dateFilterOption === "custom" && (
+                        <>
+                          <div className="flex items-center bg-background border rounded-md px-2 gap-2 h-9 shadow-sm animate-in fade-in slide-in-from-left-1 duration-100">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Desde</span>
+                            <input 
+                              type="date" 
+                              value={startDate}
+                              onChange={(e) => setStartDate(e.target.value)}
+                              className="bg-transparent border-none text-xs font-semibold outline-none focus:ring-0 p-0 w-28"
+                            />
+                          </div>
+                          <div className="flex items-center bg-background border rounded-md px-2 gap-2 h-9 shadow-sm animate-in fade-in slide-in-from-left-1 duration-100">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Hasta</span>
+                            <input 
+                              type="date" 
+                              value={endDate}
+                              onChange={(e) => setEndDate(e.target.value)}
+                              className="bg-transparent border-none text-xs font-semibold outline-none focus:ring-0 p-0 w-28"
+                            />
+                          </div>
+                        </>
+                      )}
                       <div className="relative w-64">
                           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                           <Input 
@@ -432,7 +499,7 @@ export default function BancosPage() {
                               onChange={(e) => setSearchQuery(e.target.value)}
                           />
                       </div>
-                      {(searchQuery || startDate || endDate) && (
+                      {(searchQuery || startDate || endDate || dateFilterOption !== "all") && (
                         <Button 
                           variant="ghost" 
                           size="sm" 
@@ -440,6 +507,7 @@ export default function BancosPage() {
                             setSearchQuery("");
                             setStartDate("");
                             setEndDate("");
+                            setDateFilterOption("all");
                           }}
                           className="h-9 px-2 text-slate-400 hover:text-slate-600"
                           title="Limpiar filtros"

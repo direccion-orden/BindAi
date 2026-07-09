@@ -124,13 +124,13 @@ function SearchableSelect({
                   setSearch(item.name);
                   setOpen(false);
                 }}
-                className={`w-full text-left px-3 py-2.5 text-xs hover:bg-slate-50 flex flex-col border-b last:border-b-0 transition-colors ${
+                className={`w-full text-left px-3 py-2.5 text-xs hover:bg-slate-50 flex flex-col border-b last:border-b-0 transition-colors whitespace-normal break-words ${
                   item.id === selectedId ? "bg-indigo-50/50 font-bold" : ""
                 }`}
               >
-                <span className="text-slate-800 font-medium">{item.name}</span>
+                <span className="text-slate-800 font-medium whitespace-normal break-words">{item.name}</span>
                 {item.subtitle && (
-                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">{item.subtitle}</span>
+                  <span className="text-[10px] text-slate-400 font-mono mt-0.5 whitespace-normal break-words">{item.subtitle}</span>
                 )}
               </button>
             ))
@@ -591,6 +591,19 @@ export function ReconcilePanel({
     } else {
       setSelectedTargetTxId("");
     }
+  }, [sortedTargetTransactions]);
+
+  const searchableTargetTransactions = useMemo(() => {
+    return sortedTargetTransactions.map(tx => {
+      const matchTag = tx.isExactAmount ? "⭐ [SUGERIDO] " : "";
+      const dateTag = tx.date ? ` [${tx.date}]` : "";
+      const txAmount = Math.abs(tx.amount);
+      return {
+        id: tx.id,
+        name: `${matchTag}${tx.concept}${dateTag}`,
+        subtitle: `Monto: $${txAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
+      };
+    });
   }, [sortedTargetTransactions]);
 
   const handleReconcile = async (e: React.FormEvent) => {
@@ -1755,24 +1768,14 @@ export function ReconcilePanel({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <select
-                      value={selectedTargetTxId}
-                      onChange={(e) => setSelectedTargetTxId(e.target.value)}
-                      className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none"
+                    <SearchableSelect
+                      label="Selecciona el movimiento correspondiente"
+                      placeholder="Busca por concepto, fecha o monto..."
+                      items={searchableTargetTransactions}
+                      selectedId={selectedTargetTxId}
+                      onSelect={setSelectedTargetTxId}
                       required
-                    >
-                      <option value="" disabled>Selecciona el movimiento correspondiente...</option>
-                      {sortedTargetTransactions.map(tx => {
-                        const matchTag = tx.isExactAmount ? "⭐ [COINCIDENCIA DE MONTO]" : "";
-                        const dateTag = tx.date ? ` [${tx.date}]` : "";
-                        const txAmount = Math.abs(tx.amount);
-                        return (
-                          <option key={tx.id} value={tx.id} className={tx.isExactAmount ? "font-bold text-emerald-700 bg-emerald-50" : ""}>
-                            {matchTag} {tx.concept} - ${txAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}{dateTag}
-                          </option>
-                        );
-                      })}
-                    </select>
+                    />
 
                     {sortedTargetTransactions.find(t => t.isExactAmount) && (
                       <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in zoom-in-95">

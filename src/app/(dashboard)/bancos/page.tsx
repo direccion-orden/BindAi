@@ -422,13 +422,22 @@ export default function BancosPage() {
                   <div className="flex gap-1.5 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60">
                       <button
                           onClick={() => setActiveTab("history")}
-                          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
                             activeTab === 'history' 
                               ? 'bg-purple-600 text-white font-extrabold shadow-sm' 
                               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
                           }`}
                       >
                           Historial de Movimientos
+                          {transactions.length > 0 && (
+                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-full transition-colors ${
+                              activeTab === 'history'
+                                ? 'bg-purple-800 text-purple-100'
+                                : 'bg-purple-100 text-purple-700'
+                            }`}>
+                              {transactions.length}
+                            </span>
+                          )}
                       </button>
                       <button
                           onClick={() => setActiveTab("reconcile")}

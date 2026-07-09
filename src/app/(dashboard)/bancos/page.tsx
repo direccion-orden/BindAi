@@ -23,6 +23,41 @@ interface BankAccount {
   CurrencyCode?: string;
 }
 
+function normalizeDateToISO(dateStr: string): string {
+  if (!dateStr) return "";
+  
+  // If it's already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr;
+  }
+
+  // Handle DD-mmm-YY format, e.g. "30-jun-26" or "05-may-26" or "5-may-26"
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    let [day, month, year] = parts;
+    
+    // Normalize year
+    if (year.length === 2) {
+      year = "20" + year;
+    }
+    
+    // Map Spanish/English month names
+    const lowerMonth = month.toLowerCase().substring(0, 3);
+    const monthsMap: Record<string, string> = {
+      ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
+      jul: "07", ago: "08", sep: "09", oct: "10", nov: "11", dic: "12",
+      jan: "01", apr: "04", aug: "08", dec: "12"
+    };
+    
+    const monthNum = monthsMap[lowerMonth] || "01";
+    const formattedDay = day.padStart(2, '0');
+    
+    return `${year}-${monthNum}-${formattedDay}`;
+  }
+
+  return dateStr;
+}
+
 export default function BancosPage() {
   const { companyId } = useAuth();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
@@ -206,11 +241,17 @@ export default function BancosPage() {
     }
 
     if (startDate) {
-      filtered = filtered.filter(t => t.date >= startDate);
+      filtered = filtered.filter(t => {
+        const isoDate = normalizeDateToISO(t.date);
+        return isoDate >= startDate;
+      });
     }
 
     if (endDate) {
-      filtered = filtered.filter(t => t.date <= endDate);
+      filtered = filtered.filter(t => {
+        const isoDate = normalizeDateToISO(t.date);
+        return isoDate <= endDate;
+      });
     }
 
     return filtered;

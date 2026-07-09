@@ -334,6 +334,80 @@ export function ReconcilePanel({
     });
   }, [sortedAndMatchedDocs]);
 
+  const selectedDocConcepts = useMemo(() => {
+    if (!selectedDoc) return [];
+    
+    // 1. If it already has structured items (e.g. from invoice)
+    if (selectedDoc.items && selectedDoc.items.length > 0) {
+      return selectedDoc.items.map((item: any) => ({
+        descripcion: item.productName || item.concept || item.description || item.name || "Concepto sin nombre",
+        cantidad: item.quantity || 1,
+        valorUnitario: item.unitPrice || item.unitCost || item.price || item.cost || 0,
+        importe: item.total || item.lineTotal || ((item.quantity || 1) * (item.unitPrice || 0)),
+        claveProdServ: item.claveProdServ || "",
+        variantTitle: item.variantTitle || ""
+      }));
+    }
+    
+    // 2. If it has a conceptos field saved directly
+    if (selectedDoc.conceptos && selectedDoc.conceptos.length > 0) {
+      return selectedDoc.conceptos.map((item: any) => ({
+        descripcion: item.descripcion || item.concept || item.productName || "Concepto sin nombre",
+        cantidad: item.cantidad || 1,
+        valorUnitario: item.valorUnitario || item.unitCost || item.price || 0,
+        importe: item.importe || ((item.cantidad || 1) * (item.valorUnitario || 0)),
+        claveProdServ: item.claveProdServ || ""
+      }));
+    }
+    
+    // 3. If it has xmlBase64, parse CFDI XML on the fly!
+    if (selectedDoc.xmlBase64) {
+      try {
+        let xmlText = "";
+        try {
+          xmlText = decodeURIComponent(escape(atob(selectedDoc.xmlBase64)));
+        } catch (e) {
+          xmlText = atob(selectedDoc.xmlBase64);
+        }
+        
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+        const parserError = xmlDoc.getElementsByTagName("parsererror");
+        if (parserError.length === 0) {
+          let conceptosNode = xmlDoc.getElementsByTagName("cfdi:Concepto");
+          if (conceptosNode.length === 0) {
+            conceptosNode = xmlDoc.getElementsByTagName("Concepto");
+          }
+          
+          const items: any[] = [];
+          for (let i = 0; i < conceptosNode.length; i++) {
+            const node = conceptosNode[i];
+            const claveProdServ = node.getAttribute("ClaveProdServ") || "";
+            const noIdentificacion = node.getAttribute("NoIdentificacion") || "";
+            const cantidad = parseFloat(node.getAttribute("Cantidad") || "0") || 0;
+            const descripcion = node.getAttribute("Descripcion") || "";
+            const valorUnitario = parseFloat(node.getAttribute("ValorUnitario") || "0") || 0;
+            const importe = parseFloat(node.getAttribute("Importe") || "0") || 0;
+            
+            items.push({
+              descripcion,
+              cantidad,
+              valorUnitario,
+              importe,
+              claveProdServ,
+              noIdentificacion
+            });
+          }
+          return items;
+        }
+      } catch (err) {
+        console.error("Error parsing CFDI XML in ReconcilePanel:", err);
+      }
+    }
+    
+    return [];
+  }, [selectedDoc]);
+
   // Auto-select first categorization account if empty and we switch to direct
   useEffect(() => {
     if (reconcileMode === "direct" && accountingAccounts.length > 0 && !selectedExpenseOrIncomeAccountId) {
@@ -1394,61 +1468,27 @@ export function ReconcilePanel({
 
                               {/* Items list */}
                     <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
-                      {((selectedDoc.items && selectedDoc.items.length > 0) || (selectedDoc.conceptos && selectedDoc.conceptos.length > 0)) ? (
-                        (() => {
-                          const docItems = selectedDoc.items || [];
-                          const docConceptos = selectedDoc.conceptos || [];
-                          
-                          if (docItems.length > 0) {
-                            return docItems.map((item: any, idx: number) => {
-                              const itemName = item.productName || item.concept || item.description || item.name || "Concepto sin nombre";
-                              const qty = item.quantity || 1;
-                              const price = item.unitPrice || item.unitCost || item.price || item.cost || 0;
-                              const total = item.total || item.lineTotal || (qty * price);
-
-                              return (
-                                <div key={idx} className="flex justify-between items-start text-xs pb-2 border-b border-slate-100 last:border-0 last:pb-0 gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-slate-800 truncate" title={itemName}>
-                                      {itemName}
-                                    </p>
-                                    {item.variantTitle && (
-                                      <p className="text-[10px] text-slate-400 font-medium">{item.variantTitle}</p>
-                                    )}
-                                  </div>
-                                  <div className="text-right shrink-0 font-mono text-[11px] text-slate-500">
-                                    <span>{qty} x ${price.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                    <span className="block font-black text-slate-700">${total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                  </div>
-                                </div>
-                              );
-                            });
-                          } else {
-                            return docConceptos.map((item: any, idx: number) => {
-                              const itemName = item.descripcion || item.concept || item.productName || "Concepto sin nombre";
-                              const qty = item.cantidad || 1;
-                              const price = item.valorUnitario || item.unitCost || item.price || 0;
-                              const total = item.importe || (qty * price);
-
-                              return (
-                                <div key={idx} className="flex justify-between items-start text-xs pb-2 border-b border-slate-100 last:border-0 last:pb-0 gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-slate-800 truncate" title={itemName}>
-                                      {itemName}
-                                    </p>
-                                    {item.claveProdServ && (
-                                      <p className="text-[10px] text-slate-400 font-medium">Clave: {item.claveProdServ}</p>
-                                    )}
-                                  </div>
-                                  <div className="text-right shrink-0 font-mono text-[11px] text-slate-500">
-                                    <span>{qty} x ${price.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                    <span className="block font-black text-slate-700">${total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                  </div>
-                                </div>
-                              );
-                            });
-                          }
-                        })()
+                      {selectedDocConcepts.length > 0 ? (
+                        selectedDocConcepts.map((item: any, idx: number) => {
+                          return (
+                            <div key={idx} className="flex justify-between items-start text-xs pb-2 border-b border-slate-100 last:border-0 last:pb-0 gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-bold text-slate-800 truncate" title={item.descripcion}>
+                                  {item.descripcion}
+                                </p>
+                                {(item.claveProdServ || item.variantTitle) && (
+                                  <p className="text-[10px] text-slate-400 font-medium">
+                                    {item.variantTitle ? item.variantTitle : `Clave: ${item.claveProdServ}`}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right shrink-0 font-mono text-[11px] text-slate-500">
+                                <span>{item.cantidad} x ${item.valorUnitario.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="block font-black text-slate-700">${item.importe.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            </div>
+                          );
+                        })
                       ) : (
                         <div className="flex justify-between items-center text-xs text-slate-600 py-1">
                           <span className="font-medium">{selectedDoc.concept || "Concepto general"}</span>

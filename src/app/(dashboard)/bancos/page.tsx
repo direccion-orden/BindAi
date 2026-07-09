@@ -351,13 +351,13 @@ export default function BancosPage() {
                           }`}
                       >
                           Conciliación Pendiente
-                          {filteredTransactions.filter(t => !t.reconciled).length > 0 && (
+                          {transactions.filter(t => !t.reconciled).length > 0 && (
                             <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-full transition-colors ${
                               activeTab === 'reconcile'
                                 ? 'bg-purple-800 text-purple-100'
                                 : 'bg-purple-100 text-purple-700 animate-pulse'
                             }`}>
-                              {filteredTransactions.filter(t => !t.reconciled).length}
+                              {transactions.filter(t => !t.reconciled).length}
                             </span>
                           )}
                       </button>

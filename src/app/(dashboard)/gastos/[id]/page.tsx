@@ -169,6 +169,10 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
             vatRate: invData.vatRate !== undefined ? invData.vatRate : 0.16,
             concept: invData.concept || "",
             vendorId: invData.vendorId || "",
+            isRecurring: invData.isRecurring || false,
+            recurrenceFrequency: invData.recurrenceFrequency || "",
+            recurrenceEndDate: invData.recurrenceEndDate || "",
+            estimatedAmount: invData.estimatedAmount || 0,
             items: invData.items || []
           };
 
@@ -1072,7 +1076,12 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                 </div>
               </div>
 
-              {saldoPendiente > 0.01 && invoice.status !== "cancelado" ? (
+              {invoice.isRecurring ? (
+                <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 text-xs font-semibold text-purple-900 space-y-2 leading-relaxed">
+                  <p>📢 Este gasto está configurado como una plantilla de gasto recurrente para la proyección del flujo de efectivo.</p>
+                  <p className="font-normal text-purple-700">No representa una cuenta por pagar directa y no es posible registrarle abonos aquí. Los pagos reales deben conciliarse en el módulo de Bancos, lo cual creará de forma automática el gasto hijo correspondiente.</p>
+                </div>
+              ) : saldoPendiente > 0.01 && invoice.status !== "cancelado" ? (
                 <form onSubmit={handleSave} className="space-y-4">
                   <div className="space-y-3">
                     <div className="space-y-1">

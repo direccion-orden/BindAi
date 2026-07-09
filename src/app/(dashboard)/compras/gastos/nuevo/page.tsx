@@ -100,6 +100,12 @@ function NuevoGastoForm() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Recurrence States
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState("monthly");
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
+  const [estimatedAmount, setEstimatedAmount] = useState("");
+
   // Load unreconciled transactions for the selected bank account
   useEffect(() => {
     setSelectedTransactionId("manual"); // Reset when account changes
@@ -632,9 +638,22 @@ function NuevoGastoForm() {
       return;
     }
 
-    if (isPaidImmediately && !bankAccountId) {
+    const finalPaidImmediately = isRecurring ? false : isPaidImmediately;
+
+    if (finalPaidImmediately && !bankAccountId) {
       alert("Debes seleccionar una cuenta bancaria origen.");
       return;
+    }
+
+    if (isRecurring) {
+      if (!recurrenceEndDate) {
+        alert("Debes seleccionar la fecha final de la recurrencia.");
+        return;
+      }
+      if (!estimatedAmount || parseFloat(estimatedAmount) <= 0) {
+        alert("Debes especificar un monto fijo estimado válido.");
+        return;
+      }
     }
 
     setSaving(true);
@@ -666,9 +685,13 @@ function NuevoGastoForm() {
         accountId: mainAccountId,
         accountCode: mainExpenseAccount?.code || "",
         accountName: mainExpenseAccount?.name || "",
-        paidAmount: isPaidImmediately ? totalCost : 0,
-        status: isPaidImmediately ? "paid" : "pending",
+        paidAmount: finalPaidImmediately ? totalCost : 0,
+        status: finalPaidImmediately ? "paid" : "pending",
         satInvoiceId: linkedSatInvoiceId || null,
+        isRecurring,
+        recurrenceFrequency: isRecurring ? recurrenceFrequency : null,
+        recurrenceEndDate: isRecurring ? recurrenceEndDate : null,
+        estimatedAmount: isRecurring ? parseFloat(estimatedAmount) : null,
         items: selectedItems.map(i => ({
           productId: i.productId,
           variantId: i.variantId,
@@ -698,8 +721,8 @@ function NuevoGastoForm() {
               // If paid immediately, we can mark as paid. 
               // Otherwise, just 'processed' to indicate the gasto document exists.
               await updateDoc(satRef, {
-                status: isPaidImmediately ? "paid" : "processed",
-                paidAmount: isPaidImmediately ? totalCost : 0,
+                status: finalPaidImmediately ? "paid" : "processed",
+                paidAmount: finalPaidImmediately ? totalCost : 0,
                 expenseId: expenseId // Link back to the expense document
               });
             }
@@ -709,7 +732,7 @@ function NuevoGastoForm() {
         }
       }
 
-      if (isPaidImmediately) {
+      if (finalPaidImmediately) {
         let finalBankTransactionId = null;
 
         if (selectedTransactionId === "manual") {
@@ -1410,15 +1433,84 @@ function NuevoGastoForm() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Left: Immediate Payment Details */}
           <div className="md:col-span-2 bg-card border rounded-xl shadow-sm p-5 space-y-4">
+            {/* Recurrencia */}
+            <div className="border-b pb-4 mb-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  id="isRecurring"
+                  checked={isRecurring}
+                  onChange={e => {
+                    setIsRecurring(e.target.checked);
+                    if (e.target.checked) {
+                      setIsPaidImmediately(false);
+                    }
+                  }}
+                  className="w-4.5 h-4.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer"
+                />
+                <label htmlFor="isRecurring" className="text-sm font-bold text-slate-800 cursor-pointer select-none">
+                  ¿Es un gasto recurrente? (Renta, suscripción, servicio, etc.)
+                </label>
+              </div>
+
+              {isRecurring && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200/60 animate-in fade-in duration-200">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 uppercase">Frecuencia *</label>
+                    <select
+                      value={recurrenceFrequency}
+                      onChange={e => setRecurrenceFrequency(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold"
+                      required
+                    >
+                      <option value="weekly">Semanal</option>
+                      <option value="biweekly">Quincenal</option>
+                      <option value="monthly">Mensual</option>
+                      <option value="yearly">Anual</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 uppercase">Fecha Final *</label>
+                    <Input 
+                      type="date"
+                      value={recurrenceEndDate}
+                      onChange={e => setRecurrenceEndDate(e.target.value)}
+                      className="h-10 bg-background font-semibold"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 uppercase">Monto Estimado ($) *</label>
+                    <Input 
+                      type="number"
+                      placeholder="Monto estimado fijo"
+                      value={estimatedAmount}
+                      onChange={e => setEstimatedAmount(e.target.value)}
+                      min="0"
+                      step="0.01"
+                      className="h-10 bg-background font-semibold"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center gap-2 py-1">
               <input 
                 type="checkbox"
                 id="isPaidImmediately"
                 checked={isPaidImmediately}
+                disabled={isRecurring}
                 onChange={e => setIsPaidImmediately(e.target.checked)}
-                className="w-4.5 h-4.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer"
+                className="w-4.5 h-4.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer disabled:opacity-50"
               />
-              <label htmlFor="isPaidImmediately" className="text-sm font-bold text-slate-800 cursor-pointer select-none">
+              <label 
+                htmlFor="isPaidImmediately" 
+                className={`text-sm font-bold text-slate-800 cursor-pointer select-none ${isRecurring ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
                 ¿Registrar pago de inmediato? (Genera póliza de egreso contable)
               </label>
             </div>

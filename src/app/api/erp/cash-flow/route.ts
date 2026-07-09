@@ -25,6 +25,74 @@ function addDays(dateStr: string, days: number): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
+function formatDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Generate all occurrence dates from start date to end date based on frequency
+function generateOccurrenceDates(startDateStr: string, endDateStr: string, frequency: string): string[] {
+  const occurrences: string[] = [];
+  const start = parseDate(startDateStr);
+  const end = parseDate(endDateStr);
+  
+  if (start > end) return occurrences;
+  
+  let current = new Date(start);
+  while (current <= end) {
+    occurrences.push(formatDate(current));
+    
+    if (frequency === "daily") {
+      current.setDate(current.getDate() + 1);
+    } else if (frequency === "weekly") {
+      current.setDate(current.getDate() + 7);
+    } else if (frequency === "biweekly") {
+      current.setDate(current.getDate() + 14);
+    } else if (frequency === "monthly") {
+      current.setMonth(current.getMonth() + 1);
+    } else if (frequency === "yearly") {
+      current.setFullYear(current.getFullYear() + 1);
+    } else {
+      break;
+    }
+  }
+  
+  return occurrences;
+}
+
+// Check if a generated occurrence has already been realized by a child expense
+function isOccurrenceRealized(occurrenceDateStr: string, childExpenses: any[], frequency: string): boolean {
+  const occDate = parseDate(occurrenceDateStr);
+  
+  return childExpenses.some(child => {
+    const childDateStr = child.date || child.createdAt?.substring(0, 10);
+    if (!childDateStr) return false;
+    
+    const childDate = parseDate(childDateStr);
+    
+    if (frequency === "daily") {
+      return childDateStr === occurrenceDateStr;
+    } else if (frequency === "weekly" || frequency === "biweekly") {
+      const diffTime = Math.abs(childDate.getTime() - occDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays <= 3;
+    } else if (frequency === "monthly") {
+      return childDate.getFullYear() === occDate.getFullYear() && 
+             childDate.getMonth() === occDate.getMonth();
+    } else if (frequency === "yearly") {
+      return childDate.getFullYear() === occDate.getFullYear();
+    }
+    
+    return childDateStr === occurrenceDateStr;
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -193,24 +261,63 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Parse Outflow: expenses (Manual Expenses)
-    expensesSnap.docs.forEach((doc: any) => {
-      const data = doc.data();
+    // Separate recurring templates from normal/realized expenses
+    const manualExpensesList = expensesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    const recurringTemplates = manualExpensesList.filter((e: any) => e.isRecurring === true);
+    const normalExpenses = manualExpensesList.filter((e: any) => e.isRecurring !== true);
+
+    // Parse Outflow: expenses (Normal/Realized Manual Expenses)
+    normalExpenses.forEach((data: any) => {
       const balance = data.amount - (data.paidAmount || 0);
       if (balance > 0.01 && data.status !== 'paid') {
         const dateStr = normalizeDate(data.date || data.createdAt);
         const dueDateStr = data.dueDate ? normalizeDate(data.dueDate) : addDays(dateStr, 30);
 
         outflows.push({
-          id: doc.id,
+          id: data.id,
           type: 'expense',
-          number: data.documentNumber || `GAS-${data.number || doc.id.substring(0, 6)}`,
+          number: data.documentNumber || `GAS-${data.number || data.id.substring(0, 6)}`,
           providerName: data.vendorName || "Proveedor Gasto",
           amount: balance,
           date: dateStr,
           dueDate: dueDateStr
         });
       }
+    });
+
+    // Parse Outflow: Recurring Expenses Projections
+    const todayStr = normalizeDate(null);
+    recurringTemplates.forEach((template: any) => {
+      const startDateStr = normalizeDate(template.date || template.createdAt);
+      const endDateStr = template.recurrenceEndDate ? normalizeDate(template.recurrenceEndDate) : addDays(startDateStr, 365);
+      const frequency = template.recurrenceFrequency || "monthly";
+      const amount = template.estimatedAmount !== undefined && template.estimatedAmount !== null 
+        ? template.estimatedAmount 
+        : template.amount;
+
+      // Find realized child expenses for this template
+      const childExpenses = manualExpensesList.filter((e: any) => e.parentExpenseId === template.id);
+
+      // Generate all occurrences
+      const occurrences = generateOccurrenceDates(startDateStr, endDateStr, frequency);
+
+      occurrences.forEach(occDate => {
+        // Project ONLY future occurrences (from today onwards)
+        if (occDate >= todayStr) {
+          // Check if this occurrence has already been paid or registered manually
+          if (!isOccurrenceRealized(occDate, childExpenses, frequency)) {
+            outflows.push({
+              id: `${template.id}_occ_${occDate}`,
+              type: 'expense',
+              number: `${template.documentNumber || 'GAS'}-REC`,
+              providerName: `${template.vendorName || "Proveedor"} (Recurrente)`,
+              amount: amount,
+              date: occDate,
+              dueDate: occDate
+            });
+          }
+        }
+      });
     });
 
     console.log(`[CashFlow API] Completed. Inflow: ${inflows.length}, Outflow: ${outflows.length}, Banks: ${bankAccounts.length}`);

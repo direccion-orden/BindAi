@@ -658,6 +658,16 @@ export function ReconcilePanel({
         let targetDocType = docType;
         let targetDocNumber = selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id;
 
+        const isRecurringTemplate = isManual && selectedDoc.isRecurring === true;
+        let recurringSequenceNum = "";
+
+        if (isRecurringTemplate) {
+          targetDocId = crypto.randomUUID();
+          targetDocType = "gasto_manual";
+          recurringSequenceNum = await getNextSequence(companyId, "gastos");
+          targetDocNumber = recurringSequenceNum;
+        }
+
         if (isCharge && selectedDoc._type === "gasto") {
           // Create the main expense record in the "expenses" collection from XML
           const newExpenseId = crypto.randomUUID();
@@ -835,7 +845,7 @@ export function ReconcilePanel({
             reconciled: true,
             matchedAt: new Date().toISOString(),
             reconcileType: reconcileMode,
-            matchedDocumentId: selectedDocId
+            matchedDocumentId: targetDocId
           });
         }
 
@@ -870,12 +880,57 @@ export function ReconcilePanel({
           }
         }
 
-        const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
-        const totalAmt = selectedDoc.docTotal;
-        if (newPaid >= totalAmt - 0.01) {
-          updates.status = docCollection === "facturas" ? "cobrada" : "paid";
+        if (isRecurringTemplate) {
+          const numericVal = parseInt(recurringSequenceNum.split("-")[1]) || 0;
+          const locationName = locations.find(l => l.id === selectedLocationId)?.name || "";
+          
+          const childExpenseDoc = {
+            id: targetDocId,
+            number: numericVal,
+            documentNumber: targetDocNumber,
+            date: expenseDate || new Date().toISOString().split("T")[0],
+            vendorId: selectedDoc.vendorId || null,
+            vendorName: selectedDoc.vendorName || "Proveedor Gasto",
+            concept: selectedDoc.concept || "Pago recurrente",
+            amount: totalAbsAmount,
+            vatRate: vatRate !== undefined ? vatRate : (selectedDoc.vatRate || 0.16),
+            locationId: selectedLocationId,
+            locationName,
+            accountId: selectedExpenseOrIncomeAccountId,
+            accountCode: selectedAccount?.code || "",
+            accountName: selectedAccount?.name || "",
+            paidAmount: totalAbsAmount,
+            status: "paid",
+            reconciled: true,
+            parentExpenseId: selectedDoc.id,
+            items: [
+              {
+                productId: null,
+                variantId: null,
+                productName: selectedDoc.concept || "Pago recurrente",
+                variantTitle: "",
+                quantity: 1,
+                unitCost: totalAbsAmount,
+                lineKey: "",
+                costCenterId: selectedCostCenterId || null,
+                accountId: selectedExpenseOrIncomeAccountId,
+                locationId: selectedLocationId
+              }
+            ],
+            createdAt: new Date().toISOString(),
+            createdBy: user?.email || "Sistema (Conciliación Recurrente)",
+            _type: "gasto_manual"
+          };
+
+          await setDoc(doc(db, "companies", companyId, "expenses", targetDocId), childExpenseDoc);
+        } else {
+          const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
+          const totalAmt = selectedDoc.docTotal;
+          if (newPaid >= totalAmt - 0.01) {
+            updates.status = docCollection === "facturas" ? "cobrada" : "paid";
+          }
+          await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
         }
-        await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
 
       } else if (reconcileMode === "direct") {
         // --- Option B: Register Direct Expense/Income ---

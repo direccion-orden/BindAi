@@ -173,7 +173,7 @@ export default function GastosManualesPage() {
     // 2. Status filter
     if (statusFilter !== "all") {
       if (statusFilter === "paid" && exp.status !== "paid") return false;
-      if (statusFilter === "pending" && exp.status !== "pending") return false;
+      if (statusFilter === "pending" && (exp.status !== "pending" || exp.isRecurring === true)) return false;
       if (statusFilter === "cancelado" && exp.status !== "cancelado") return false;
     }
     // 3. Date range filter
@@ -205,8 +205,9 @@ export default function GastosManualesPage() {
   });
 
   // Financial Metrics
-  const totalGastado = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const totalPagado = filteredExpenses.reduce((sum, e) => sum + (e.paidAmount || 0), 0);
+  const nonRecurringExpenses = filteredExpenses.filter((e) => e.isRecurring !== true);
+  const totalGastado = nonRecurringExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const totalPagado = nonRecurringExpenses.reduce((sum, e) => sum + (e.paidAmount || 0), 0);
   const totalPendiente = Math.max(0, totalGastado - totalPagado);
 
   const formatMoney = (amount: number) => {
@@ -406,7 +407,11 @@ export default function GastosManualesPage() {
                          {exp.locationName}
                        </td>
                        <td className="px-4 py-3">
-                         {exp.status === "paid" ? (
+                         {exp.isRecurring ? (
+                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold border border-purple-200">
+                             Recurrente
+                           </span>
+                         ) : exp.status === "paid" ? (
                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
                              Pagado
                            </span>
@@ -426,8 +431,8 @@ export default function GastosManualesPage() {
                        <td className="px-4 py-3 text-right text-emerald-600 font-semibold">
                          {formatMoney(exp.paidAmount || 0)}
                        </td>
-                       <td className={`px-4 py-3 text-right font-bold ${saldo > 0 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
-                         {formatMoney(saldo)}
+                       <td className={`px-4 py-3 text-right font-bold ${saldo > 0 && exp.status !== "cancelado" && !exp.isRecurring ? "text-amber-600" : "text-slate-400"}`}>
+                         {exp.isRecurring ? formatMoney(0) : formatMoney(saldo)}
                        </td>
                        <td className="px-4 py-3 text-center">
                          <div className="flex items-center justify-center gap-2">
@@ -441,7 +446,7 @@ export default function GastosManualesPage() {
                                <Eye className="w-4 h-4 text-indigo-600" />
                              </Button>
                            </Link>
-                           {saldo > 0.01 && exp.status !== "cancelado" && (
+                           {saldo > 0.01 && exp.status !== "cancelado" && !exp.isRecurring && (
                              <Button 
                                variant="outline" 
                                size="icon" 

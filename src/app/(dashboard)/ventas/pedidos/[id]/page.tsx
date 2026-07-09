@@ -394,11 +394,6 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight">Pedido {order.orderNumber}</h1>
-              <Link href={`/pdf/pedido/${order.id}`} target="_blank">
-                <Button variant="outline" size="sm" className="h-7 gap-1 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50">
-                  <FileText className="w-3 h-3" /> Ver PDF
-                </Button>
-              </Link>
             </div>
             <p className="text-muted-foreground text-sm mt-1 flex items-center gap-1">
               <Package className="w-3.5 h-3.5" /> 
@@ -408,20 +403,39 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
         </div>
 
         <div className="flex items-center gap-3">
-          {(order.status === 'por_surtir' || order.status === 'pagado') && (
-            <>
-              {isEditing ? null : (
-                <div className="relative">
-                  <Button 
-                    onClick={() => setIsActionsOpen(!isActionsOpen)} 
-                    className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm"
-                  >
-                    Acciones <ChevronDown className="w-4 h-4" />
-                  </Button>
-                  {isActionsOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsActionsOpen(false)} />
-                      <div className="absolute right-0 mt-2 w-56 bg-white border rounded-xl shadow-xl py-2 z-50 animate-in fade-in-50 slide-in-from-top-2 duration-100">
+          {order.status === 'cancelado' && (
+            <div className="px-4 py-2 bg-red-50 text-red-700 font-bold rounded-lg flex items-center gap-2">
+              <XCircle className="w-5 h-5" /> Pedido Cancelado
+            </div>
+          )}
+          {order.status === 'remisionado' && (
+            <div className="px-4 py-2 bg-emerald-50 text-emerald-700 font-bold rounded-lg flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5" /> Pedido Remisionado
+            </div>
+          )}
+          
+          {!isEditing && (
+            <div className="relative">
+              <Button 
+                onClick={() => setIsActionsOpen(!isActionsOpen)} 
+                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm"
+              >
+                Acciones <ChevronDown className="w-4 h-4" />
+              </Button>
+              {isActionsOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsActionsOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-56 bg-white border rounded-xl shadow-xl py-2 z-50 animate-in fade-in-50 slide-in-from-top-2 duration-100">
+                    <Link href={`/pdf/pedido/${order.id}`} target="_blank" onClick={() => setIsActionsOpen(false)}>
+                      <span className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm font-medium text-slate-700 flex items-center gap-2 cursor-pointer">
+                        <FileText className="w-4 h-4 text-indigo-500" />
+                        Ver PDF
+                      </span>
+                    </Link>
+                    
+                    {(order.status === 'por_surtir' || order.status === 'pagado') && (
+                      <>
+                        <div className="border-t my-1" />
                         <button 
                           onClick={() => { setIsActionsOpen(false); setIsEditing(true); }}
                           className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm font-medium text-slate-700 flex items-center gap-2"
@@ -454,21 +468,11 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                           {canceling ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4 text-red-500" />}
                           Cancelar Pedido
                         </button>
-                      </div>
-                    </>
-                  )}
-                </div>
+                      </>
+                    )}
+                  </div>
+                </>
               )}
-            </>
-          )}
-          {order.status === 'cancelado' && (
-            <div className="px-4 py-2 bg-red-50 text-red-700 font-bold rounded-lg flex items-center gap-2">
-              <XCircle className="w-5 h-5" /> Pedido Cancelado
-            </div>
-          )}
-          {order.status === 'remisionado' && (
-            <div className="px-4 py-2 bg-emerald-50 text-emerald-700 font-bold rounded-lg flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5" /> Pedido Remisionado
             </div>
           )}
         </div>

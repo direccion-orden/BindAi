@@ -192,6 +192,9 @@ service cloud.firestore {
       match /expenses/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /gastosPendientes/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
       match /cost_centers/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }

@@ -183,16 +183,20 @@ function NuevoGastoForm() {
 
     // Load locations
     const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
-      setLocations(snap.docs.map(d => ({
+      const list = snap.docs.map(d => ({
         id: d.id,
         name: d.data().name || d.data().Name || "Sucursal sin nombre"
-      })));
+      }));
+      list.sort((a, b) => a.name.localeCompare(b.name, "es"));
+      setLocations(list);
     });
 
     // Load accounts
     const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
       const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAccounts(allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2));
+      const filtered = allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2);
+      filtered.sort((a: any, b: any) => a.name.localeCompare(b.name, "es"));
+      setAccounts(filtered);
     });
 
     // Load bankAccounts (physical)
@@ -225,12 +229,14 @@ function NuevoGastoForm() {
 
     // Load cost centers
     const unsubCC = onSnapshot(query(collection(db, "companies", companyId, "cost_centers"), orderBy("code", "asc")), (snap) => {
-      setCostCenters(snap.docs.map(d => ({
+      const list = snap.docs.map(d => ({
         id: d.id,
         code: d.data().code || "",
         name: d.data().name || "",
         isActive: d.data().isActive ?? true
-      })));
+      }));
+      list.sort((a, b) => a.name.localeCompare(b.name, "es"));
+      setCostCenters(list);
     });
 
     return () => {

@@ -40,7 +40,7 @@ export function CreateVisionModal({ isOpen, onClose, branches, vision }: CreateV
     name: "",
     description: "",
     strategicIntent: "",
-    branchId: "",
+    branchId: "empresa",
     priority: "Media" as StrategicPriority,
     status: "Activa" as StrategyStatus,
     startDate: new Date().toISOString().split('T')[0],
@@ -54,7 +54,7 @@ export function CreateVisionModal({ isOpen, onClose, branches, vision }: CreateV
         name: vision.name,
         description: vision.description,
         strategicIntent: vision.strategicIntent || "",
-        branchId: vision.branchId,
+        branchId: vision.branchId || "empresa",
         priority: vision.priority,
         status: vision.status,
         startDate: vision.startDate,
@@ -66,7 +66,7 @@ export function CreateVisionModal({ isOpen, onClose, branches, vision }: CreateV
         name: "",
         description: "",
         strategicIntent: "",
-        branchId: branches[0]?.id || "",
+        branchId: "empresa",
         priority: "Media",
         status: "Activa",
         startDate: new Date().toISOString().split('T')[0],
@@ -150,22 +150,6 @@ export function CreateVisionModal({ isOpen, onClose, branches, vision }: CreateV
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Sucursal / Unidad de Negocio</Label>
-              <Select 
-                value={formData.branchId} 
-                onValueChange={v => setFormData({...formData, branchId: v})}
-              >
-                <SelectTrigger className="bg-white">
-                  <SelectValue placeholder="Seleccionar sucursal" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b: any) => (
-                    <SelectItem key={b.id} value={b.id}>{b.name || b.Name || b.id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
 
             <div className="space-y-2">
               <Label>Prioridad</Label>

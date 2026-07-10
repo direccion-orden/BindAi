@@ -14,7 +14,7 @@ export type StrategyType =
 
 export interface StrategicVision {
   id: string;
-  branchId: string;
+  branchId?: string;
   name: string;
   description: string;
   strategicIntent: string;
@@ -31,7 +31,7 @@ export interface StrategicVision {
 export interface Strategy {
   id: string;
   visionId: string;
-  branchId: string;
+  branchId?: string;
   name: string;
   description: string;
   objective: string;
@@ -47,18 +47,23 @@ export interface Strategy {
   updatedAt: string;
 }
 
-export interface CommercialGoal {
+export interface OKR {
   id: string;
   strategyId: string;
   name: string;
-  metricName: string;
+  description: string;
+  metricName?: string;
   currentValue: number;
   targetValue: number;
   unit: string;
   dueDate: string;
   progress: number;
   notes?: string;
+  assignedToType: 'empresa' | 'linea_negocio' | 'sucursal';
+  assignedToId?: string;
 }
+
+export type CommercialGoal = OKR;
 
 export interface Tactic {
   id: string;
@@ -77,7 +82,8 @@ export interface Tactic {
 
 export interface KPI {
   id: string;
-  tacticId: string;
+  okrId: string; // Linked directly to OKR
+  tacticId?: string; // Deprecated/fallback
   name: string;
   description: string;
   formula: string;

@@ -48,7 +48,7 @@ export const CreateStrategyModal: React.FC<CreateStrategyModalProps> = ({
     name: "",
     description: "",
     objective: "",
-    branchId: "",
+    branchId: "empresa",
     visionId: "",
     strategyType: "Crecimiento de ventas" as StrategyType,
     status: "Planeada" as StrategyStatus,
@@ -65,7 +65,7 @@ export const CreateStrategyModal: React.FC<CreateStrategyModalProps> = ({
         name: strategy.name,
         description: strategy.description,
         objective: strategy.objective,
-        branchId: strategy.branchId,
+        branchId: strategy.branchId || "empresa",
         visionId: strategy.visionId || "",
         strategyType: strategy.strategyType,
         status: strategy.status,
@@ -80,7 +80,7 @@ export const CreateStrategyModal: React.FC<CreateStrategyModalProps> = ({
         name: "",
         description: "",
         objective: "",
-        branchId: branches[0]?.id || "",
+        branchId: "empresa",
         visionId: "",
         strategyType: "Crecimiento de ventas",
         status: "Planeada",
@@ -93,11 +93,11 @@ export const CreateStrategyModal: React.FC<CreateStrategyModalProps> = ({
     }
   }, [strategy, isOpen, branches, user]);
 
-  const filteredVisions = visions.filter(v => v.branchId === formData.branchId);
+  const filteredVisions = visions.filter(v => (v.branchId || "empresa") === (formData.branchId || "empresa"));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!companyId || !formData.branchId || !formData.name) return;
+    if (!companyId || !formData.name) return;
 
     setLoading(true);
     try {
@@ -136,29 +136,12 @@ export const CreateStrategyModal: React.FC<CreateStrategyModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-6 py-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Sucursal / Unidad de Negocio</Label>
-              <Select 
-                value={formData.branchId} 
-                onValueChange={v => setFormData({...formData, branchId: v, visionId: ""})}
-              >
-                <SelectTrigger className="bg-white">
-                  <SelectValue placeholder="Seleccionar sucursal" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map(b => (
-                    <SelectItem key={b.id} value={b.id}>{b.name || b.Name || b.id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label>Visión Estratégica Asociada</Label>
               <Select 
                 value={formData.visionId} 
                 onValueChange={v => setFormData({...formData, visionId: v})}
-                disabled={!formData.branchId || filteredVisions.length === 0}
+                disabled={filteredVisions.length === 0}
               >
                 <SelectTrigger className="bg-white">
                   <SelectValue placeholder={filteredVisions.length === 0 ? "Sin visiones disponibles" : "Seleccionar visión"} />

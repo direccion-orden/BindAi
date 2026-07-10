@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, onSnapshot, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { 
   TrendingUp, 
   Target, 
-  ListTodo, 
   Activity, 
   Plus, 
   Search, 
@@ -22,11 +21,10 @@ import {
   User,
   Calendar,
   AlertCircle,
-  CheckCircle2,
-  Clock,
-  MoreVertical,
-  ArrowRight,
-  Loader2
+  Loader2,
+  GitBranch,
+  MapPin,
+  Trophy
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,8 +52,7 @@ import { Progress } from "@/components/ui/progress";
 import { 
   StrategicVision,
   Strategy, 
-  CommercialGoal, 
-  Tactic, 
+  OKR, 
   KPI, 
   StrategyStatus, 
   StrategicPriority 
@@ -74,24 +71,33 @@ export default function PlaneacionEstrategicaPage() {
   const [isVisionModalOpen, setIsVisionModalOpen] = useState(false);
   
   // Data State
+  const [businessLines, setBusinessLines] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [visions, setVisions] = useState<StrategicVision[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [goals, setGoals] = useState<CommercialGoal[]>([]);
-  const [tactics, setTactics] = useState<Tactic[]>([]);
+  const [goals, setGoals] = useState<OKR[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("all");
-  const [selectedStatus, setSelectedStatus] = useState("all");
 
   useEffect(() => {
     if (!companyId) return;
 
     setLoading(true);
 
-    // Fetch Branches
+    // Fetch Business Lines
+    const unsubBL = onSnapshot(
+      collection(db, "companies", companyId, "business_lines"),
+      (snap) => {
+        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        list.sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "", "es"));
+        setBusinessLines(list);
+      }
+    );
+
+    // Fetch Branches (Locations)
     const unsubBranches = onSnapshot(
       collection(db, "companies", companyId, "locations"),
       (snap) => {
@@ -115,19 +121,11 @@ export default function PlaneacionEstrategicaPage() {
       }
     );
 
-    // Fetch Goals
+    // Fetch Goals (OKRs)
     const unsubGoals = onSnapshot(
       collection(db, "companies", companyId, "strategic_goals"),
       (snap) => {
-        setGoals(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as CommercialGoal)));
-      }
-    );
-
-    // Fetch Tactics
-    const unsubTactics = onSnapshot(
-      collection(db, "companies", companyId, "strategic_tactics"),
-      (snap) => {
-        setTactics(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tactic)));
+        setGoals(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OKR)));
       }
     );
 
@@ -141,11 +139,11 @@ export default function PlaneacionEstrategicaPage() {
     );
 
     return () => {
+      unsubBL();
       unsubBranches();
       unsubVisions();
       unsubStrategies();
       unsubGoals();
-      unsubTactics();
       unsubKpis();
     };
   }, [companyId]);
@@ -174,6 +172,12 @@ export default function PlaneacionEstrategicaPage() {
       }
     });
   }, [strategies, visions, companyId]);
+
+  // General OKRs average progress calculation
+  const totalOKRs = goals.length;
+  const avgOKRProgress = totalOKRs > 0
+    ? Math.round(goals.reduce((acc, g) => acc + (g.progress || 0), 0) / totalOKRs)
+    : 0;
 
   const getStatusColor = (status: StrategyStatus) => {
     switch (status) {
@@ -205,24 +209,24 @@ export default function PlaneacionEstrategicaPage() {
             Planeación Estratégica
           </h1>
           <p className="text-slate-500 mt-1">
-            Define y gestiona el crecimiento estratégico de tus sucursales.
+            Define la Visión y Estrategias globales, asigna OKRs a tus divisiones y sucursales y mide el desempeño con KPIs.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button 
             variant="outline"
-            className="border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+            className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 bg-white font-semibold"
             onClick={() => setIsVisionModalOpen(true)}
           >
             <Target className="w-4 h-4 mr-2" />
-            Nueva Visión
+            Nueva Visión (Empresa)
           </Button>
           <Button 
-            className="bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200"
+            className="bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 font-bold"
             onClick={() => setIsStrategyModalOpen(true)}
           >
             <Plus className="w-4 h-4 mr-2" />
-            Nueva Estrategia
+            Nueva Estrategia (Empresa)
           </Button>
         </div>
       </div>
@@ -250,122 +254,134 @@ export default function PlaneacionEstrategicaPage() {
           </TabsList>
 
           <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input 
-                placeholder="Buscar estrategia..." 
-                className="pl-9 bg-white border-slate-200"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="bg-white">
-                  <Filter className="w-4 h-4 text-slate-600" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <div className="p-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sucursal</div>
-                <DropdownMenuItem onClick={() => setSelectedBranch("all")}>Todas</DropdownMenuItem>
-                {branches.map((b: any) => (
-                  <DropdownMenuItem key={b.id} onClick={() => setSelectedBranch(b.id)}>{b.name || b.Name || b.id}</DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {activeTab !== "dashboard" && activeTab !== "hierarchy" && (
+              <div className="relative flex-1 md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input 
+                  placeholder="Buscar estrategia..." 
+                  className="pl-9 bg-white border-slate-200"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            )}
+            {activeTab !== "dashboard" && activeTab !== "hierarchy" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="bg-white">
+                    <Filter className="w-4 h-4 text-slate-600" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="p-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sucursal</div>
+                  <DropdownMenuItem onClick={() => setSelectedBranch("all")}>Todas</DropdownMenuItem>
+                  {branches.map((b: any) => (
+                    <DropdownMenuItem key={b.id} onClick={() => setSelectedBranch(b.id)}>{b.name || b.Name || b.id}</DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
 
-        <TabsContent value="dashboard" className="mt-0">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Resumen General */}
-            <Card className="md:col-span-3 bg-gradient-to-r from-indigo-500 to-purple-600 border-none text-white overflow-hidden relative">
-              <div className="absolute top-0 right-0 p-8 opacity-10">
-                <TrendingUp className="w-48 h-48" />
-              </div>
-              <CardContent className="p-8">
-                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                  <div>
-                    <h2 className="text-2xl font-bold">Estado de la Estrategia Global</h2>
-                    <p className="text-indigo-100 mt-1">Avance consolidado de todas las sucursales activas.</p>
-                    <div className="mt-6 flex items-center gap-8">
-                      <div>
-                        <div className="text-4xl font-black">74%</div>
-                        <div className="text-xs text-indigo-100 uppercase mt-1">Avance Promedio</div>
-                      </div>
-                      <div className="h-12 w-[1px] bg-white/20" />
-                      <div>
-                        <div className="text-4xl font-black">{strategies.length}</div>
-                        <div className="text-xs text-indigo-100 uppercase mt-1">Estrategias</div>
-                      </div>
-                      <div className="h-12 w-[1px] bg-white/20" />
-                      <div>
-                        <div className="text-4xl font-black">{kpis.filter((k: KPI) => k.statusColor === 'rojo').length}</div>
-                        <div className="text-xs text-indigo-100 uppercase mt-1">KPIs en Riesgo</div>
-                      </div>
+        <TabsContent value="dashboard" className="mt-0 space-y-6">
+          {/* Card Resumen General */}
+          <Card className="bg-gradient-to-r from-indigo-600 to-indigo-900 border-none text-white overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-8 opacity-10">
+              <TrendingUp className="w-48 h-48" />
+            </div>
+            <CardContent className="p-8">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div>
+                  <h2 className="text-2xl font-bold">Resumen de la Planeación Estratégica</h2>
+                  <p className="text-indigo-100 mt-1">Nivel general de objetivos de la organización.</p>
+                  <div className="mt-6 flex items-center gap-8">
+                    <div>
+                      <div className="text-4xl font-black">{avgOKRProgress}%</div>
+                      <div className="text-xs text-indigo-100 uppercase mt-1">Avance Promedio OKRs</div>
                     </div>
-                  </div>
-                  <div className="w-full md:w-72 space-y-2">
-                    <div className="flex justify-between text-sm font-medium">
-                      <span>Progreso Objetivo</span>
-                      <span>74%</span>
+                    <div className="h-12 w-[1px] bg-white/20" />
+                    <div>
+                      <div className="text-4xl font-black">{totalOKRs}</div>
+                      <div className="text-xs text-indigo-100 uppercase mt-1">Objetivos OKR</div>
                     </div>
-                    <Progress value={74} className="h-3 bg-white/20" indicatorClassName="bg-white" />
-                    <p className="text-[10px] text-indigo-100 text-right">Actualizado hace 2 horas</p>
+                    <div className="h-12 w-[1px] bg-white/20" />
+                    <div>
+                      <div className="text-4xl font-black">{kpis.filter(k => k.statusColor === "rojo").length}</div>
+                      <div className="text-xs text-indigo-100 uppercase mt-1">KPIs en Alerta</div>
+                    </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="w-full md:w-72 space-y-2">
+                  <div className="flex justify-between text-sm font-medium">
+                    <span>Avance Organizacional</span>
+                    <span>{avgOKRProgress}%</span>
+                  </div>
+                  <Progress value={avgOKRProgress} className="h-3 bg-white/20" indicatorClassName="bg-white" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-            {/* Listado de Sucursales y sus Estrategias */}
-            {branches.map(branch => {
-              const branchVisions = visions.filter((v: StrategicVision) => v.branchId === branch.id);
-              const branchStrategies = strategies.filter((s: Strategy) => s.branchId === branch.id);
-              
-              if (branchVisions.length === 0 && branchStrategies.length === 0 && selectedBranch !== "all" && selectedBranch !== branch.id) return null;
-              if (selectedBranch !== "all" && branch.id !== selectedBranch) return null;
+          {/* Listado de Líneas de Negocio y Sucursales */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {businessLines.map(bl => {
+              const blGoals = goals.filter(g => g.assignedToType === "linea_negocio" && g.assignedToId === bl.id);
+              const blBranches = branches.filter(b => b.businessLineId === bl.id);
 
-              const avgBranchProgress = branchVisions.length > 0
-                ? branchVisions.reduce((acc: number, v: StrategicVision) => acc + (v.progress || 0), 0) / branchVisions.length
-                : branchStrategies.length > 0
-                  ? branchStrategies.reduce((acc: number, s: Strategy) => acc + (s.progress || 0), 0) / branchStrategies.length
-                  : 0;
+              const blAvgProgress = blGoals.length > 0
+                ? Math.round(blGoals.reduce((acc, g) => acc + (g.progress || 0), 0) / blGoals.length)
+                : 0;
 
               return (
-                <Card key={branch.id} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Card key={bl.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2 bg-slate-50/50 border-b border-slate-100">
                     <div className="flex items-center gap-2">
-                      <div className="bg-indigo-100 p-2 rounded-lg">
-                        <Building2 className="w-4 h-4 text-indigo-600" />
+                      <div className="bg-emerald-100 p-2 rounded-lg text-emerald-700">
+                        <GitBranch className="w-4 h-4" />
                       </div>
-                      <CardTitle className="text-lg font-bold">{branch.name || branch.Name || branch.id}</CardTitle>
+                      <div>
+                        <CardTitle className="text-sm font-extrabold text-slate-800">{bl.name}</CardTitle>
+                        <CardDescription className="text-[10px]">Línea de Negocio</CardDescription>
+                      </div>
                     </div>
+                    <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                      {blAvgProgress}%
+                    </span>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex justify-between text-xs text-slate-500 mb-2">
-                      <span>Visiones: {branchVisions.length}</span>
-                      <span>Avance: {Math.round(avgBranchProgress)}%</span>
+                  <CardContent className="pt-4 space-y-4">
+                    <div>
+                      <div className="flex justify-between text-[10px] uppercase font-bold text-slate-400 mb-1.5">
+                        <span>Avance División</span>
+                        <span>{blGoals.length} OKRs</span>
+                      </div>
+                      <Progress value={blAvgProgress} className="h-1.5 bg-emerald-50" indicatorClassName="bg-emerald-600" />
                     </div>
-                    
-                    <div className="space-y-3">
-                      {branchVisions.slice(0, 2).map(vision => (
-                        <div key={vision.id} className="p-3 bg-indigo-50/30 rounded-xl border border-indigo-100">
-                          <div className="flex justify-between items-start mb-1">
-                            <div className="flex items-center gap-2">
-                              <Target className="w-3 h-3 text-indigo-600" />
-                              <h4 className="text-xs font-bold text-slate-700 truncate pr-2">{vision.name}</h4>
+
+                    <div className="space-y-3 pt-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sucursales Integradas:</div>
+                      {blBranches.map(branch => {
+                        const branchGoals = goals.filter(g => g.assignedToType === "sucursal" && g.assignedToId === branch.id);
+                        const branchAvg = branchGoals.length > 0
+                          ? Math.round(branchGoals.reduce((acc, g) => acc + (g.progress || 0), 0) / branchGoals.length)
+                          : 0;
+
+                        return (
+                          <div key={branch.id} className="flex items-center justify-between p-2 rounded bg-slate-50/80 border border-slate-100">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <MapPin className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                              <span className="text-xs font-semibold text-slate-700 truncate">{branch.name || branch.Name}</span>
                             </div>
-                            <span className="text-[10px] font-black text-indigo-600">{Math.round(vision.progress || 0)}%</span>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="text-[10px] text-slate-400 font-medium">({branchGoals.length} OKRs)</span>
+                              <span className="text-xs font-extrabold text-indigo-600">{branchAvg}%</span>
+                            </div>
                           </div>
-                          <Progress value={vision.progress} className="h-1 mb-1" />
-                        </div>
-                      ))}
-                      {branchVisions.length === 0 && branchStrategies.length > 0 && (
-                        <p className="text-[10px] text-amber-600 italic">Estrategias sin visión asignada ({branchStrategies.length})</p>
-                      )}
-                      {branchVisions.length === 0 && branchStrategies.length === 0 && (
-                        <div className="text-center py-8 text-slate-400 italic text-xs">
-                          Sin actividad estratégica.
+                        );
+                      })}
+                      {blBranches.length === 0 && (
+                        <div className="text-center py-2 text-[10px] text-slate-400 italic">
+                          Sin sucursales asignadas.
                         </div>
                       )}
                     </div>
@@ -383,11 +399,11 @@ export default function PlaneacionEstrategicaPage() {
             </div>
           ) : (
             <StrategicTreeView 
+              businessLines={businessLines}
               branches={branches}
               visions={visions}
               strategies={strategies}
               goals={goals}
-              tactics={tactics}
               kpis={kpis}
             />
           )}
@@ -411,13 +427,12 @@ export default function PlaneacionEstrategicaPage() {
                 </div>
                 <div className="space-y-3">
                   {strategies.filter(s => s.status === status).map(strategy => (
-                    <Card key={strategy.id} className="cursor-grab hover:border-indigo-300 transition-colors shadow-sm">
+                    <Card key={strategy.id} className="hover:border-indigo-300 transition-colors shadow-sm">
                       <CardContent className="p-4 space-y-3">
                         <div className="flex justify-between items-start">
                           {getPriorityBadge(strategy.priority)}
-                          <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Building2 className="w-3 h-3" />
-                            {branches.find(b => b.id === strategy.branchId)?.name || branches.find(b => b.id === strategy.branchId)?.Name}
+                          <div className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5 font-bold uppercase">
+                            Empresa (Global)
                           </div>
                         </div>
                         <h4 className="font-bold text-sm text-slate-800 leading-tight">{strategy.name}</h4>
@@ -453,10 +468,10 @@ export default function PlaneacionEstrategicaPage() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+                  <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b">
                     <tr>
                       <th className="px-6 py-4">Estrategia</th>
-                      <th className="px-6 py-4">Sucursal</th>
+                      <th className="px-6 py-4">Alcance</th>
                       <th className="px-6 py-4">Tipo</th>
                       <th className="px-6 py-4">Prioridad</th>
                       <th className="px-6 py-4">Estado</th>
@@ -466,7 +481,6 @@ export default function PlaneacionEstrategicaPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {strategies
-                      .filter(s => (selectedBranch === "all" || s.branchId === selectedBranch))
                       .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
                       .map(strategy => (
                         <tr key={strategy.id} className="hover:bg-slate-50 transition-colors">
@@ -475,8 +489,8 @@ export default function PlaneacionEstrategicaPage() {
                             <div className="text-[10px] text-slate-400 truncate max-w-[200px]">{strategy.objective}</div>
                           </td>
                           <td className="px-6 py-4">
-                            <Badge variant="outline" className="font-normal bg-white">
-                              {branches.find(b => b.id === strategy.branchId)?.name || branches.find(b => b.id === strategy.branchId)?.Name}
+                            <Badge variant="outline" className="font-semibold bg-white text-indigo-600 border-indigo-100">
+                              Empresa (Global)
                             </Badge>
                           </td>
                           <td className="px-6 py-4 text-slate-600">{strategy.strategyType}</td>

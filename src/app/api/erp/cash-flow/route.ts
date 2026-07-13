@@ -285,6 +285,36 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    // Process recurring templates' month 0 (initial occurrence) as a normal manual expense if not realized yet
+    recurringTemplates.forEach((template: any) => {
+      const dateStr = normalizeDate(template.date || template.createdAt);
+      const parentYearMonth = dateStr.substring(0, 7);
+      
+      // Find if there is a child expense in the same month
+      const childExpenses = manualExpensesList.filter((e: any) => e.parentExpenseId === template.id);
+      const isParentRealizedInOwnMonth = childExpenses.some(child => {
+        const childDateStr = child.date || child.createdAt?.substring(0, 10);
+        return childDateStr && childDateStr.substring(0, 7) === parentYearMonth;
+      });
+
+      // If not realized (paid) yet in month 0, and status !== 'paid'
+      if (!isParentRealizedInOwnMonth && template.status !== 'paid') {
+        const balance = template.amount - (template.paidAmount || 0);
+        if (balance > 0.01) {
+          const dueDateStr = template.dueDate ? normalizeDate(template.dueDate) : addDays(dateStr, 30);
+          outflows.push({
+            id: template.id,
+            type: 'expense',
+            number: template.documentNumber || `GAS-${template.number || template.id.substring(0, 6)}`,
+            providerName: `${template.vendorName || "Proveedor Gasto"} (Recurrente)`,
+            amount: balance,
+            date: dateStr,
+            dueDate: dueDateStr
+          });
+        }
+      }
+    });
+
     // Parse Outflow: Recurring Expenses Projections
     const todayStr = normalizeDate(null);
     recurringTemplates.forEach((template: any) => {
@@ -303,7 +333,8 @@ export async function GET(request: NextRequest) {
 
       occurrences.forEach(occDate => {
         // Project ONLY future occurrences (from today onwards)
-        if (occDate >= todayStr) {
+        // AND skip the initial occurrence (month 0 / startDateStr) because that is represented by the parent document itself!
+        if (occDate >= todayStr && occDate !== startDateStr) {
           // Check if this occurrence has already been paid or registered manually
           if (!isOccurrenceRealized(occDate, childExpenses, frequency)) {
             outflows.push({

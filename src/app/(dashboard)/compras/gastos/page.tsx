@@ -160,6 +160,20 @@ export default function GastosManualesPage() {
     );
   };
 
+  // Helper to calculate pending balance of any expense, factoring in recurring parent templates
+  const getPendingBalance = (exp: any) => {
+    if (exp.isRecurring) {
+      const parentYearMonth = (exp.date || "").substring(0, 7);
+      const hasChildInSameMonth = expenses.some(child => 
+        child.parentExpenseId === exp.id && 
+        child.date && 
+        child.date.substring(0, 7) === parentYearMonth
+      );
+      return hasChildInSameMonth ? 0 : exp.amount;
+    }
+    return Math.max(0, exp.amount - (exp.paidAmount || 0));
+  };
+
   // Filter logic
   const filteredExpenses = expenses.filter(exp => {
     // 1. Search term (provider, concept or folio)
@@ -173,7 +187,11 @@ export default function GastosManualesPage() {
     // 2. Status filter
     if (statusFilter !== "all") {
       if (statusFilter === "paid" && exp.status !== "paid") return false;
-      if (statusFilter === "pending" && (exp.status !== "pending" || exp.isRecurring === true)) return false;
+      if (statusFilter === "pending") {
+        if (exp.status !== "pending") return false;
+        // Hide recurring parent templates from the pending filter if they've already been paid for their month
+        if (exp.isRecurring && getPendingBalance(exp) < 0.01) return false;
+      }
       if (statusFilter === "cancelado" && exp.status !== "cancelado") return false;
     }
     // 3. Date range filter
@@ -204,11 +222,34 @@ export default function GastosManualesPage() {
     return 0;
   });
 
-  // Financial Metrics
-  const nonRecurringExpenses = filteredExpenses.filter((e) => e.isRecurring !== true);
-  const totalGastado = nonRecurringExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const totalPagado = nonRecurringExpenses.reduce((sum, e) => sum + (e.paidAmount || 0), 0);
-  const totalPendiente = Math.max(0, totalGastado - totalPagado);
+  // Financial Metrics with duplicate child/parent handling
+  const totalGastado = filteredExpenses.reduce((sum, e) => {
+    if (e.isRecurring) {
+      const parentYearMonth = (e.date || "").substring(0, 7);
+      const hasChildInSameMonth = expenses.some(child => 
+        child.parentExpenseId === e.id && 
+        child.date && 
+        child.date.substring(0, 7) === parentYearMonth
+      );
+      return sum + (hasChildInSameMonth ? 0 : (e.amount || 0));
+    }
+    return sum + (e.amount || 0);
+  }, 0);
+
+  const totalPagado = filteredExpenses.reduce((sum, e) => {
+    if (e.isRecurring) {
+      const parentYearMonth = (e.date || "").substring(0, 7);
+      const hasChildInSameMonth = expenses.some(child => 
+        child.parentExpenseId === e.id && 
+        child.date && 
+        child.date.substring(0, 7) === parentYearMonth
+      );
+      return sum + (hasChildInSameMonth ? 0 : (e.paidAmount || 0));
+    }
+    return sum + (e.paidAmount || 0);
+  }, 0);
+
+  const totalPendiente = filteredExpenses.reduce((sum, e) => sum + getPendingBalance(e), 0);
 
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(amount);
@@ -431,8 +472,8 @@ export default function GastosManualesPage() {
                        <td className="px-4 py-3 text-right text-emerald-600 font-semibold">
                          {formatMoney(exp.paidAmount || 0)}
                        </td>
-                       <td className={`px-4 py-3 text-right font-bold ${saldo > 0 && exp.status !== "cancelado" && !exp.isRecurring ? "text-amber-600" : "text-slate-400"}`}>
-                         {exp.isRecurring ? formatMoney(0) : formatMoney(saldo)}
+                       <td className={`px-4 py-3 text-right font-bold ${getPendingBalance(exp) > 0.01 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
+                         {formatMoney(getPendingBalance(exp))}
                        </td>
                        <td className="px-4 py-3 text-center">
                          <div className="flex items-center justify-center gap-2">
@@ -446,7 +487,7 @@ export default function GastosManualesPage() {
                                <Eye className="w-4 h-4 text-indigo-600" />
                              </Button>
                            </Link>
-                           {saldo > 0.01 && exp.status !== "cancelado" && !exp.isRecurring && (
+                           {getPendingBalance(exp) > 0.01 && exp.status !== "cancelado" && (
                              <Button 
                                variant="outline" 
                                size="icon" 

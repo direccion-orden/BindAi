@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { Loader2, DollarSign, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2 } from "lucide-react";
+import { Loader2, DollarSign, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PaymentModal } from "./PaymentModal";
 import { EditPaymentModal } from "./EditPaymentModal";
@@ -221,6 +221,7 @@ export function DocumentPaymentsTab({ document: docObj, documentType, companyId,
                 <th className="px-6 py-4">Monto</th>
                 <th className="px-6 py-4">Método</th>
                 <th className="px-6 py-4">Referencia</th>
+                <th className="px-6 py-4">Evidencia</th>
                 <th className="px-6 py-4">Estatus</th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
@@ -228,7 +229,7 @@ export function DocumentPaymentsTab({ document: docObj, documentType, companyId,
             <tbody className="divide-y">
               {payments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-8 text-center text-slate-400">
                     No se han registrado pagos para este documento.
                   </td>
                 </tr>
@@ -246,6 +247,20 @@ export function DocumentPaymentsTab({ document: docObj, documentType, companyId,
                       <td className="px-6 py-4 font-medium">{payment.method}</td>
                       <td className="px-6 py-4 text-xs font-mono text-slate-500 truncate max-w-[150px]" title={payment.reference}>
                         {payment.reference || '--'}
+                      </td>
+                      <td className="px-6 py-4">
+                        {payment.evidenceUrl ? (
+                          <a
+                            href={payment.evidenceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-bold hover:underline text-xs"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Ver Archivo
+                          </a>
+                        ) : (
+                          <span className="text-xs text-slate-400">Sin adjunto</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         {isCancelled ? (

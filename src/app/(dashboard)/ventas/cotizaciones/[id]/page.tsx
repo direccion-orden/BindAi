@@ -3,16 +3,18 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FolderOpen, Truck } from "lucide-react";
+import { FolderOpen, Truck, Upload, X } from "lucide-react";
 import { FileText, Package, Trash2, Edit2, Save, Search, Loader2, XCircle, MessageSquare, ArrowLeft, Percent, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { doc, getDoc, updateDoc, collection, query, getDocs, where, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { doc, getDoc, updateDoc, collection, query, getDocs, where, setDoc, increment } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { generateQuoteImage } from "@/actions/generate-image";
 import { calculateOrderTotals, EngineDiscount, EngineItem } from "@/lib/utils/discountEngine";
 import { getNextSequence } from "@/lib/firebase/counters";
+
 
 const CRM_STAGES = [
   { id: "nueva", name: "Nueva / Prospecto", color: "#94a3b8" },
@@ -43,7 +45,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
-  const [conversionType, setConversionType] = useState<"order" | "remission" | null>(null);
+  const [conversionType, setConversionType] = useState<"order" | "remission" | "invoice" | null>(null);
   const [conversionData, setConversionData] = useState({
     date: "",
     locationId: "",
@@ -51,6 +53,31 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
     projectId: "",
     notes: ""
   });
+
+  const [registerPayment, setRegisterPayment] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState("Transferencia");
+  const [paymentDate, setPaymentDate] = useState("");
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
+  const [paymentVatRate, setPaymentVatRate] = useState(0.16);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentFile, setPaymentFile] = useState<File | null>(null);
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [vatAccounts, setVatAccounts] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (conversionType && quote) {
+      setRegisterPayment(false);
+      setPaymentAmount(quote.totalAmount || 0);
+      setPaymentDate(getTodayLocalDateString());
+      setPaymentMethod("Transferencia");
+      setPaymentReference("");
+      setSelectedBankAccountId("");
+      setPaymentVatRate(0.16);
+      setPaymentFile(null);
+    }
+  }, [conversionType, quote]);
+
 
   const getTodayLocalDateString = () => {
     const d = new Date();
@@ -92,7 +119,13 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
     getDocs(collection(db, "companies", companyId, "warehouses")).then(snap => {
       setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+    getDocs(collection(db, "companies", companyId, "accounts")).then(snap => {
+      const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setBankAccounts(allAcc.filter((a: any) => a.type === "ACTIVO" && a.level >= 2 && (a.name.toLowerCase().includes("banco") || a.name.toLowerCase().includes("caja"))));
+      setVatAccounts(allAcc.filter((a: any) => a.code.startsWith("208") && a.level >= 2));
+    });
   }, [companyId]);
+
 
   // Load products and discounts when editing
   useEffect(() => {
@@ -233,11 +266,128 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
     }
   };
 
+  const processImmediatePayment = async (
+    docId: string,
+    docNumber: string,
+    docType: "pedido" | "remision" | "factura",
+    targetAccountId: string,
+    targetAccountCode: string,
+    targetAccountName: string
+  ) => {
+    if (!registerPayment) return;
+    if (paymentAmount <= 0) return;
+    if (!selectedBankAccountId) {
+      throw new Error("Debes seleccionar una Cuenta de Banco para el pago.");
+    }
+
+    // 1. Subir archivo de evidencia si existe
+    let evidenceUrl = "";
+    if (paymentFile) {
+      const storageRef = ref(storage, `companies/${companyId}/payment_evidence/${Date.now()}_${paymentFile.name}`);
+      const uploadResult = await uploadBytes(storageRef, paymentFile);
+      evidenceUrl = await getDownloadURL(uploadResult.ref);
+    }
+
+    // 2. Crear documento de pago
+    const paymentId = doc(collection(db, "companies", companyId!, "payments")).id;
+    const selectedLoc = locations.find(l => l.id === conversionData.locationId);
+
+    const paymentData: any = {
+      id: paymentId,
+      amount: Number(paymentAmount),
+      date: paymentDate,
+      method: paymentMethod,
+      reference: paymentReference,
+      documentId: docId,
+      documentType: docType,
+      documentNumber: docNumber,
+      clientId: quote.clientId || "",
+      clientName: quote.clientName || "",
+      locationId: conversionData.locationId || null,
+      locationName: selectedLoc ? selectedLoc.name : "",
+      bankAccountId: selectedBankAccountId,
+      evidenceUrl,
+      createdAt: new Date().toISOString()
+    };
+
+    if (docType === "pedido") {
+      paymentData.orderId = docId;
+    }
+
+    await setDoc(doc(db, "companies", companyId!, "payments", paymentId), paymentData);
+
+    // 3. Crear Asiento de Diario (Póliza de Ingreso) si hay cuenta destino
+    if (targetAccountId) {
+      const bankAccount = bankAccounts.find(a => a.id === selectedBankAccountId);
+      
+      let subtotalAmount = Number(paymentAmount);
+      let vatAmount = 0;
+      let vatAccount = null;
+
+      if (paymentVatRate > 0) {
+        subtotalAmount = Number(paymentAmount) / (1 + paymentVatRate);
+        vatAmount = Number(paymentAmount) - subtotalAmount;
+        vatAccount = vatAccounts[0];
+      }
+
+      const entries = [
+        {
+          accountId: selectedBankAccountId,
+          accountCode: bankAccount?.code || "",
+          accountName: bankAccount?.name || "",
+          debit: Number(paymentAmount),
+          credit: 0
+        },
+        {
+          accountId: targetAccountId,
+          accountCode: targetAccountCode,
+          accountName: targetAccountName,
+          debit: 0,
+          credit: subtotalAmount
+        }
+      ];
+
+      if (vatAmount > 0 && vatAccount) {
+        entries.push({
+          accountId: vatAccount.id,
+          accountCode: vatAccount.code,
+          accountName: vatAccount.name,
+          debit: 0,
+          credit: vatAmount
+        });
+      }
+
+      await setDoc(doc(collection(db, "companies", companyId!, "journal_entries")), {
+        type: "ingreso",
+        date: paymentDate,
+        description: `Cobro de ${docType} ${docNumber}`,
+        referenceId: paymentId,
+        referenceType: "payment",
+        createdAt: new Date().toISOString(),
+        status: "activa",
+        entries
+      });
+
+      // Actualizar balances
+      await updateDoc(doc(db, "companies", companyId!, "accounts", selectedBankAccountId), {
+        balance: increment(Number(paymentAmount))
+      });
+      await updateDoc(doc(db, "companies", companyId!, "accounts", targetAccountId), {
+        balance: increment(subtotalAmount)
+      });
+      if (vatAmount > 0 && vatAccount) {
+        await updateDoc(doc(db, "companies", companyId!, "accounts", vatAccount.id), {
+          balance: increment(vatAmount)
+        });
+      }
+    }
+  };
+
   const handleConfirmConvertToOrder = async () => {
     if (!companyId || !quote) return;
     setLoading(true);
     try {
-      const orderId = crypto.randomUUID();
+      const orderId = doc(collection(db, "companies", companyId, "pedidos")).id;
       const orderNumber = await getNextSequence(companyId, "pedidos");
       
       const now = new Date();
@@ -255,6 +405,23 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
       const selectedWh = warehouses.find(w => w.id === conversionData.warehouseId);
       const selectedProj = projects.find(p => p.id === conversionData.projectId);
 
+      // Fetch default 401.1 account details for payment
+      const accountsSnap = await getDocs(query(collection(db, "companies", companyId, "accounts"), where("code", "==", "401.1")));
+      let finalAccountId = "";
+      let finalAccountCode = "401.1";
+      let finalAccountName = "Ventas Nacionales";
+      if (!accountsSnap.empty) {
+        const accDoc = accountsSnap.docs[0];
+        finalAccountId = accDoc.id;
+        finalAccountCode = accDoc.data().code || "401.1";
+        finalAccountName = accDoc.data().name || "Ventas Nacionales";
+      }
+
+      if (registerPayment) {
+        await processImmediatePayment(orderId, orderNumber.toString(), "pedido", finalAccountId, finalAccountCode, finalAccountName);
+      }
+
+      const pAmount = registerPayment ? Number(paymentAmount) : 0;
       const newOrder = {
         id: orderId,
         orderNumber,
@@ -277,7 +444,8 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
         locationName: selectedLoc ? selectedLoc.name : "",
         warehouseId: conversionData.warehouseId || null,
         warehouseName: selectedWh ? (selectedWh.name || selectedWh.Name || "") : "",
-        status: "por_surtir",
+        status: (registerPayment && pAmount >= (quote.totalAmount || 0) - 0.01) ? "pagado" : "por_surtir",
+        paidAmount: pAmount,
         notes: conversionData.notes || "",
         createdAt: finalCreatedAt,
         createdBy: user?.email || "Unknown",
@@ -293,9 +461,9 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
       setConversionType(null);
       alert(`Pedido ${orderNumber} creado exitosamente.`);
       router.push("/ventas/pedidos");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating order:", error);
-      alert("Hubo un error al generar el pedido.");
+      alert("Hubo un error al generar el pedido: " + error.message);
     } finally {
       setLoading(false);
     }
@@ -305,7 +473,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
     if (!companyId || !quote) return;
     setLoading(true);
     try {
-      const remId = crypto.randomUUID();
+      const remId = doc(collection(db, "companies", companyId, "remisiones")).id;
       const remNumber = await getNextSequence(companyId, "remisiones");
       
       const now = new Date();
@@ -343,6 +511,11 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
         }
       }
 
+      if (registerPayment) {
+        await processImmediatePayment(remId, remNumber.toString(), "remision", finalAccountId, finalAccountCode, finalAccountName);
+      }
+
+      const pAmount = registerPayment ? Number(paymentAmount) : 0;
       const newRemission = {
         id: remId,
         remissionNumber: remNumber,
@@ -373,7 +546,8 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
         accountId: finalAccountId,
         accountCode: finalAccountCode,
         accountName: finalAccountName,
-        status: "activa",
+        status: (registerPayment && pAmount >= (quote.totalAmount || 0) - 0.01) ? "pagada" : "activa",
+        paidAmount: pAmount,
         notes: conversionData.notes || "",
         createdAt: finalCreatedAt,
         createdBy: user?.email || "Unknown"
@@ -399,7 +573,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
           await updateDoc(productRef, { variants: updatedVariants });
           
           // Generate Inventory Movement record
-          const movId = crypto.randomUUID();
+          const movId = doc(collection(db, "companies", companyId, "inventory_movements")).id;
           await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
             id: movId,
             productId: item.productId,
@@ -421,9 +595,216 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
       setConversionType(null);
       alert(`Remisión ${remNumber} generada exitosamente. Inventario descontado.`);
       router.push("/ventas/remisiones");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating remission:", error);
-      alert("Hubo un error al generar la remisión.");
+      alert("Hubo un error al generar la remisión: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmConvertToInvoice = async () => {
+    if (!companyId || !quote) return;
+    setLoading(true);
+    try {
+      const invId = doc(collection(db, "companies", companyId, "facturas")).id;
+      const invNumber = await getNextSequence(companyId, "facturas");
+      
+      const now = new Date();
+      const dateParts = conversionData.date.split("-");
+      const finalCreatedAt = new Date(
+        Number(dateParts[0]),
+        Number(dateParts[1]) - 1,
+        Number(dateParts[2]),
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds()
+      ).toISOString();
+
+      const selectedLoc = locations.find(l => l.id === conversionData.locationId);
+      const selectedWh = warehouses.find(w => w.id === conversionData.warehouseId);
+      const selectedProj = projects.find(p => p.id === conversionData.projectId);
+
+      // Fetch default 401.1 account details
+      const accountsSnap = await getDocs(query(collection(db, "companies", companyId, "accounts"), where("code", "==", "401.1")));
+      let finalAccountId = "";
+      let finalAccountCode = "401.1";
+      let finalAccountName = "Ventas Nacionales";
+      if (!accountsSnap.empty) {
+        const accDoc = accountsSnap.docs[0];
+        finalAccountId = accDoc.id;
+        finalAccountCode = accDoc.data().code || "401.1";
+        finalAccountName = accDoc.data().name || "Ventas Nacionales";
+      } else {
+        const allAccountsSnap = await getDocs(collection(db, "companies", companyId, "accounts"));
+        const targetAcc = allAccountsSnap.docs.find(d => d.data().code === "401.1");
+        if (targetAcc) {
+          finalAccountId = targetAcc.id;
+          finalAccountCode = targetAcc.data().code || "401.1";
+          finalAccountName = targetAcc.data().name || "Ventas Nacionales";
+        }
+      }
+
+      // Fetch client details for receiver info
+      let clientData: any = null;
+      if (quote.clientId) {
+        const clientSnap = await getDoc(doc(db, "companies", companyId, "clients", quote.clientId));
+        if (clientSnap.exists()) {
+          clientData = clientSnap.data();
+        }
+      }
+
+      const receiverName = clientData?.razonSocial || quote.clientName || "PUBLICO EN GENERAL";
+      const receiverRfc = clientData?.rfc || clientData?.RFC || "XAXX010101000";
+      const receiverCfdiUse = (clientData?.taxRegime === "616" || !clientData) ? "S01" : (clientData?.cfdiUse || "G03");
+      const receiverZipCode = (receiverRfc === "XAXX010101000" || !clientData) ? "64753" : (clientData?.zipCode || "00000");
+      const receiverTaxRegime = clientData?.taxRegime || "616";
+
+      const cfdiPayload = {
+        Receiver: {
+          Name: receiverName.toUpperCase(),
+          CfdiUse: receiverCfdiUse,
+          Rfc: receiverRfc.toUpperCase(),
+          TaxZipCode: receiverZipCode,
+          FiscalRegime: receiverTaxRegime
+        },
+        CfdiType: "I",
+        Exportation: "01",
+        PaymentForm: "01",
+        PaymentMethod: "PUE",
+        Currency: "MXN",
+        Date: getTodayLocalDateString(),
+        ExpeditionPlace: "64753",
+        Items: (quote.items || []).map((item: any) => {
+          const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+          const unitPriceRounded = round2(item.unitPrice || 0);
+          const subtotalVal = round2(item.quantity * unitPriceRounded);
+          const discountVal = round2((item.discountPercentage || 0) * 0.01 * subtotalVal);
+          const baseVal = round2(subtotalVal - discountVal);
+          const taxTotalVal = round2(baseVal * 0.16);
+          const totalVal = round2(baseVal + taxTotalVal);
+          
+          return {
+            ProductCode: item.satProductCode || "01010101",
+            IdentificationNumber: item.variantId || "SKU",
+            Description: item.isService && item.description ? item.description : item.productName,
+            Unit: item.satUnitName || "PIEZA",
+            UnitCode: item.satUnitCode || "H87",
+            UnitPrice: unitPriceRounded,
+            Quantity: item.quantity,
+            Subtotal: subtotalVal,
+            Discount: discountVal,
+            TaxObject: "02",
+            Taxes: [
+              {
+                Total: taxTotalVal,
+                Name: "IVA",
+                Base: baseVal,
+                Rate: 0.16,
+                IsRetention: false
+              }
+            ],
+            Total: totalVal
+          };
+        })
+      };
+
+      if (receiverRfc === "XAXX010101000" && receiverName.toUpperCase() === "PUBLICO EN GENERAL") {
+        (cfdiPayload as any).GlobalInformation = {
+          Periodicity: "01",
+          Months: new Date().getMonth() + 1 < 10 ? `0${new Date().getMonth() + 1}` : `${new Date().getMonth() + 1}`,
+          Year: new Date().getFullYear()
+        };
+      }
+
+      if (registerPayment) {
+        await processImmediatePayment(invId, invNumber.toString(), "factura", finalAccountId, finalAccountCode, finalAccountName);
+      }
+
+      const pAmount = registerPayment ? Number(paymentAmount) : 0;
+      const newInvoice = {
+        id: invId,
+        invoiceNumber: invNumber,
+        orderId: null,
+        orderNumber: null,
+        quoteId: quote.id,
+        quoteNumber: quote.quoteNumber,
+        clientId: quote.clientId || null,
+        clientName: quote.clientName,
+        items: (quote.items || []).map((i: any) => ({
+          ...i,
+          unitPrice: Number(i.unitPrice) || 0
+        })),
+        subtotal: quote.subtotal || 0,
+        totalDiscount: quote.totalDiscount || 0,
+        promoCode: quote.promoCode || null,
+        globalDiscountType: quote.globalDiscountType || "none",
+        globalDiscountValue: quote.globalDiscountValue || 0,
+        globalDiscountAmount: quote.globalDiscountAmount || 0,
+        tax: quote.tax || 0,
+        totalAmount: quote.totalAmount,
+        projectId: conversionData.projectId || null,
+        projectName: selectedProj ? selectedProj.name : null,
+        locationId: conversionData.locationId || null,
+        locationName: selectedLoc ? selectedLoc.name : "",
+        warehouseId: conversionData.warehouseId || null,
+        warehouseName: selectedWh ? (selectedWh.name || selectedWh.Name || "") : "",
+        accountId: finalAccountId,
+        accountCode: finalAccountCode,
+        accountName: finalAccountName,
+        status: "por_timbrar",
+        cfdiPayload,
+        paidAmount: pAmount,
+        notes: conversionData.notes || "",
+        createdAt: finalCreatedAt,
+        createdBy: user?.email || "Unknown"
+      };
+
+      await setDoc(doc(db, "companies", companyId, "facturas", invId), newInvoice);
+
+      // Inventory Deduction Logic
+      for (const item of (quote.items || [])) {
+        if (item.isService || item.sku?.startsWith("SER-")) continue;
+
+        const productRef = doc(db, "companies", companyId, "products", item.productId);
+        const productDoc = await getDoc(productRef);
+        if (productDoc.exists()) {
+          const productData = productDoc.data();
+          const updatedVariants = productData.variants?.map((v: any) => {
+            if (v.id === (item.variantId || item.id)) {
+              return { ...v, stock: Math.max(0, (v.stock || 0) - item.quantity) };
+            }
+            return v;
+          });
+          
+          await updateDoc(productRef, { variants: updatedVariants });
+          
+          // Generate Inventory Movement record
+          const movId = doc(collection(db, "companies", companyId, "inventory_movements")).id;
+          await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
+            id: movId,
+            productId: item.productId,
+            variantId: item.variantId || item.id || "",
+            type: "OUT",
+            quantity: item.quantity,
+            reason: `Factura desde Cotización ${invNumber}`,
+            referenceId: invId,
+            createdAt: finalCreatedAt
+          });
+        }
+      }
+
+      await updateDoc(doc(db, "companies", companyId, "quotes", quote.id), {
+        status: "ganada",
+        invoiceId: invId
+      });
+
+      setConversionType(null);
+      alert(`Factura FAC-${invNumber} generada exitosamente. Inventario descontado.`);
+      router.push("/ventas/facturas");
+    } catch (error: any) {
+      console.error("Error creating invoice:", error);
+      alert("Hubo un error al generar la factura: " + error.message);
     } finally {
       setLoading(false);
     }
@@ -662,6 +1043,24 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                             <Truck className="w-4 h-4 text-emerald-500" />
                             Convertir a Remisión
                           </button>
+                          <button
+                            onClick={() => {
+                              setShowDropdown(false);
+                              setConversionType("invoice");
+                              setConversionData({
+                                date: getTodayLocalDateString(),
+                                locationId: quote.locationId || "",
+                                warehouseId: quote.warehouseId || "",
+                                projectId: quote.projectId || "",
+                                notes: quote.notes || ""
+                              });
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2 text-xs text-violet-700 hover:bg-violet-50 text-left font-medium"
+                            disabled={loading}
+                          >
+                            <FileText className="w-4 h-4 text-violet-500" />
+                            Convertir a Factura
+                          </button>
                         </>
                       )}
 
@@ -686,6 +1085,18 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                           Ver Remisión Relacionada
                         </Link>
                       )}
+
+                      {quote.invoiceId && (
+                        <Link 
+                          href={`/ventas/facturas/${quote.invoiceId}`}
+                          onClick={() => setShowDropdown(false)}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-xs text-violet-700 hover:bg-violet-50 font-medium"
+                        >
+                          <FileText className="w-4 h-4 text-violet-500" />
+                          Ver Factura Relacionada
+                        </Link>
+                      )}
+
 
                       {quote.status !== 'cancelada' && quote.status !== 'ganada' && (
                         <button
@@ -1126,8 +1537,8 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
       </div>
 
       {conversionType && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg my-8 overflow-hidden border border-slate-200">
             {/* Header */}
             <div className="px-6 py-4 border-b bg-slate-50 flex items-center justify-between">
               <h3 className="font-semibold text-slate-900 text-lg flex items-center gap-2">
@@ -1136,10 +1547,15 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                     <Package className="w-5 h-5 text-blue-600" />
                     Generar Pedido desde Cotización
                   </>
-                ) : (
+                ) : conversionType === "remission" ? (
                   <>
                     <Truck className="w-5 h-5 text-emerald-600" />
                     Generar Remisión desde Cotización
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-5 h-5 text-violet-600" />
+                    Generar Factura desde Cotización
                   </>
                 )}
               </h3>
@@ -1152,7 +1568,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
             </div>
 
             {/* Content */}
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
               <p className="text-xs text-slate-500">
                 Revisa y ajusta los detalles antes de generar el documento final.
               </p>
@@ -1249,6 +1665,165 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                   className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-y"
                 />
               </div>
+
+              <hr className="my-4 border-slate-200" />
+
+              {/* Checkbox for Immediate Payment */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="registerPayment"
+                  checked={registerPayment}
+                  onChange={(e) => setRegisterPayment(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <label htmlFor="registerPayment" className="text-xs font-bold text-slate-800 cursor-pointer flex items-center gap-1.5 select-none">
+                  💵 ¿Registrar pago de inmediato?
+                </label>
+              </div>
+
+              {registerPayment && (
+                <div className="space-y-4 bg-slate-50 border border-slate-200 rounded-lg p-4 animate-in fade-in-50 duration-200">
+                  {/* Payment Amount */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      Monto Recibido *
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max={quote.totalAmount}
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                      className="w-full text-sm font-semibold bg-white"
+                      required
+                    />
+                    <p className="text-[10px] text-slate-500">Monto total del documento: ${quote.totalAmount?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Payment Method */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-700 block">
+                        Método de Pago *
+                      </label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none"
+                        required
+                      >
+                        {["Efectivo", "Transferencia", "Tarjeta de Crédito", "Tarjeta de Débito", "Cheque", "Otro"].map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Payment Date */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-700 block">
+                        Fecha de Pago *
+                      </label>
+                      <Input
+                        type="date"
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
+                        className="w-full text-sm bg-white"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Bank Account */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      Cuenta de Banco / Caja Destino *
+                    </label>
+                    <select
+                      value={selectedBankAccountId}
+                      onChange={(e) => setSelectedBankAccountId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none"
+                      required
+                    >
+                      <option value="" disabled>Selecciona la cuenta destino...</option>
+                      {bankAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* VAT rate */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      Impuesto Incluido en el Pago (IVA) *
+                    </label>
+                    <select
+                      value={paymentVatRate}
+                      onChange={(e) => setPaymentVatRate(parseFloat(e.target.value))}
+                      className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none"
+                      required
+                    >
+                      <option value={0.16}>16% (General)</option>
+                      <option value={0.08}>8% (Frontera)</option>
+                      <option value={0}>0% / Exento</option>
+                    </select>
+                  </div>
+
+                  {/* Payment Reference */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      Referencia de Pago (Opcional)
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="Ej. SPEI 87432"
+                      value={paymentReference}
+                      onChange={(e) => setPaymentReference(e.target.value)}
+                      className="w-full text-sm bg-white"
+                    />
+                  </div>
+
+                  {/* Payment Evidence File (Image or PDF) */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      Evidencia de Pago (Imagen o PDF)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        id="paymentEvidenceFile"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setPaymentFile(e.target.files[0]);
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor="paymentEvidenceFile"
+                        className="flex items-center gap-2 cursor-pointer border border-dashed border-slate-300 rounded-lg px-4 py-2 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition"
+                      >
+                        <Upload className="w-4 h-4 text-slate-400" />
+                        {paymentFile ? "Cambiar Archivo" : "Subir Archivo Evidencia"}
+                      </label>
+                      {paymentFile && (
+                        <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 max-w-[200px]">
+                          <span className="text-xs font-medium truncate">{paymentFile.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setPaymentFile(null)}
+                            className="text-slate-400 hover:text-red-500 animate-in fade-in"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer */}
@@ -1266,17 +1841,21 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                 onClick={
                   conversionType === "order"
                     ? handleConfirmConvertToOrder
-                    : handleConfirmConvertToRemission
+                    : conversionType === "remission"
+                    ? handleConfirmConvertToRemission
+                    : handleConfirmConvertToInvoice
                 }
                 disabled={loading}
                 className={
                   conversionType === "order"
                     ? "bg-blue-600 hover:bg-blue-700 text-white"
-                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : conversionType === "remission"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "bg-violet-600 hover:bg-violet-700 text-white"
                 }
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Generar {conversionType === "order" ? "Pedido" : "Remisión"}
+                Generar {conversionType === "order" ? "Pedido" : conversionType === "remission" ? "Remisión" : "Factura"}
               </Button>
             </div>
           </div>

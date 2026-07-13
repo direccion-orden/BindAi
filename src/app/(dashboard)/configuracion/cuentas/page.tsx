@@ -59,7 +59,7 @@ export default function CuentasPage() {
     if (acc) {
       setCurrentId(acc.id);
       setName((acc.Name || acc.name));
-      setType(acc.type);
+      setType(acc.type || "bank");
       setCurrency((acc.CurrencyCode || acc.currency || 'MXN') || "MXN");
       setInitialBalance(acc.initialBalance || 0);
       setIsCredit(acc.isCredit || false);
@@ -121,14 +121,14 @@ export default function CuentasPage() {
         });
       }
 
-      const docId = currentId || crypto.randomUUID();
+      const docId = currentId || doc(collection(db, "companies", companyId, "bankAccounts")).id;
       const ref = doc(db, "companies", companyId, "bankAccounts", docId);
       await setDoc(ref, {
         name: name.trim(),
-        type,
+        type: type || "bank",
         currency,
         initialBalance,
-        isCredit: type === "cash" ? false : isCredit,
+        isCredit: (type || "bank") === "cash" ? false : isCredit,
         accountId: finalAccountId || null
       });
       handleCloseForm();

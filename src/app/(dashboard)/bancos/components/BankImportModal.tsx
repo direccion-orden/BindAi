@@ -21,6 +21,7 @@ type ImportStep = 1 | 2 | 3 | 4 | 5; // 1: Upload, 2: Map (CSV), 3: De-duplicate
 export function BankImportModal({ accounts, initialAccountId, onClose }: BankImportModalProps) {
   const { companyId } = useAuth();
   const [targetAccountId, setTargetAccountId] = useState(initialAccountId);
+  const isCredit = accounts.find(a => a.id === targetAccountId)?.isCredit === true;
   const [step, setStep] = useState<ImportStep>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -54,6 +55,12 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
         const txs = await parseBBVAPdf(file);
         if (txs.length === 0) {
             throw new Error("No se encontraron movimientos en el PDF o el formato no es compatible.");
+        }
+        if (isCredit) {
+          txs.forEach(t => {
+            t.amount = -t.amount;
+            t.type = t.amount > 0 ? "INCOME" : "EXPENSE";
+          });
         }
         setCandidateTransactions(txs);
         await prepareDeduplication(txs);
@@ -171,6 +178,11 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
       }
 
       if (amount !== 0) {
+        // Invert charges and credits for credit cards
+        if (isCredit) {
+          amount = -amount;
+        }
+
         txs.push({
           id: `temp-${Date.now()}-${i}`,
           date: parseDateStr(row[dateCol]),
@@ -304,6 +316,14 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
                       <option key={acc.id} value={acc.id}>{(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})</option>
                     ))}
                   </select>
+                  {isCredit && (
+                    <div className="bg-purple-50 text-purple-700 border border-purple-200 p-3 rounded-lg text-xs flex items-start gap-2 mt-2">
+                      <Info className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />
+                      <span>
+                        <strong>Tarjeta de Crédito:</strong> Los cargos y abonos se procesarán con lógica inversa de signos automáticamente.
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -344,6 +364,15 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
                     <p className="text-xs text-indigo-700">Identifica las columnas de tu archivo para procesar los movimientos.</p>
                  </div>
               </div>
+
+              {isCredit && (
+                <div className="bg-purple-50 text-purple-700 border border-purple-200 p-3 rounded-lg text-xs flex items-center gap-2">
+                  <Info className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>
+                    <strong>Tarjeta de Crédito detectada:</strong> La lógica de signos de cargos y abonos se invertirá automáticamente (cargos positivos, abonos negativos).
+                  </span>
+                </div>
+              )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1.5">

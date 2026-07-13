@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Trash2, Edit2, Banknote, CreditCard, Building2 } from "lucide-react";
 import {
   Table,
@@ -25,6 +26,7 @@ interface BankAccount {
   accountId?: string;
   Name?: string;
   CurrencyCode?: string;
+  isCredit?: boolean;
 }
 
 export default function CuentasPage() {
@@ -38,6 +40,7 @@ export default function CuentasPage() {
   const [type, setType] = useState<"cash" | "bank" | "terminal">("bank");
   const [currency, setCurrency] = useState("MXN");
   const [initialBalance, setInitialBalance] = useState(0);
+  const [isCredit, setIsCredit] = useState(false);
   
   const [saving, setSaving] = useState(false);
 
@@ -59,12 +62,14 @@ export default function CuentasPage() {
       setType(acc.type);
       setCurrency((acc.CurrencyCode || acc.currency || 'MXN') || "MXN");
       setInitialBalance(acc.initialBalance || 0);
+      setIsCredit(acc.isCredit || false);
     } else {
       setCurrentId("");
       setName("");
       setType("bank");
       setCurrency("MXN");
       setInitialBalance(0);
+      setIsCredit(false);
     }
     setIsEditing(true);
   };
@@ -73,6 +78,7 @@ export default function CuentasPage() {
     setIsEditing(false);
     setCurrentId("");
     setName("");
+    setIsCredit(false);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -122,6 +128,7 @@ export default function CuentasPage() {
         type,
         currency,
         initialBalance,
+        isCredit: type === "cash" ? false : isCredit,
         accountId: finalAccountId || null
       });
       handleCloseForm();
@@ -223,6 +230,21 @@ export default function CuentasPage() {
               </div>
             </div>
 
+            {type !== "cash" && (
+              <div className="flex items-center space-x-2 py-1">
+                <input 
+                  type="checkbox"
+                  id="isCredit"
+                  checked={isCredit}
+                  onChange={(e) => setIsCredit(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <label htmlFor="isCredit" className="text-sm font-medium text-slate-700 cursor-pointer select-none">
+                  Es una cuenta de Crédito (Tarjeta de Crédito)
+                </label>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Saldo Inicial</label>
               <Input 
@@ -267,7 +289,14 @@ export default function CuentasPage() {
               <TableBody>
                 {accounts.map(acc => (
                   <TableRow key={acc.id}>
-                    <TableCell className="font-medium font-semibold">{(acc.Name || acc.name)}</TableCell>
+                    <TableCell className="font-medium font-semibold flex items-center gap-2">
+                      {(acc.Name || acc.name)}
+                      {acc.isCredit && (
+                        <Badge variant="outline" className="text-[9px] bg-purple-50 text-purple-700 border-purple-200 uppercase font-extrabold">
+                          Crédito
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {getTypeIcon(acc.type)}

@@ -43,6 +43,20 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
   const [availableDiscounts, setAvailableDiscounts] = useState<EngineDiscount[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [conversionType, setConversionType] = useState<"order" | "remission" | null>(null);
+  const [conversionData, setConversionData] = useState({
+    date: "",
+    locationId: "",
+    warehouseId: "",
+    projectId: "",
+    notes: ""
+  });
+
+  const getTodayLocalDateString = () => {
+    const d = new Date();
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return (new Date(d.getTime() - tzOffset)).toISOString().split("T")[0];
+  };
 
   useEffect(() => {
     if (!companyId || !params.id) return;
@@ -63,22 +77,28 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
     fetchQuote();
   }, [companyId, params.id]);
 
+  // Load catalogs on mount when companyId is available
+  useEffect(() => {
+    if (!companyId) return;
+    getDocs(collection(db, "companies", companyId, "projects")).then(snap => {
+      setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    getDocs(collection(db, "companies", companyId, "locations")).then(snap => {
+      setLocations(snap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, name: data.name || data.Name || "Sucursal sin nombre" };
+      }));
+    });
+    getDocs(collection(db, "companies", companyId, "warehouses")).then(snap => {
+      setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  }, [companyId]);
+
+  // Load products and discounts when editing
   useEffect(() => {
     if (isEditing && products.length === 0 && companyId) {
       getDocs(collection(db, "companies", companyId, "products")).then(snap => {
         setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
-      getDocs(collection(db, "companies", companyId, "projects")).then(snap => {
-        setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
-      getDocs(collection(db, "companies", companyId, "locations")).then(snap => {
-        setLocations(snap.docs.map(d => {
-          const data = d.data();
-          return { id: d.id, name: data.name || data.Name || "Sucursal sin nombre" };
-        }));
-      });
-      getDocs(collection(db, "companies", companyId, "warehouses")).then(snap => {
-        setWarehouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
       getDocs(query(collection(db, "companies", companyId, "discounts"), where("status", "==", "active"))).then(snap => {
         setAvailableDiscounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as EngineDiscount)));
@@ -213,15 +233,28 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
     }
   };
 
-  const handleConvertToOrder = async () => {
+  const handleConfirmConvertToOrder = async () => {
     if (!companyId || !quote) return;
-    if (!window.confirm("¿Deseas generar el Pedido de Venta a partir de esta cotización?")) return;
-
     setLoading(true);
     try {
       const orderId = crypto.randomUUID();
       const orderNumber = await getNextSequence(companyId, "pedidos");
       
+      const now = new Date();
+      const dateParts = conversionData.date.split("-");
+      const finalCreatedAt = new Date(
+        Number(dateParts[0]),
+        Number(dateParts[1]) - 1,
+        Number(dateParts[2]),
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds()
+      ).toISOString();
+
+      const selectedLoc = locations.find(l => l.id === conversionData.locationId);
+      const selectedWh = warehouses.find(w => w.id === conversionData.warehouseId);
+      const selectedProj = projects.find(p => p.id === conversionData.projectId);
+
       const newOrder = {
         id: orderId,
         orderNumber,
@@ -238,14 +271,15 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
         promoCode: quote.promoCode || null,
         tax: quote.tax || 0,
         totalAmount: quote.totalAmount,
-        projectId: quote.projectId || null,
-        projectName: quote.projectName || null,
-        locationId: quote.locationId || null,
-        locationName: quote.locationName || "",
-        warehouseId: quote.warehouseId || null,
-        warehouseName: quote.warehouseName || "",
+        projectId: conversionData.projectId || null,
+        projectName: selectedProj ? selectedProj.name : null,
+        locationId: conversionData.locationId || null,
+        locationName: selectedLoc ? selectedLoc.name : "",
+        warehouseId: conversionData.warehouseId || null,
+        warehouseName: selectedWh ? (selectedWh.name || selectedWh.Name || "") : "",
         status: "por_surtir",
-        createdAt: new Date().toISOString(),
+        notes: conversionData.notes || "",
+        createdAt: finalCreatedAt,
         createdBy: user?.email || "Unknown",
       };
 
@@ -256,6 +290,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
         orderId: orderId
       });
 
+      setConversionType(null);
       alert(`Pedido ${orderNumber} creado exitosamente.`);
       router.push("/ventas/pedidos");
     } catch (error) {
@@ -266,15 +301,27 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
     }
   };
 
-  const handleConvertToRemission = async () => {
+  const handleConfirmConvertToRemission = async () => {
     if (!companyId || !quote) return;
-    if (!window.confirm("¿Deseas generar la Remisión de Venta a partir de esta cotización? Esto descontará inventario.")) return;
-
     setLoading(true);
     try {
       const remId = crypto.randomUUID();
       const remNumber = await getNextSequence(companyId, "remisiones");
-      const now = new Date().toISOString();
+      
+      const now = new Date();
+      const dateParts = conversionData.date.split("-");
+      const finalCreatedAt = new Date(
+        Number(dateParts[0]),
+        Number(dateParts[1]) - 1,
+        Number(dateParts[2]),
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds()
+      ).toISOString();
+
+      const selectedLoc = locations.find(l => l.id === conversionData.locationId);
+      const selectedWh = warehouses.find(w => w.id === conversionData.warehouseId);
+      const selectedProj = projects.find(p => p.id === conversionData.projectId);
 
       // Fetch default 401.1 account details
       const accountsSnap = await getDocs(query(collection(db, "companies", companyId, "accounts"), where("code", "==", "401.1")));
@@ -317,17 +364,18 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
         globalDiscountAmount: quote.globalDiscountAmount || 0,
         tax: quote.tax || 0,
         totalAmount: quote.totalAmount,
-        projectId: quote.projectId || null,
-        projectName: quote.projectName || null,
-        locationId: quote.locationId || null,
-        locationName: quote.locationName || "",
-        warehouseId: quote.warehouseId || null,
-        warehouseName: quote.warehouseName || "",
+        projectId: conversionData.projectId || null,
+        projectName: selectedProj ? selectedProj.name : null,
+        locationId: conversionData.locationId || null,
+        locationName: selectedLoc ? selectedLoc.name : "",
+        warehouseId: conversionData.warehouseId || null,
+        warehouseName: selectedWh ? (selectedWh.name || selectedWh.Name || "") : "",
         accountId: finalAccountId,
         accountCode: finalAccountCode,
         accountName: finalAccountName,
         status: "activa",
-        createdAt: now,
+        notes: conversionData.notes || "",
+        createdAt: finalCreatedAt,
         createdBy: user?.email || "Unknown"
       };
 
@@ -360,7 +408,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
             quantity: item.quantity,
             reason: `Remisión desde Cotización ${remNumber}`,
             referenceId: remId,
-            createdAt: now
+            createdAt: finalCreatedAt
           });
         }
       }
@@ -370,6 +418,7 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
         remissionId: remId
       });
 
+      setConversionType(null);
       alert(`Remisión ${remNumber} generada exitosamente. Inventario descontado.`);
       router.push("/ventas/remisiones");
     } catch (error) {
@@ -580,7 +629,14 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                           <button
                             onClick={() => {
                               setShowDropdown(false);
-                              handleConvertToOrder();
+                              setConversionType("order");
+                              setConversionData({
+                                date: getTodayLocalDateString(),
+                                locationId: quote.locationId || "",
+                                warehouseId: quote.warehouseId || "",
+                                projectId: quote.projectId || "",
+                                notes: quote.notes || ""
+                              });
                             }}
                             className="flex w-full items-center gap-2 px-4 py-2 text-xs text-blue-700 hover:bg-blue-50 text-left font-medium"
                             disabled={loading}
@@ -591,7 +647,14 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
                           <button
                             onClick={() => {
                               setShowDropdown(false);
-                              handleConvertToRemission();
+                              setConversionType("remission");
+                              setConversionData({
+                                date: getTodayLocalDateString(),
+                                locationId: quote.locationId || "",
+                                warehouseId: quote.warehouseId || "",
+                                projectId: quote.projectId || "",
+                                notes: quote.notes || ""
+                              });
                             }}
                             className="flex w-full items-center gap-2 px-4 py-2 text-xs text-emerald-700 hover:bg-emerald-50 text-left font-medium"
                             disabled={loading}
@@ -1061,6 +1124,164 @@ export default function QuoteDetailPage({ params: paramsPromise }: { params: Pro
           )
         )}
       </div>
+
+      {conversionType && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
+            {/* Header */}
+            <div className="px-6 py-4 border-b bg-slate-50 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900 text-lg flex items-center gap-2">
+                {conversionType === "order" ? (
+                  <>
+                    <Package className="w-5 h-5 text-blue-600" />
+                    Generar Pedido desde Cotización
+                  </>
+                ) : (
+                  <>
+                    <Truck className="w-5 h-5 text-emerald-600" />
+                    Generar Remisión desde Cotización
+                  </>
+                )}
+              </h3>
+              <button
+                onClick={() => setConversionType(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-500">
+                Revisa y ajusta los detalles antes de generar el documento final.
+              </p>
+
+              {/* Date */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Fecha del Documento
+                </label>
+                <Input
+                  type="date"
+                  value={conversionData.date}
+                  onChange={(e) =>
+                    setConversionData((prev) => ({ ...prev, date: e.target.value }))
+                  }
+                  className="w-full text-sm"
+                />
+              </div>
+
+              {/* Location (Sucursal) */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Sucursal
+                </label>
+                <select
+                  value={conversionData.locationId}
+                  onChange={(e) =>
+                    setConversionData((prev) => ({ ...prev, locationId: e.target.value }))
+                  }
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Seleccionar Sucursal...</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Warehouse (Almacén) */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Almacén
+                </label>
+                <select
+                  value={conversionData.warehouseId}
+                  onChange={(e) =>
+                    setConversionData((prev) => ({ ...prev, warehouseId: e.target.value }))
+                  }
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Seleccionar Almacén...</option>
+                  {warehouses.map((wh) => (
+                    <option key={wh.id} value={wh.id}>
+                      {wh.name || wh.Name || "Almacén sin nombre"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Project (Proyecto) */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Proyecto
+                </label>
+                <select
+                  value={conversionData.projectId}
+                  onChange={(e) =>
+                    setConversionData((prev) => ({ ...prev, projectId: e.target.value }))
+                  }
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Ningún Proyecto</option>
+                  {projects.map((proj) => (
+                    <option key={proj.id} value={proj.id}>
+                      {proj.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Notes / Comments */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Notas / Observaciones
+                </label>
+                <textarea
+                  value={conversionData.notes}
+                  onChange={(e) =>
+                    setConversionData((prev) => ({ ...prev, notes: e.target.value }))
+                  }
+                  placeholder="Notas especiales para este documento..."
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-y"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConversionType(null)}
+                disabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={
+                  conversionType === "order"
+                    ? handleConfirmConvertToOrder
+                    : handleConfirmConvertToRemission
+                }
+                disabled={loading}
+                className={
+                  conversionType === "order"
+                    ? "bg-blue-600 hover:bg-blue-700 text-white"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                }
+              >
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Generar {conversionType === "order" ? "Pedido" : "Remisión"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

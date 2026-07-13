@@ -265,7 +265,8 @@ function NuevaRecepcionContent() {
         const lowerName = name.toLowerCase();
         for (let i = 0; i < el.attributes.length; i++) {
           const attr = el.attributes[i];
-          if (attr.name.toLowerCase() === lowerName) {
+          const attrNameLower = attr.name.toLowerCase();
+          if (attrNameLower === lowerName || attrNameLower.endsWith(":" + lowerName)) {
             return attr.value;
           }
         }
@@ -280,7 +281,8 @@ function NuevaRecepcionContent() {
 
       for (let i = 0; i < allElements.length; i++) {
         const el = allElements[i];
-        const localNameLower = el.localName?.toLowerCase();
+        const localName = el.localName || el.tagName.split(":").pop() || "";
+        const localNameLower = localName.toLowerCase();
         if (localNameLower === "timbrefiscaldigital") {
           timbreNode = el;
         } else if (localNameLower === "comprobante") {
@@ -311,12 +313,59 @@ function NuevaRecepcionContent() {
         const valorUnitario = parseFloat(getAttr(node, "ValorUnitario") || "0") || 0;
         const lineKey = crypto.randomUUID();
 
+        // Auto-match logic with catalog products
+        let matchedProductId = "custom";
+        let matchedVariantId = lineKey;
+        let matchedProductName = descripcion;
+        let matchedVariantTitle = noIdentificacion;
+
+        if (products && products.length > 0) {
+          const skuToSearch = noIdentificacion.trim().toLowerCase();
+          const descToSearch = descripcion.trim().toLowerCase();
+          let found = false;
+
+          // 1. Match by SKU or Barcode
+          for (const prod of products) {
+            for (const vr of prod.variants) {
+              const sku = (vr.sku || "").trim().toLowerCase();
+              const barcode = (vr.barcode || "").trim().toLowerCase();
+              if ((sku && sku === skuToSearch) || (barcode && barcode === skuToSearch)) {
+                matchedProductId = prod.id;
+                matchedVariantId = vr.id;
+                matchedProductName = prod.title;
+                matchedVariantTitle = vr.title !== "Default Title" ? vr.title : (vr.sku || "");
+                found = true;
+                break;
+              }
+            }
+            if (found) break;
+          }
+
+          // 2. Match by Title (exact or substring)
+          if (!found) {
+            for (const prod of products) {
+              const title = (prod.title || "").trim().toLowerCase();
+              if (title === descToSearch || descToSearch.includes(title) || title.includes(descToSearch)) {
+                const vr = prod.variants[0];
+                if (vr) {
+                  matchedProductId = prod.id;
+                  matchedVariantId = vr.id;
+                  matchedProductName = prod.title;
+                  matchedVariantTitle = vr.title !== "Default Title" ? vr.title : (vr.sku || "");
+                  found = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
         items.push({
           lineKey,
-          productId: "custom",
-          variantId: lineKey,
-          productName: descripcion,
-          variantTitle: noIdentificacion,
+          productId: matchedProductId,
+          variantId: matchedVariantId,
+          productName: matchedProductName,
+          variantTitle: matchedVariantTitle,
           quantity: cantidad,
           unitCost: valorUnitario,
           isService: false,
@@ -1568,6 +1617,11 @@ function NuevaRecepcionContent() {
                         </div>
                       ) : (
                         <div className="w-full">
+                          {item.description && (
+                            <div className="text-[10px] text-slate-500 font-bold mb-1 truncate" title={item.description}>
+                              XML: {item.description}
+                            </div>
+                          )}
                           <Input
                             placeholder="Vincular a producto..."
                             value={activeSearchLineKey === key ? rowSearchTerm : ""}

@@ -135,6 +135,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/inventarios/etiquetas/formatos", label: "Diseñador de Etiquetas", icon: Tag },
         { href: "/configuracion/noticias", label: "Configurar Noticias", icon: Newspaper },
         { href: "/configuracion/shopify", label: "Integración Shopify", icon: ArrowRightLeft },
+        { href: "/configuracion/amazon", label: "Integración Amazon", icon: ArrowRightLeft },
         { href: "/configuracion/whatsapp", label: "Bot de WhatsApp", icon: MessageCircle },
       ]
     }

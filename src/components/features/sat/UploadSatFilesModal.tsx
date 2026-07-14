@@ -291,14 +291,16 @@ export function UploadSatFilesModal({ isOpen, onClose, companyId }: UploadSatFil
         </DialogHeader>
 
         <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-muted-foreground/25 rounded-xl bg-muted/10 mt-4 relative transition-colors hover:bg-muted/20">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept=".zip,.txt,.xml"
-            disabled={loading}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-          />
+          {!loading && !success && (
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".zip,.txt,.xml"
+              disabled={loading}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+            />
+          )}
           
           {loading ? (
             <div className="flex flex-col items-center gap-3 text-muted-foreground">
@@ -306,10 +308,24 @@ export function UploadSatFilesModal({ isOpen, onClose, companyId }: UploadSatFil
               <span className="text-sm font-medium">{status}</span>
             </div>
           ) : success ? (
-            <div className="flex flex-col items-center gap-3 text-emerald-600">
+            <div className="flex flex-col items-center gap-3 text-emerald-600 w-full">
               <CheckCircle2 className="w-12 h-12" />
               <span className="text-sm font-medium text-center">{success}</span>
-              <Button onClick={handleClose} className="mt-2" variant="outline">Cerrar y Ver Facturas</Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full mt-2">
+                <Button 
+                  onClick={() => { setSuccess(""); setError(""); }} 
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  Cargar más facturas
+                </Button>
+                <Button 
+                  onClick={handleClose} 
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Cerrar
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 text-muted-foreground pointer-events-none">

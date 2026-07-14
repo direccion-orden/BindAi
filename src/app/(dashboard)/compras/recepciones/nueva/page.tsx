@@ -249,11 +249,11 @@ function NuevaRecepcionContent() {
     }
   };
 
-  // XML Parser Helper
   const parseCFDIXml = (xmlStr: string) => {
     try {
+      const cleanXml = xmlStr.trim().replace(/^\uFEFF/, "");
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlStr, "text/xml");
+      const xmlDoc = parser.parseFromString(cleanXml, "text/xml");
       const parserError = xmlDoc.getElementsByTagName("parsererror");
       if (parserError.length > 0) {
         console.error("XML parse error:", parserError[0].textContent);

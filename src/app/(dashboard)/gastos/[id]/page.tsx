@@ -84,11 +84,11 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
     }
   };
 
-  // Helper for parsing CFDI XML
   const parseCFDIXml = (xmlStr: string): ConceptItem[] => {
     try {
+      const cleanXml = xmlStr.trim().replace(/^\uFEFF/, "");
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlStr, "text/xml");
+      const xmlDoc = parser.parseFromString(cleanXml, "text/xml");
       const parserError = xmlDoc.getElementsByTagName("parsererror");
       if (parserError.length > 0) {
         console.error("XML parse error:", parserError[0].textContent);

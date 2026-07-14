@@ -370,8 +370,9 @@ export function ReconcilePanel({
           xmlText = atob(selectedDoc.xmlBase64);
         }
         
+        const cleanXml = xmlText.trim().replace(/^\uFEFF/, "");
         const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+        const xmlDoc = parser.parseFromString(cleanXml, "text/xml");
         const parserError = xmlDoc.getElementsByTagName("parsererror");
         if (parserError.length === 0) {
           let conceptosNode = xmlDoc.getElementsByTagName("cfdi:Concepto");

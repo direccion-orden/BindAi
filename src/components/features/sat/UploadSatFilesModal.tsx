@@ -23,8 +23,9 @@ interface UploadSatFilesModalProps {
 // Helper to parse CFDI XML in browser
 const parseXmlInvoice = (xmlText: string): any => {
   try {
+    const cleanXml = xmlText.trim().replace(/^\uFEFF/, "");
     const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+    const xmlDoc = parser.parseFromString(cleanXml, "text/xml");
     
     const parserError = xmlDoc.getElementsByTagName("parsererror");
     if (parserError.length > 0) {
@@ -39,7 +40,7 @@ const parseXmlInvoice = (xmlText: string): any => {
     if (timbreNode) {
       uuid = timbreNode.getAttribute("UUID") || "";
     } else {
-      const uuidMatch = xmlText.match(/UUID="([^"]{36})"/i);
+      const uuidMatch = cleanXml.match(/UUID="([^"]{36})"/i);
       if (uuidMatch) uuid = uuidMatch[1];
     }
 
@@ -58,10 +59,10 @@ const parseXmlInvoice = (xmlText: string): any => {
       folio = comprobanteNode.getAttribute("Folio") || "";
       serie = comprobanteNode.getAttribute("Serie") || "";
     } else {
-      const totalMatch = xmlText.match(/\bTotal="([^"]+)"/i);
-      const fechaMatch = xmlText.match(/\bFecha="([^"]+)"/i);
-      const folioMatch = xmlText.match(/\bFolio="([^"]+)"/i);
-      const serieMatch = xmlText.match(/\bSerie="([^"]+)"/i);
+      const totalMatch = cleanXml.match(/\bTotal="([^"]+)"/i);
+      const fechaMatch = cleanXml.match(/\bFecha="([^"]+)"/i);
+      const folioMatch = cleanXml.match(/\bFolio="([^"]+)"/i);
+      const serieMatch = cleanXml.match(/\bSerie="([^"]+)"/i);
       if (totalMatch) total = parseFloat(totalMatch[1]) || 0;
       if (fechaMatch) date = fechaMatch[1];
       if (folioMatch) folio = folioMatch[1];
@@ -78,7 +79,7 @@ const parseXmlInvoice = (xmlText: string): any => {
       emisorRfc = emisorNode.getAttribute("Rfc") || "Desconocido";
       emisorName = emisorNode.getAttribute("Nombre") || "Desconocido";
     } else {
-      const emisorNodeMatch = xmlText.match(/<cfdi:Emisor([^>]+?)\/?>/i) || xmlText.match(/<Emisor([^>]+?)\/?>/i);
+      const emisorNodeMatch = cleanXml.match(/<cfdi:Emisor([^>]+?)\/?>/i) || cleanXml.match(/<Emisor([^>]+?)\/?>/i);
       if (emisorNodeMatch) {
         const emisorAttrs = emisorNodeMatch[1];
         const rfcM = emisorAttrs.match(/Rfc="([^"]+)"/i);
@@ -89,7 +90,7 @@ const parseXmlInvoice = (xmlText: string): any => {
     }
 
     // Safe Base64 encoding for UTF-8 in browser
-    const xmlBase64 = btoa(unescape(encodeURIComponent(xmlText)));
+    const xmlBase64 = btoa(unescape(encodeURIComponent(cleanXml)));
 
     return {
       uuid,

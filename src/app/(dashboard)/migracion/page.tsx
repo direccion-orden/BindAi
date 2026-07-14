@@ -74,8 +74,9 @@ export default function MigrationPage() {
 
     try {
       const xmlText = await xmlFile.text();
+      const cleanXml = xmlText.trim().replace(/^\uFEFF/, "");
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+      const xmlDoc = parser.parseFromString(cleanXml, "text/xml");
       
       const parserError = xmlDoc.getElementsByTagName("parsererror");
       if (parserError.length > 0) {

@@ -34,6 +34,7 @@ interface Location {
   address: string;
   warehouses: Warehouse[];
   businessLineId?: string;
+  channelType?: "digital" | "traditional";
   Name?: string;
   Address?: string;
 }
@@ -54,6 +55,7 @@ export default function SucursalesPage() {
   const [address, setAddress] = useState("");
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [businessLineId, setBusinessLineId] = useState("");
+  const [channelType, setChannelType] = useState<"digital" | "traditional">("traditional");
   
   const [catalogWarehouses, setCatalogWarehouses] = useState<Warehouse[]>([]);
   const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
@@ -98,12 +100,14 @@ export default function SucursalesPage() {
       setAddress(location.address || location.Address || "");
       setWarehouses(location.warehouses || []);
       setBusinessLineId(location.businessLineId || "");
+      setChannelType(location.channelType || "traditional");
     } else {
       setCurrentId("");
       setName("");
       setAddress("");
       setWarehouses([]);
       setBusinessLineId("");
+      setChannelType("traditional");
     }
     setIsEditing(true);
   };
@@ -115,6 +119,7 @@ export default function SucursalesPage() {
     setAddress("");
     setWarehouses([]);
     setBusinessLineId("");
+    setChannelType("traditional");
   };
 
   const toggleWarehouse = (w: Warehouse) => {
@@ -150,7 +155,8 @@ export default function SucursalesPage() {
         name: name.trim(),
         address: address.trim(),
         warehouses: warehouses.filter(w => w.name.trim() !== ""),
-        businessLineId: businessLineId === "none" ? "" : businessLineId
+        businessLineId: businessLineId === "none" ? "" : businessLineId,
+        channelType: channelType
       }, { merge: true });
       handleCloseForm();
     } catch (error) {
@@ -236,6 +242,19 @@ export default function SucursalesPage() {
               </div>
 
               <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700">Canal de Venta</label>
+                <Select value={channelType} onValueChange={(val: "digital" | "traditional") => setChannelType(val)}>
+                  <SelectTrigger className="rounded-xl border-slate-200 h-10 bg-white">
+                    <SelectValue placeholder="Selecciona el canal" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[110]">
+                    <SelectItem value="traditional">Canal Tradicional</SelectItem>
+                    <SelectItem value="digital">Canal Digital</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700">Dirección (Opcional)</label>
                 <Input 
                   value={address} 
@@ -306,6 +325,7 @@ export default function SucursalesPage() {
               <TableHeader className="bg-slate-50">
                 <TableRow>
                   <TableHead className="font-extrabold text-slate-700">Nombre</TableHead>
+                  <TableHead className="font-extrabold text-slate-700">Canal</TableHead>
                   <TableHead className="font-extrabold text-slate-700">Línea de Negocio</TableHead>
                   <TableHead className="font-extrabold text-slate-700">Dirección</TableHead>
                   <TableHead className="font-extrabold text-slate-700">Almacenes</TableHead>
@@ -318,6 +338,15 @@ export default function SucursalesPage() {
                   return (
                     <TableRow key={loc.id} className="hover:bg-slate-50/50 transition-colors">
                       <TableCell className="font-bold text-slate-800">{(loc.Name || loc.name)}</TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                          loc.channelType === "digital"
+                            ? "bg-purple-50 text-purple-700 border-purple-100"
+                            : "bg-slate-100 text-slate-700 border-slate-200"
+                        }`}>
+                          {loc.channelType === "digital" ? "Digital" : "Tradicional"}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         {businessLine ? (
                           <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs px-2.5 py-1 rounded-full font-bold border border-indigo-100">

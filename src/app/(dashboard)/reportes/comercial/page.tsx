@@ -162,7 +162,8 @@ export default function ReporteComercialPage() {
         // Map Locations
         const locs = locSnap.docs.map(d => ({
           id: d.id,
-          name: d.data().name || d.data().Name || "Sucursal sin nombre"
+          name: d.data().name || d.data().Name || "Sucursal sin nombre",
+          channelType: d.data().channelType || "traditional"
         }));
         locs.sort((a, b) => a.name.localeCompare(b.name, 'es'));
         setLocations(locs);
@@ -452,6 +453,47 @@ export default function ReporteComercialPage() {
       return `Cumplimiento de ${monthNames[parseInt(selectedMonth) - 1]}`;
     };
 
+    // Digital vs Tradicional Chart Data
+    let digitalSales = 0;
+    let traditionalSales = 0;
+    
+    // Proyectos vs Independiente Chart Data
+    let proyectosSales = 0;
+    let independienteSales = 0;
+    
+    branchPerformance.forEach(b => {
+      const loc = locations.find(l => l.id === b.id);
+      const isDigital = loc?.channelType === "digital";
+      
+      const nameClean = b.name.toLowerCase().trim();
+      const isProyecto = nameClean === "proyectos monterrey" || nameClean === "cdmx";
+      
+      // If a specific sucursal is filtered, we only sum that one
+      if (selectedSucursal !== "all" && b.id !== selectedSucursal) return;
+      
+      if (isDigital) {
+        digitalSales += b.realSales;
+      } else {
+        traditionalSales += b.realSales;
+      }
+      
+      if (isProyecto) {
+        proyectosSales += b.realSales;
+      } else {
+        independienteSales += b.realSales;
+      }
+    });
+
+    const channelChartData = [
+      { name: "Canal Tradicional", value: Math.round(traditionalSales) },
+      { name: "Canal Digital", value: Math.round(digitalSales) }
+    ];
+
+    const projectsChartData = [
+      { name: "Proyectos (Mty + CDMX)", value: Math.round(proyectosSales) },
+      { name: "Venta Independiente", value: Math.round(independienteSales) }
+    ];
+
     return {
       totalSales,
       avgTicket,
@@ -465,6 +507,8 @@ export default function ReporteComercialPage() {
       categoryChartData,
       topClientsData,
       branchPerformance,
+      channelChartData,
+      projectsChartData,
       chartYear,
       goalLabel: getGoalLabel()
     };
@@ -966,7 +1010,142 @@ export default function ReporteComercialPage() {
         </div>
       </div>
 
-      {/* Row 2: Top Clients & Branch Table */}
+      {/* Charts Row 2: Digital vs Tradicional & Proyectos vs Independiente */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Digital vs Tradicional */}
+        <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-indigo-600" />
+              Digital Vs Tradicional
+            </h3>
+            {stats.totalSales > 0 && (
+              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
+                Total: {formatMoney(stats.totalSales)}
+              </span>
+            )}
+          </div>
+          
+          {stats.channelChartData.reduce((acc, c) => acc + c.value, 0) === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
+              <TrendingUp className="w-10 h-10 text-slate-300 mb-2" />
+              <p className="text-sm text-slate-400 font-semibold">Sin ventas en el período</p>
+            </div>
+          ) : (
+            <>
+              <div className="h-[200px] w-full relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={stats.channelChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {stats.channelChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index === 0 ? "#6366f1" : "#ec4899"} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip 
+                      formatter={(value: any) => [formatMoney(value), "Venta"]}
+                      contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4">
+                {stats.channelChartData.map((channel, idx) => {
+                  const channelTotal = stats.channelChartData.reduce((acc, c) => acc + c.value, 0);
+                  const percent = channelTotal > 0 ? (channel.value / channelTotal) * 100 : 0;
+                  return (
+                    <div key={idx} className="text-center">
+                      <span className="text-xs font-bold text-slate-400 block uppercase tracking-wider">{channel.name}</span>
+                      <h4 className="text-base font-extrabold text-slate-800 mt-1">{formatMoney(channel.value)}</h4>
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mt-1 inline-block border ${
+                        idx === 0 ? "bg-indigo-50 text-indigo-700 border-indigo-100" : "bg-pink-50 text-pink-700 border-pink-100"
+                      }`}>
+                        {percent.toFixed(1)}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Proyectos vs Independiente */}
+        <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <Package className="w-5 h-5 text-indigo-600" />
+              Venta en Proyectos Vs Independiente
+            </h3>
+            {stats.totalSales > 0 && (
+              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
+                Total: {formatMoney(stats.totalSales)}
+              </span>
+            )}
+          </div>
+          
+          {stats.projectsChartData.reduce((acc, p) => acc + p.value, 0) === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
+              <Package className="w-10 h-10 text-slate-300 mb-2" />
+              <p className="text-sm text-slate-400 font-semibold">Sin ventas en el período</p>
+            </div>
+          ) : (
+            <>
+              <div className="h-[200px] w-full relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={stats.projectsChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {stats.projectsChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index === 0 ? "#10b981" : "#3b82f6"} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip 
+                      formatter={(value: any) => [formatMoney(value), "Venta"]}
+                      contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4">
+                {stats.projectsChartData.map((group, idx) => {
+                  const groupTotal = stats.projectsChartData.reduce((acc, p) => acc + p.value, 0);
+                  const percent = groupTotal > 0 ? (group.value / groupTotal) * 100 : 0;
+                  return (
+                    <div key={idx} className="text-center">
+                      <span className="text-xs font-bold text-slate-400 block uppercase tracking-wider">{group.name}</span>
+                      <h4 className="text-base font-extrabold text-slate-800 mt-1">{formatMoney(group.value)}</h4>
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mt-1 inline-block border ${
+                        idx === 0 ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-blue-50 text-blue-700 border-blue-100"
+                      }`}>
+                        {percent.toFixed(1)}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Row 3: Top Clients & Branch Table */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Top Clients Chart */}
         <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col">

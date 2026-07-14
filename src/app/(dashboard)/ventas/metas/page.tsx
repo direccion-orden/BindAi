@@ -203,13 +203,33 @@ export default function MetasPage() {
   return (
     <div className="space-y-6 max-w-4xl pb-10">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Metas de Ventas</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl font-black tracking-tight text-slate-800 flex items-center gap-2">
+            <Target className="w-8 h-8 text-indigo-600" />
+            Metas de Ventas
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Establece metas mensuales de facturación por sucursal para medir el rendimiento comercial.
           </p>
         </div>
+
+        {/* Total configurado */}
+        {!loading && locations.length > 0 && (
+          <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-100 rounded-2xl px-5 py-3 flex items-center gap-4 shadow-sm animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-indigo-600 text-white rounded-xl p-2.5 shadow-md shadow-indigo-600/20">
+              <Target className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-black text-indigo-500 tracking-wider block">Total del Mes</span>
+              <span className="text-xl font-black text-indigo-950 font-mono">
+                {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(
+                  Object.values(goals).reduce((sum, val) => sum + (val || 0), 0)
+                )}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Period Selector Panel */}

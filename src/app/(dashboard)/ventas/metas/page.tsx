@@ -147,6 +147,57 @@ export default function MetasPage() {
     }
   };
 
+  const handleCopyToGoalsOfYear = async () => {
+    if (!companyId) return;
+    
+    const confirmCopy = window.confirm(
+      `¿Estás seguro de que deseas copiar las metas de ${MONTHS[selectedMonth - 1]} a todos los demás meses de ${selectedYear}? Esto sobrescribirá cualquier meta configurada previamente para esos meses.`
+    );
+    if (!confirmCopy) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const batch = writeBatch(db);
+      let operationCount = 0;
+
+      for (let m = 1; m <= 12; m++) {
+        if (m === selectedMonth) continue;
+
+        locations.forEach(loc => {
+          const amount = goals[loc.id] || 0;
+          const docId = `${loc.id}_${selectedYear}_${m}`;
+          const ref = doc(db, "companies", companyId, "sales_goals", docId);
+
+          batch.set(ref, {
+            id: docId,
+            locationId: loc.id,
+            locationName: loc.name,
+            year: selectedYear,
+            month: m,
+            amount: amount,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+
+          operationCount++;
+        });
+      }
+
+      if (operationCount > 0) {
+        await batch.commit();
+      }
+
+      setSuccessMsg(`¡Metas de ${MONTHS[selectedMonth - 1]} copiadas exitosamente a todos los demás meses de ${selectedYear}!`);
+    } catch (err) {
+      console.error("Error copying goals to the rest of the year:", err);
+      setErrorMsg("Hubo un error al copiar las metas al resto de los meses del año.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSaveGoals = async () => {
     if (!companyId) return;
     setSaving(true);
@@ -266,15 +317,25 @@ export default function MetasPage() {
           </Button>
         </div>
 
-        <div className="flex gap-2 w-full md:w-auto justify-end">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
           <Button
             variant="outline"
             onClick={handleCopyPreviousMonth}
             disabled={loading || saving}
-            className="gap-2 border-slate-200 hover:border-slate-300 h-10 font-semibold"
+            className="gap-2 border-slate-200 hover:border-slate-300 h-10 font-semibold text-xs md:text-sm"
           >
             <Copy className="w-4 h-4 text-slate-500" />
             Copiar Mes Anterior
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={handleCopyToGoalsOfYear}
+            disabled={loading || saving || locations.length === 0}
+            className="gap-2 border-slate-200 hover:border-slate-300 h-10 font-semibold text-xs md:text-sm"
+          >
+            <Calendar className="w-4 h-4 text-slate-500" />
+            Copiar al resto del año
           </Button>
         </div>
       </div>

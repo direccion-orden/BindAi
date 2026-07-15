@@ -207,7 +207,9 @@ export default function ReporteComercialPage() {
             Category2ID: data.Category2ID || null,
             Category3ID: data.Category3ID || null,
             categoryId: data.categoryId || null,
-            productType: data.productType || null
+            productType: data.productType || null,
+            name: data.name || data.Name || null,
+            sku: data.sku || data.SKU || null
           };
         });
         setProductsMap(prods);
@@ -546,8 +548,8 @@ export default function ReporteComercialPage() {
 
             const prodId = item.productId || "unknown";
             const pInfo = productsMap[prodId] || {};
-            const productName = item.name || pInfo.name || pInfo.Name || item.productId || "Producto desconocido";
-            const productSku = item.sku || pInfo.sku || pInfo.SKU || "S/K";
+            const productName = item.productName || item.name || pInfo.name || item.productId || "Producto desconocido";
+            const productSku = item.sku || pInfo.sku || "S/K";
 
             const key = `${prodId}_${productName}_${productSku}`;
 
@@ -627,6 +629,42 @@ export default function ReporteComercialPage() {
       setDrillDownSortField(field);
       setDrillDownSortDirection("desc");
     }
+  };
+
+  const handleExportDrillDownCSV = () => {
+    if (filteredAndSortedDrillDownData.length === 0 || !selectedDrillDownCategory) return;
+    
+    const headers = ["Producto", "SKU", "Unidades Vendidas", "Monto Total (MXN)", "Porcentaje de la Categoria"];
+    
+    const totalCategorySales = drillDownData.reduce((sum, p) => sum + p.revenue, 0);
+    
+    const rows = filteredAndSortedDrillDownData.map(item => {
+      const percentage = totalCategorySales > 0 ? ((item.revenue / totalCategorySales) * 100).toFixed(1) : "0.0";
+      return [
+        item.name,
+        item.sku,
+        item.units,
+        item.revenue.toFixed(2),
+        `${percentage}%`
+      ];
+    });
+    
+    const csvContent = "\uFEFF" + [
+      headers.join(","),
+      ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    
+    const categoryClean = selectedDrillDownCategory.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+    link.setAttribute("download", `desglose_${categoryClean}_ventas.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Compute product sales table data reactively
@@ -1626,7 +1664,7 @@ export default function ReporteComercialPage() {
             </div>
 
             {/* Modal Filters/Search */}
-            <div className="p-4 border-b bg-white flex items-center gap-3">
+            <div className="p-4 border-b bg-white flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="relative flex-1">
                 <input 
                   type="text"
@@ -1645,8 +1683,19 @@ export default function ReporteComercialPage() {
                 )}
               </div>
               
-              <div className="text-xs font-extrabold text-slate-500 bg-slate-50 border border-slate-100 px-3 py-2 rounded-lg whitespace-nowrap">
-                Total Productos: {filteredAndSortedDrillDownData.length}
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="gap-2 h-9 border-slate-200 font-semibold text-slate-600 hover:bg-slate-50 shadow-sm shrink-0 text-xs"
+                  onClick={handleExportDrillDownCSV}
+                  disabled={filteredAndSortedDrillDownData.length === 0}
+                >
+                  <Download className="w-3.5 h-3.5" /> Exportar Excel
+                </Button>
+                <div className="text-xs font-extrabold text-slate-500 bg-slate-50 border border-slate-100 px-3 py-2 rounded-lg whitespace-nowrap">
+                  Total Productos: {filteredAndSortedDrillDownData.length}
+                </div>
               </div>
             </div>
 

@@ -44,6 +44,12 @@ export default function ReporteComercialPage() {
   const [tableSortDirection, setTableSortDirection] = useState<"asc" | "desc">("desc");
   const [taxMode, setTaxMode] = useState<"con_iva" | "sin_iva">("con_iva");
 
+  // States for Category Drill Down
+  const [selectedDrillDownCategory, setSelectedDrillDownCategory] = useState<string | null>(null);
+  const [drillDownSearch, setDrillDownSearch] = useState("");
+  const [drillDownSortField, setDrillDownSortField] = useState<"name" | "sku" | "units" | "revenue">("revenue");
+  const [drillDownSortDirection, setDrillDownSortDirection] = useState<"asc" | "desc">("desc");
+
   const handleTableDateFilterChange = useCallback((option: string) => {
     setTableDateFilterOption(option);
     
@@ -510,9 +516,118 @@ export default function ReporteComercialPage() {
       channelChartData,
       projectsChartData,
       chartYear,
-      goalLabel: getGoalLabel()
+      goalLabel: getGoalLabel(),
+      activeRemisiones,
+      activeFacturas
     };
   }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId, dateFilterType]);
+
+  // Compute category drill down data reactively
+  const drillDownData = useMemo(() => {
+    if (!selectedDrillDownCategory) return [];
+
+    const productTotals: { [key: string]: { name: string; sku: string; units: number; revenue: number } } = {};
+
+    const processItems = (documents: any[]) => {
+      documents.forEach(doc => {
+        if (!doc.items || doc.items.length === 0) return;
+
+        const docTotal = doc.totalAmount || 0;
+        const itemsSum = doc.items.reduce((sum: number, item: any) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+
+        doc.items.forEach((item: any) => {
+          const catId = resolveItemCategoryId(item);
+          const catName = categories[catId] || "Otros";
+
+          if (catName === selectedDrillDownCategory) {
+            const itemVal = (item.quantity || 0) * (item.unitPrice || 0);
+            const weight = itemsSum > 0 ? (itemVal / itemsSum) : (1 / doc.items.length);
+            const val = weight * docTotal;
+
+            const prodId = item.productId || "unknown";
+            const pInfo = productsMap[prodId] || {};
+            const productName = item.name || pInfo.name || pInfo.Name || item.productId || "Producto desconocido";
+            const productSku = item.sku || pInfo.sku || pInfo.SKU || "S/K";
+
+            const key = `${prodId}_${productName}_${productSku}`;
+
+            if (!productTotals[key]) {
+              productTotals[key] = {
+                name: productName,
+                sku: productSku,
+                units: 0,
+                revenue: 0
+              };
+            }
+
+            productTotals[key].units += item.quantity || 0;
+            productTotals[key].revenue += val;
+          }
+        });
+      });
+    };
+
+    processItems(stats.activeRemisiones || []);
+    processItems(stats.activeFacturas || []);
+
+    return Object.values(productTotals)
+      .map(p => ({
+        ...p,
+        revenue: Math.round(p.revenue),
+        units: Math.round(p.units * 100) / 100
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [selectedDrillDownCategory, stats.activeRemisiones, stats.activeFacturas, categories, productsMap, resolveItemCategoryId]);
+
+  const filteredAndSortedDrillDownData = useMemo(() => {
+    let result = [...drillDownData];
+
+    // Search filter
+    if (drillDownSearch.trim()) {
+      const s = drillDownSearch.toLowerCase();
+      result = result.filter(
+        p => p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s)
+      );
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      let valA: any = a[drillDownSortField];
+      let valB: any = b[drillDownSortField];
+
+      if (typeof valA === "string") {
+        return drillDownSortDirection === "asc"
+          ? valA.localeCompare(valB, 'es')
+          : valB.localeCompare(valA, 'es');
+      } else {
+        return drillDownSortDirection === "asc"
+          ? valA - valB
+          : valB - valA;
+      }
+    });
+
+    return result;
+  }, [drillDownData, drillDownSearch, drillDownSortField, drillDownSortDirection]);
+
+  // Listener to close modal on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedDrillDownCategory(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleDrillDownSort = (field: "name" | "sku" | "units" | "revenue") => {
+    if (drillDownSortField === field) {
+      setDrillDownSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setDrillDownSortField(field);
+      setDrillDownSortDirection("desc");
+    }
+  };
 
   // Compute product sales table data reactively
   const productSalesTableData = useMemo(() => {
@@ -955,6 +1070,7 @@ export default function ReporteComercialPage() {
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
               <Package className="w-5 h-5 text-indigo-600" />
               Venta por Categoría
+              <span className="text-[9px] font-normal text-slate-400 border border-slate-100 px-1.5 py-0.5 rounded bg-slate-50">Drill down disponible</span>
             </h3>
             {stats.categoryChartData.length > 0 && (
               <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
@@ -981,6 +1097,13 @@ export default function ReporteComercialPage() {
                       outerRadius={80}
                       paddingAngle={4}
                       dataKey="value"
+                      onClick={(data) => {
+                        if (data && data.name) {
+                          setSelectedDrillDownCategory(data.name);
+                          setDrillDownSearch("");
+                        }
+                      }}
+                      className="cursor-pointer outline-none focus:outline-none"
                     >
                       {stats.categoryChartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -996,7 +1119,15 @@ export default function ReporteComercialPage() {
               
               <div className="mt-4 space-y-2 max-h-[120px] overflow-y-auto custom-scrollbar pr-2">
                 {stats.categoryChartData.slice(0, 5).map((cat, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-xs">
+                  <div 
+                    key={idx} 
+                    className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50/80 p-1.5 rounded-lg transition-all"
+                    onClick={() => {
+                      setSelectedDrillDownCategory(cat.name);
+                      setDrillDownSearch("");
+                    }}
+                    title="Haz clic para ver el detalle de productos"
+                  >
                     <div className="flex items-center gap-2 truncate">
                       <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: COLORS[idx % COLORS.length]}}></div>
                       <span className="text-slate-600 truncate font-semibold">{cat.name}</span>
@@ -1464,6 +1595,143 @@ export default function ReporteComercialPage() {
           </table>
         </div>
       </div>
+
+      {/* Category Drill Down Modal */}
+      {selectedDrillDownCategory && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setSelectedDrillDownCategory(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <Package className="w-5 h-5 text-indigo-600" />
+                  Desglose de Ventas por Producto
+                </h3>
+                <p className="text-xs font-bold text-slate-500 mt-1">
+                  Categoría: <span className="text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md font-extrabold">{selectedDrillDownCategory}</span>
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedDrillDownCategory(null)}
+                className="h-8 w-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all font-bold text-lg"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Filters/Search */}
+            <div className="p-4 border-b bg-white flex items-center gap-3">
+              <div className="relative flex-1">
+                <input 
+                  type="text"
+                  placeholder="Buscar producto por nombre o SKU..."
+                  className="flex h-9 w-full rounded-md border border-slate-200 bg-white pl-3 pr-8 text-xs outline-none font-medium placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
+                  value={drillDownSearch}
+                  onChange={(e) => setDrillDownSearch(e.target.value)}
+                />
+                {drillDownSearch && (
+                  <button 
+                    onClick={() => setDrillDownSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+              
+              <div className="text-xs font-extrabold text-slate-500 bg-slate-50 border border-slate-100 px-3 py-2 rounded-lg whitespace-nowrap">
+                Total Productos: {filteredAndSortedDrillDownData.length}
+              </div>
+            </div>
+
+            {/* Modal Table Content */}
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+              <div className="overflow-x-auto border border-slate-100 rounded-xl shadow-inner">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 text-slate-500 uppercase text-[9px] font-extrabold tracking-wider border-b">
+                    <tr>
+                      <th 
+                        className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 transition-colors pl-6"
+                        onClick={() => handleDrillDownSort("name")}
+                      >
+                        Producto {drillDownSortField === "name" ? (drillDownSortDirection === "asc" ? "▲" : "▼") : ""}
+                      </th>
+                      <th 
+                        className="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 transition-colors"
+                        onClick={() => handleDrillDownSort("sku")}
+                      >
+                        SKU {drillDownSortField === "sku" ? (drillDownSortDirection === "asc" ? "▲" : "▼") : ""}
+                      </th>
+                      <th 
+                        className="px-4 py-3 text-right cursor-pointer select-none hover:bg-slate-100 transition-colors"
+                        onClick={() => handleDrillDownSort("units")}
+                      >
+                        Unidades Vendidas {drillDownSortField === "units" ? (drillDownSortDirection === "asc" ? "▲" : "▼") : ""}
+                      </th>
+                      <th 
+                        className="px-4 py-3 text-right pr-6 cursor-pointer select-none hover:bg-slate-100 transition-colors"
+                        onClick={() => handleDrillDownSort("revenue")}
+                      >
+                        Monto Total (MXN) {drillDownSortField === "revenue" ? (drillDownSortDirection === "asc" ? "▲" : "▼") : ""}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y text-slate-700 text-xs">
+                    {filteredAndSortedDrillDownData.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-12 text-center text-slate-400 font-medium">
+                          No se encontraron productos para esta categoría con los filtros aplicados.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredAndSortedDrillDownData.map((item, idx) => {
+                        const totalCategorySales = drillDownData.reduce((sum, p) => sum + p.revenue, 0);
+                        const percentage = totalCategorySales > 0 ? ((item.revenue / totalCategorySales) * 100).toFixed(1) : "0.0";
+                        
+                        return (
+                          <tr key={`${item.name}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-4 py-3 pl-6 font-bold text-slate-900 max-w-xs truncate" title={item.name}>
+                              {item.name}
+                            </td>
+                            <td className="px-4 py-3 font-mono font-semibold text-slate-500">{item.sku}</td>
+                            <td className="px-4 py-3 text-right font-extrabold text-slate-900 font-mono">
+                              {item.units}
+                            </td>
+                            <td className="px-4 py-3 text-right pr-6 font-extrabold text-emerald-600 font-mono">
+                              <div className="flex flex-col items-end">
+                                <span>{formatMoney(item.revenue)}</span>
+                                <span className="text-[9px] font-black text-slate-400 mt-0.5">{percentage}% de la cat.</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50/50 border-t flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setSelectedDrillDownCategory(null)}
+                className="font-bold text-slate-600 border-slate-200 hover:bg-slate-100"
+              >
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

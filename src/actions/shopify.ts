@@ -324,8 +324,8 @@ export async function syncProductsFromShopify(
           variants: (sp.variants || []).map((v: any) => ({
             id: v.id?.toString() || "",
             title: v.title || "",
-            price: parseFloat(v.price) || 0,
-            compareAtPrice: v.compare_at_price ? parseFloat(v.compare_at_price) : null,
+            price: v.price ? Math.round((parseFloat(v.price) / 1.16) * 100) / 100 : 0,
+            compareAtPrice: v.compare_at_price ? Math.round((parseFloat(v.compare_at_price) / 1.16) * 100) / 100 : null,
             sku: v.sku || "",
             barcode: v.barcode || "",
             stock: v.inventory_quantity || 0,
@@ -413,7 +413,7 @@ export async function pushProductsToShopify(
         if (prod.variants && prod.variants.length > 0) {
           shopifyPayload.variants = prod.variants.map((v: any) => ({
             title: v.title || "Default Title",
-            price: (v.price || 0).toString(),
+            price: (Math.round((v.price || 0) * 1.16 * 100) / 100).toString(),
             sku: v.sku || "",
             barcode: v.barcode || "",
             inventory_management: "shopify",
@@ -423,7 +423,7 @@ export async function pushProductsToShopify(
           // Single variant from root fields
           shopifyPayload.variants = [{
             title: "Default Title",
-            price: (prod.cost || 0).toString(),
+            price: (Math.round((prod.price || prod.cost || 0) * 1.16 * 100) / 100).toString(),
             sku: prod.SKU || prod.Code || "",
             barcode: prod.Code || "",
             inventory_management: "shopify",

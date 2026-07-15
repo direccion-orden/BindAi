@@ -182,8 +182,8 @@ export async function POST(req: NextRequest) {
         variants: (payload.variants || []).map((v: any) => ({
           id: v.id?.toString() || "",
           title: v.title || "",
-          price: parseFloat(v.price) || 0,
-          compareAtPrice: v.compare_at_price ? parseFloat(v.compare_at_price) : null,
+          price: v.price ? Math.round((parseFloat(v.price) / 1.16) * 100) / 100 : 0,
+          compareAtPrice: v.compare_at_price ? Math.round((parseFloat(v.compare_at_price) / 1.16) * 100) / 100 : null,
           sku: v.sku || "",
           barcode: v.barcode || "",
           stock: v.inventory_quantity || 0,

@@ -8,7 +8,7 @@ import { Loader2, TrendingUp, Users, Target, Clock, Download, Calendar, Shopping
 import { Button } from "@/components/ui/button";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, ComposedChart
+  LineChart, Line, PieChart, Pie, Cell, ComposedChart, LabelList
 } from "recharts";
 
 const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -43,6 +43,8 @@ export default function ReporteComercialPage() {
   const [tableSortField, setTableSortField] = useState<string>("totalSales");
   const [tableSortDirection, setTableSortDirection] = useState<"asc" | "desc">("desc");
   const [taxMode, setTaxMode] = useState<"con_iva" | "sin_iva">("con_iva");
+  const [showGoal, setShowGoal] = useState(true);
+  const [chartTaxMode, setChartTaxMode] = useState<"con_iva" | "sin_iva">("con_iva");
 
   // States for Category Drill Down
   const [selectedDrillDownCategory, setSelectedDrillDownCategory] = useState<string | null>(null);
@@ -348,6 +350,7 @@ export default function ReporteComercialPage() {
 
     // 3. Monthly Sales vs Goals data series (always full year comparison for context)
     const chartYear = dateFilterType === "por_mes" ? selectedYear : currentYear;
+    const limitToCurrent = chartYear >= currentYear;
     const monthlyData = MONTHS_SHORT.map((name, idx) => {
       const monthNum = idx + 1;
       
@@ -357,14 +360,14 @@ export default function ReporteComercialPage() {
         if (isNaN(d.getTime()) || d.getFullYear() !== chartYear) return false;
         if (selectedSucursal !== "all" && r.locationId !== selectedSucursal) return false;
         return d.getMonth() + 1 === monthNum;
-      }).reduce((sum, r) => sum + (r.totalAmount || 0), 0) +
+      }).reduce((sum, r) => sum + (chartTaxMode === "con_iva" ? (r.totalAmount || 0) : (r.subtotal || (r.totalAmount || 0) / 1.16)), 0) +
       facturas.filter(f => {
         if (f.status === "cancelada" || f.posSaleId || f.remisionId || f.remissionId) return false;
         const d = new Date(f.createdAt || f.date);
         if (isNaN(d.getTime()) || d.getFullYear() !== chartYear) return false;
         if (selectedSucursal !== "all" && f.locationId !== selectedSucursal) return false;
         return d.getMonth() + 1 === monthNum;
-      }).reduce((sum, f) => sum + (f.totalAmount || 0), 0);
+      }).reduce((sum, f) => sum + (chartTaxMode === "con_iva" ? (f.totalAmount || 0) : (f.subtotal || (f.totalAmount || 0) / 1.16)), 0);
 
       const goalInMonth = goals.filter(g => {
         if (g.year !== chartYear) return false;
@@ -377,6 +380,11 @@ export default function ReporteComercialPage() {
         ventas: Math.round(salesInMonth),
         meta: Math.round(goalInMonth)
       };
+    }).filter((_, idx) => {
+      if (limitToCurrent) {
+        return idx <= currentMonth;
+      }
+      return true;
     });
 
     // 4. Sales by Category (PIE)
@@ -522,7 +530,7 @@ export default function ReporteComercialPage() {
       activeRemisiones,
       activeFacturas
     };
-  }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId, dateFilterType]);
+  }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId, dateFilterType, chartTaxMode]);
 
   // Compute category drill down data reactively
   const drillDownData = useMemo(() => {
@@ -807,6 +815,10 @@ export default function ReporteComercialPage() {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }).format(amount);
   };
 
+  const formatMoneyNoDecimals = (amount: number) => {
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(amount);
+  };
+
   const handleExportCSV = () => {
     if (stats.branchPerformance.length === 0) return;
     
@@ -1070,17 +1082,66 @@ export default function ReporteComercialPage() {
       </div>
 
       {/* Charts Row 1: Sales vs Goal */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white border rounded-xl p-6 shadow-sm lg:col-span-2 flex flex-col">
-          <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-indigo-600" />
-            Ventas Facturadas vs Meta ({stats.chartYear})
-          </h3>
-          <div className="h-[300px] w-full flex-1">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-indigo-600" />
+              Ventas Vs Meta ({stats.chartYear})
+            </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button 
+                variant={showGoal ? "default" : "outline"} 
+                size="sm" 
+                onClick={() => setShowGoal(prev => !prev)}
+                className="h-8 text-xs font-semibold"
+              >
+                {showGoal ? "Ocultar Meta" : "Mostrar Meta"}
+              </Button>
+              <div className="flex bg-slate-100 p-0.5 rounded-lg border text-xs">
+                <button
+                  type="button"
+                  onClick={() => setChartTaxMode("con_iva")}
+                  className={`px-2.5 py-1 rounded-md font-bold transition-all ${chartTaxMode === "con_iva" ? "bg-white shadow-sm text-slate-800" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  Con IVA
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartTaxMode("sin_iva")}
+                  className={`px-2.5 py-1 rounded-md font-bold transition-all ${chartTaxMode === "sin_iva" ? "bg-white shadow-sm text-slate-800" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  Sin IVA
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="h-[320px] w-full mb-2">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={stats.monthlyData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+              <ComposedChart data={stats.monthlyData} margin={{ top: 20, right: 10, left: 10, bottom: 15 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={(props: any) => {
+                    const { x, y, payload } = props;
+                    if (!payload) return null;
+                    const monthData = stats.monthlyData.find((d: any) => d.name === payload.value);
+                    const salesVal = monthData ? formatMoneyNoDecimals(monthData.ventas) : "";
+                    return (
+                      <g transform={`translate(${x},${y})`}>
+                        <text x={0} y={0} dy={10} textAnchor="middle" fill="#64748b" style={{ fontSize: 11, fontWeight: 'bold' }}>
+                          {payload.value}
+                        </text>
+                        <text x={0} y={0} dy={24} textAnchor="middle" fill="#0f172a" style={{ fontSize: 9, fontWeight: 'black' }}>
+                          {salesVal}
+                        </text>
+                      </g>
+                    );
+                  }}
+                  height={45}
+                />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
@@ -1093,8 +1154,19 @@ export default function ReporteComercialPage() {
                   contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontFamily: 'inherit'}}
                 />
                 <Legend wrapperStyle={{paddingTop: '20px'}} />
-                <Bar dataKey="ventas" name="Ventas Reales" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                {stats.totalGoalAmount > 0 && (
+                <Bar dataKey="ventas" name="Ventas Reales" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                  <LabelList 
+                    dataKey="ventas" 
+                    position="top" 
+                    formatter={(val: any) => {
+                      const num = Number(val);
+                      if (isNaN(num)) return "";
+                      return num >= 1000000 ? `$${(num/1000000).toFixed(1)}M` : num >= 1000 ? `$${(num/1000).toFixed(0)}k` : `$${num}`;
+                    }}
+                    style={{ fill: '#475569', fontSize: 10, fontWeight: 'bold' }} 
+                  />
+                </Bar>
+                {showGoal && stats.totalGoalAmount > 0 && (
                   <Line type="monotone" dataKey="meta" name="Meta de Venta" stroke="#10b981" strokeWidth={3} dot={{r: 4, fill: '#10b981'}} />
                 )}
               </ComposedChart>

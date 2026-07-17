@@ -146,7 +146,7 @@ export function CajaModal({ isOpen, onClose }: CajaModalProps) {
         // Filter in memory for status and location
         const filtered = docs.filter((rem: any) => 
           rem.locationId === activeSession.locationId && 
-          rem.status === "activa"
+          (rem.status === "activa" || rem.status === "pagada")
         );
 
         // Sum cash sales
@@ -283,9 +283,9 @@ export function CajaModal({ isOpen, onClose }: CajaModalProps) {
 
   // Financial Computations for summary card display
   const totalFondo = activeSession?.initialFloat || 0;
-  const totalIngresos = transactions.filter(t => t.type === "INCOME").reduce((acc, t) => acc + t.amount, 0);
+  const totalIngresos = transactions.filter(t => t.type === "INCOME" && t.category !== "VENTA_EFECTIVO").reduce((acc, t) => acc + t.amount, 0);
   const totalCancelaciones = transactions.filter(t => t.type === "EXPENSE" && t.category === "RETIRO_CANCELACION").reduce((acc, t) => acc + t.amount, 0);
-  const totalRetiros = transactions.filter(t => t.type === "EXPENSE" && t.category !== "RETIRO_CANCELACION").reduce((acc, t) => acc + t.amount, 0);
+  const totalRetiros = transactions.filter(t => t.type === "EXPENSE" && t.category !== "RETIRO_CANCELACION" && t.category !== "CAMBIO_VENTA").reduce((acc, t) => acc + t.amount, 0);
   const estimatedCashSales = Math.max(0, bindSales - totalCancelaciones);
   const expectedCash = totalFondo + totalIngresos + estimatedCashSales - totalRetiros;
 

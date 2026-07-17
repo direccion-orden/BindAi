@@ -150,7 +150,7 @@ export function CerrarTurnoModal({
         // Filter in memory for status and location
         const filtered = docs.filter((rem: any) => 
           rem.locationId === session.locationId && 
-          rem.status === "activa"
+          (rem.status === "activa" || rem.status === "pagada")
         );
 
         // Sum cash sales and card sales
@@ -195,10 +195,12 @@ export function CerrarTurnoModal({
 
   // Derived financial computations
   const totalFondo = session?.initialFloat || 0;
-  const totalIngresosManuales = transactions.filter(t => t.type === "INCOME").reduce((acc, t) => acc + t.amount, 0);
-  const totalRetirosManuales = transactions.filter(t => t.type === "EXPENSE").reduce((acc, t) => acc + t.amount, 0);
+  const totalIngresosManuales = transactions.filter(t => t.type === "INCOME" && t.category !== "VENTA_EFECTIVO").reduce((acc, t) => acc + t.amount, 0);
+  const totalRetirosManuales = transactions.filter(t => t.type === "EXPENSE" && t.category !== "RETIRO_CANCELACION" && t.category !== "CAMBIO_VENTA").reduce((acc, t) => acc + t.amount, 0);
+  const totalCancelaciones = transactions.filter(t => t.type === "EXPENSE" && t.category === "RETIRO_CANCELACION").reduce((acc, t) => acc + t.amount, 0);
+  const estimatedCashSales = Math.max(0, calculatedCashSales - totalCancelaciones);
 
-  const expectedCash = totalFondo + totalIngresosManuales - totalRetirosManuales + calculatedCashSales;
+  const expectedCash = totalFondo + totalIngresosManuales + estimatedCashSales - totalRetirosManuales;
 
   // Real physical counted cash
   const countedCash = DENOMINATIONS.reduce((acc, denom) => {

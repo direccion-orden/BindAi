@@ -34,12 +34,17 @@ interface Location {
   address: string;
   warehouses: Warehouse[];
   businessLineId?: string;
-  channelType?: "digital" | "traditional";
+  channelType?: string;
   Name?: string;
   Address?: string;
 }
 
 interface BusinessLine {
+  id: string;
+  name: string;
+}
+
+interface SalesChannel {
   id: string;
   name: string;
 }
@@ -55,10 +60,14 @@ export default function SucursalesPage() {
   const [address, setAddress] = useState("");
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [businessLineId, setBusinessLineId] = useState("");
-  const [channelType, setChannelType] = useState<"digital" | "traditional">("traditional");
+  const [channelType, setChannelType] = useState<string>("traditional");
   
   const [catalogWarehouses, setCatalogWarehouses] = useState<Warehouse[]>([]);
   const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
+  const [salesChannels, setSalesChannels] = useState<SalesChannel[]>([
+    { id: "traditional", name: "Tradicional" },
+    { id: "digital", name: "Digital" }
+  ]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -85,11 +94,29 @@ export default function SucursalesPage() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name } as BusinessLine));
       setBusinessLines(data);
     });
+
+    // Fetch Sales Channels
+    const qSC = query(collection(db, "companies", companyId, "sales_channels"));
+    const unsubSC = onSnapshot(qSC, (snapshot) => {
+      const dbChannels = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name } as SalesChannel));
+      const defaultChannels = [
+        { id: "traditional", name: "Tradicional" },
+        { id: "digital", name: "Digital" }
+      ];
+      const merged = [...defaultChannels];
+      dbChannels.forEach(dbc => {
+        if (!merged.some(m => m.id === dbc.id || m.name.toLowerCase() === dbc.name.toLowerCase())) {
+          merged.push(dbc);
+        }
+      });
+      setSalesChannels(merged);
+    });
     
     return () => {
       unsubscribe();
       unsubW();
       unsubBL();
+      unsubSC();
     };
   }, [companyId]);
 
@@ -141,6 +168,21 @@ export default function SucursalesPage() {
       setWarehouses(prev => [...prev, { id: docId, name: newName.trim() }]);
     } catch (e) {
       alert("Error al crear almacén");
+    }
+  };
+
+  const handleAddSalesChannel = async () => {
+    const newName = prompt("Nombre del nuevo canal de venta:");
+    if (!newName || !companyId) return;
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    try {
+      const docId = trimmed.toLowerCase().replace(/\s+/g, "-");
+      const ref = doc(db, "companies", companyId, "sales_channels", docId);
+      await setDoc(ref, { name: trimmed });
+      setChannelType(docId);
+    } catch (e) {
+      alert("Error al crear canal de venta");
     }
   };
 
@@ -242,14 +284,20 @@ export default function SucursalesPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Canal de Venta</label>
-                <Select value={channelType} onValueChange={(val: "digital" | "traditional") => setChannelType(val)}>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-bold text-slate-700">Canal de Venta</label>
+                  <Button type="button" variant="outline" size="sm" onClick={handleAddSalesChannel} className="rounded-lg text-xs h-7 px-2.5">
+                    + Nuevo Canal
+                  </Button>
+                </div>
+                <Select value={channelType} onValueChange={setChannelType}>
                   <SelectTrigger className="rounded-xl border-slate-200 h-10 bg-white">
                     <SelectValue placeholder="Selecciona el canal" />
                   </SelectTrigger>
                   <SelectContent className="z-[110]">
-                    <SelectItem value="traditional">Canal Tradicional</SelectItem>
-                    <SelectItem value="digital">Canal Digital</SelectItem>
+                    {salesChannels.map(sc => (
+                      <SelectItem key={sc.id} value={sc.id}>{sc.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -342,9 +390,11 @@ export default function SucursalesPage() {
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                           loc.channelType === "digital"
                             ? "bg-purple-50 text-purple-700 border-purple-100"
-                            : "bg-slate-100 text-slate-700 border-slate-200"
+                            : loc.channelType === "traditional"
+                            ? "bg-slate-100 text-slate-700 border-slate-200"
+                            : "bg-indigo-50 text-indigo-700 border-indigo-100"
                         }`}>
-                          {loc.channelType === "digital" ? "Digital" : "Tradicional"}
+                          {salesChannels.find(sc => sc.id === loc.channelType)?.name || loc.channelType || "Tradicional"}
                         </span>
                       </TableCell>
                       <TableCell>

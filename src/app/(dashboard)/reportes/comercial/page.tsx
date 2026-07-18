@@ -10,6 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, ComposedChart, LabelList
 } from "recharts";
+import { SKU_TO_CATEGORY_MAP, NAME_TO_CATEGORY_MAP } from "@/lib/data/otros_ventas_mapping";
 
 const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#3b82f6", "#94a3b8"];
@@ -131,7 +132,17 @@ export default function ReporteComercialPage() {
       }
     }
     
-    // 3. Fallback for services based on code / productId prefixes
+    // 3. Look up using item.productId or item.sku or item.productName in static mapping of deleted/imported products
+    const skuVal = String(item.sku || item.productId || "").trim();
+    if (skuVal && SKU_TO_CATEGORY_MAP[skuVal]) {
+      return SKU_TO_CATEGORY_MAP[skuVal];
+    }
+    const nameVal = String(item.productName || item.name || item.description || "").toLowerCase().trim();
+    if (nameVal && NAME_TO_CATEGORY_MAP[nameVal]) {
+      return NAME_TO_CATEGORY_MAP[nameVal];
+    }
+    
+    // 4. Fallback for services based on code / productId prefixes
     const upperProdId = String(prodId || "").toUpperCase();
     if (upperProdId.startsWith("SER-ENVIO") || upperProdId.includes("ENVIO")) {
       const found = Object.entries(categories).find(([_, name]) => name.toUpperCase().includes("ENVIO"));

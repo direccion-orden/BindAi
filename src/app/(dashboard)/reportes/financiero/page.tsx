@@ -11,23 +11,6 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 
-// Mock Data for Phase 1
-const agingData = [
-  { name: "Al corriente", monto: 120000, qty: 15 },
-  { name: "1-30 días", monto: 85000, qty: 8 },
-  { name: "31-60 días", monto: 45000, qty: 4 },
-  { name: "61-90 días", monto: 15000, qty: 2 },
-  { name: "+90 días", monto: 35000, qty: 5 },
-];
-
-const cashflowData = [
-  { name: "Ene", ingresos: 400000, egresos: 280000 },
-  { name: "Feb", ingresos: 300000, egresos: 250000 },
-  { name: "Mar", ingresos: 500000, egresos: 350000 },
-  { name: "Abr", ingresos: 278000, egresos: 210000 },
-  { name: "May", ingresos: 189000, egresos: 120000 },
-];
-
 class SankeyDataBuilder {
   nodes: { name: string }[] = [];
   links: { source: number; target: number; value: number }[] = [];
@@ -110,6 +93,7 @@ export default function ReporteFinancieroPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [expensesInbox, setExpensesInbox] = useState<any[]>([]);
   const [costCenters, setCostCenters] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState("ytd"); // ytd, month, quarter
 
@@ -119,7 +103,7 @@ export default function ReporteFinancieroPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [locSnap, remSnap, factSnap, catSnap, prodSnap, expSnap, expInboxSnap, costCenterSnap] = await Promise.all([
+        const [locSnap, remSnap, factSnap, catSnap, prodSnap, expSnap, expInboxSnap, costCenterSnap, paySnap] = await Promise.all([
           getDocs(collection(db, "companies", companyId, "locations")),
           getDocs(collection(db, "companies", companyId, "remisiones")),
           getDocs(collection(db, "companies", companyId, "facturas")),
@@ -127,7 +111,8 @@ export default function ReporteFinancieroPage() {
           getDocs(collection(db, "companies", companyId, "products")),
           getDocs(collection(db, "companies", companyId, "expenses")),
           getDocs(collection(db, "companies", companyId, "expenses_inbox")),
-          getDocs(collection(db, "companies", companyId, "cost_centers"))
+          getDocs(collection(db, "companies", companyId, "cost_centers")),
+          getDocs(collection(db, "companies", companyId, "payments"))
         ]);
 
         const locs = locSnap.docs.map(d => ({
@@ -159,6 +144,7 @@ export default function ReporteFinancieroPage() {
         setExpenses(expSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         setExpensesInbox(expInboxSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         setCostCenters(costCenterSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setPayments(paySnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       } catch (err) {
         console.error("Error loading reports data:", err);
@@ -403,6 +389,32 @@ export default function ReporteFinancieroPage() {
     };
   }, [remisiones, facturas, expenses, expensesInbox, locations, timeRange, isItemService]);
 
+  const cashflowData = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    
+    return months.map((name, idx) => {
+      // Filter payments for this month/year
+      const monthlyIncomes = payments.filter(p => {
+        const d = new Date(p.date || p.createdAt);
+        return !isNaN(d.getTime()) && d.getFullYear() === currentYear && d.getMonth() === idx;
+      }).reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      // Filter paid expenses for this month/year
+      const monthlyExpenses = expenses.filter(e => {
+        if (e.status === "cancelado") return false;
+        const d = new Date(e.date || e.createdAt);
+        return !isNaN(d.getTime()) && d.getFullYear() === currentYear && d.getMonth() === idx;
+      }).reduce((sum, e) => sum + (e.paidAmount || 0), 0);
+
+      return {
+        name,
+        ingresos: Math.round(monthlyIncomes),
+        egresos: Math.round(monthlyExpenses)
+      };
+    });
+  }, [payments, expenses]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3">
@@ -541,79 +553,42 @@ export default function ReporteFinancieroPage() {
       </div>
 
       {/* Charts Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white border rounded-xl p-6 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-            <FileX className="w-5 h-5 text-indigo-600" />
-            Antigüedad de Saldos (Cuentas por Cobrar)
-          </h3>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={agingData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{fill: '#64748b', fontSize: 12}} 
-                  tickFormatter={(val) => `$${val/1000}k`}
-                  dx={-10}
-                />
-                <RechartsTooltip 
-                  formatter={(value: any) => [`$${value?.toLocaleString() || ""}`, "Deuda Total"]}
-                  contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                  cursor={{fill: '#f8fafc'}}
-                />
-                <Bar dataKey="monto" radius={[4, 4, 0, 0]} maxBarSize={60}>
-                  {agingData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index === 0 ? '#10b981' : index === 1 ? '#f59e0b' : index === 2 ? '#f97316' : '#ef4444'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="text-xs text-center text-slate-500 mt-2">
-            Monto agrupo por el tiempo de atraso desde la fecha de vencimiento de la factura.
-          </p>
-        </div>
-
-        <div className="bg-white border rounded-xl p-6 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-indigo-600" />
-            Ingresos vs Egresos (Flujo de Efectivo)
-          </h3>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={cashflowData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="colorIngresos" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorEgresos" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{fill: '#64748b', fontSize: 12}} 
-                  tickFormatter={(val) => `$${val/1000}k`}
-                  dx={-10}
-                />
-                <RechartsTooltip 
-                  formatter={(value: any) => [`$${value?.toLocaleString() || ""}`, ""]}
-                  contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                />
-                <Legend wrapperStyle={{paddingTop: '20px'}} />
-                <Area type="monotone" dataKey="ingresos" name="Ingresos (Cobranza)" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorIngresos)" />
-                <Area type="monotone" dataKey="egresos" name="Egresos (Pagos)" stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorEgresos)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+      <div className="bg-white border rounded-xl p-6 shadow-sm">
+        <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+          <Wallet className="w-5 h-5 text-indigo-600" />
+          Ingresos vs Egresos (Flujo de Efectivo)
+        </h3>
+        <div className="h-[350px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={cashflowData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+              <defs>
+                <linearGradient id="colorIngresos" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorEgresos" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{fill: '#64748b', fontSize: 12}} 
+                tickFormatter={(val) => `$${val >= 1000000 ? (val/1000000).toFixed(1) + 'M' : val >= 1000 ? (val/1000).toFixed(0) + 'k' : val}`}
+                dx={-10}
+              />
+              <RechartsTooltip 
+                formatter={(value: any) => [`$${value?.toLocaleString() || "0"}`, ""]}
+                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+              />
+              <Legend wrapperStyle={{paddingTop: '20px'}} />
+              <Area type="monotone" dataKey="ingresos" name="Ingresos (Cobranza)" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorIngresos)" />
+              <Area type="monotone" dataKey="egresos" name="Egresos (Pagos)" stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorEgresos)" />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

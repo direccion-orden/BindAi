@@ -96,7 +96,7 @@ export const SKU_TO_CATEGORY_MAP: Record<string, string> = {
   "7503041404996": "a3565e8f-240b-4af9-92c1-436a2c1c50db",
   "CAJ01": "a3565e8f-240b-4af9-92c1-436a2c1c50db",
   "E81163": "df86865e-45cf-4112-a6a4-69d31dbaf025",
-  "SER-ARRE": "b59b7170-1b9f-40a8-8f85-3961f96a40cb",
+  "SER-ARRE": "e9fbdd38-c4e8-4ec7-967a-76dacc2a4a25",
   "E80642": "44f4ee5d-989c-44d4-8e43-2aa36287585e",
   "8066644312195": "df86865e-45cf-4112-a6a4-69d31dbaf025",
   "6802322014209": "df86865e-45cf-4112-a6a4-69d31dbaf025",

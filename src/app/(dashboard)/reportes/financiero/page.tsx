@@ -83,6 +83,45 @@ const CustomSankeyNode = ({ x, y, width, height, index, payload, value }: any) =
   );
 };
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const ingresos = payload[0].value || 0;
+    const egresos = payload[1]?.value || 0;
+    const flujo = ingresos - egresos;
+    
+    return (
+      <div className="bg-white border rounded-xl p-4 shadow-xl text-xs space-y-2">
+        <p className="font-bold text-slate-800 border-b pb-1 mb-1">{label}</p>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-slate-500 font-semibold flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            Ingresos (Cobranza):
+          </span>
+          <span className="font-bold text-emerald-600">${ingresos.toLocaleString()}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-slate-500 font-semibold flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500"></span>
+            Egresos (Pagos):
+          </span>
+          <span className="font-bold text-red-600">${egresos.toLocaleString()}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 border-t pt-1.5 mt-1">
+          <span className="text-slate-700 font-bold flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${flujo >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
+            Flujo Neto:
+          </span>
+          <span className={`font-black ${flujo >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+            ${flujo.toLocaleString()}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 export default function ReporteFinancieroPage() {
   const { companyId } = useAuth();
   
@@ -600,10 +639,7 @@ export default function ReporteFinancieroPage() {
                 tickFormatter={(val) => `$${val >= 1000000 ? (val/1000000).toFixed(1) + 'M' : val >= 1000 ? (val/1000).toFixed(0) + 'k' : val}`}
                 dx={-10}
               />
-              <RechartsTooltip 
-                formatter={(value: any) => [`$${value?.toLocaleString() || "0"}`, ""]}
-                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-              />
+              <RechartsTooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{paddingTop: '20px'}} />
               <Area type="monotone" dataKey="ingresos" name="Ingresos (Cobranza)" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorIngresos)" />
               <Area type="monotone" dataKey="egresos" name="Egresos (Pagos)" stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorEgresos)" />

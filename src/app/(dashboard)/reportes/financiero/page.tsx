@@ -10,6 +10,7 @@ import {
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
+import { getLocalDateString } from "@/lib/utils";
 
 class SankeyDataBuilder {
   nodes: { name: string }[] = [];
@@ -394,18 +395,37 @@ export default function ReporteFinancieroPage() {
     const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
     
     return months.map((name, idx) => {
-      // Filter payments for this month/year
+      // Filter active payments for this month/year using same date parsing logic as ingresos module
       const monthlyIncomes = payments.filter(p => {
-        const d = new Date(p.date || p.createdAt);
-        return !isNaN(d.getTime()) && d.getFullYear() === currentYear && d.getMonth() === idx;
-      }).reduce((sum, p) => sum + (p.amount || 0), 0);
+        if (p.status === "cancelado") return false;
+        
+        const localDate = p.date || (p.createdAt ? getLocalDateString(new Date(p.createdAt)) : "");
+        if (!localDate) return false;
 
-      // Filter paid expenses for this month/year
+        const parts = localDate.split("-");
+        if (parts.length !== 3) return false;
+
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+
+        return year === currentYear && month === idx;
+      }).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+
+      // Filter paid expenses for this month/year using same local date parsing logic
       const monthlyExpenses = expenses.filter(e => {
         if (e.status === "cancelado") return false;
-        const d = new Date(e.date || e.createdAt);
-        return !isNaN(d.getTime()) && d.getFullYear() === currentYear && d.getMonth() === idx;
-      }).reduce((sum, e) => sum + (e.paidAmount || 0), 0);
+
+        const localDate = e.date || (e.createdAt ? getLocalDateString(new Date(e.createdAt)) : "");
+        if (!localDate) return false;
+
+        const parts = localDate.split("-");
+        if (parts.length !== 3) return false;
+
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+
+        return year === currentYear && month === idx;
+      }).reduce((sum, e) => sum + (parseFloat(e.paidAmount) || 0), 0);
 
       return {
         name,

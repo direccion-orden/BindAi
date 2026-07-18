@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, getDocs, query } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, TrendingUp, Users, Target, Clock, Download, Calendar, ShoppingCart, Package, Info } from "lucide-react";
+import { Loader2, TrendingUp, Users, Target, Clock, Download, Calendar, ShoppingCart, Package, Info, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -26,6 +26,7 @@ export default function ReporteComercialPage() {
   const [goals, setGoals] = useState<any[]>([]);
   const [categories, setCategories] = useState<{ [key: string]: string }>({});
   const [productsMap, setProductsMap] = useState<{ [key: string]: any }>({});
+  const [businessLines, setBusinessLines] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(true);
 
   // States for filters
@@ -168,21 +169,23 @@ export default function ReporteComercialPage() {
       setLoading(true);
       try {
         // Parallel queries to Firestore
-        const [locSnap, remSnap, factSnap, pedSnap, goalSnap, catSnap, prodSnap] = await Promise.all([
+        const [locSnap, remSnap, factSnap, pedSnap, goalSnap, catSnap, prodSnap, blSnap] = await Promise.all([
           getDocs(collection(db, "companies", companyId, "locations")),
           getDocs(collection(db, "companies", companyId, "remisiones")),
           getDocs(collection(db, "companies", companyId, "facturas")),
           getDocs(collection(db, "companies", companyId, "pedidos")),
           getDocs(collection(db, "companies", companyId, "sales_goals")),
           getDocs(collection(db, "companies", companyId, "categories")),
-          getDocs(collection(db, "companies", companyId, "products"))
+          getDocs(collection(db, "companies", companyId, "products")),
+          getDocs(collection(db, "companies", companyId, "business_lines"))
         ]);
 
         // Map Locations
         const locs = locSnap.docs.map(d => ({
           id: d.id,
           name: d.data().name || d.data().Name || "Sucursal sin nombre",
-          channelType: d.data().channelType || "traditional"
+          channelType: d.data().channelType || "traditional",
+          businessLineId: d.data().businessLineId || ""
         }));
         locs.sort((a, b) => a.name.localeCompare(b.name, 'es'));
         setLocations(locs);
@@ -209,6 +212,13 @@ export default function ReporteComercialPage() {
           cats[d.id] = d.data().name || d.data().Name || d.id;
         });
         setCategories(cats);
+
+        // Map Business Lines lookup
+        const bls: { [key: string]: string } = {};
+        blSnap.forEach(d => {
+          bls[d.id] = d.data().name || d.data().Name || d.id;
+        });
+        setBusinessLines(bls);
 
         // Map Products catalog lookup
         const prods: { [key: string]: any } = {};
@@ -521,6 +531,23 @@ export default function ReporteComercialPage() {
       { name: "Venta Independiente", value: Math.round(independienteSales) }
     ];
 
+    // Business Line Chart Data
+    const businessLineTotals: { [key: string]: number } = {};
+    branchPerformance.forEach(b => {
+      const loc = locations.find(l => l.id === b.id);
+      const blId = loc?.businessLineId;
+      const blName = (blId && businessLines[blId]) || "Sin Línea de Negocio";
+      
+      // If a specific sucursal is filtered, we only sum that one
+      if (selectedSucursal !== "all" && b.id !== selectedSucursal) return;
+      
+      businessLineTotals[blName] = (businessLineTotals[blName] || 0) + b.realSales;
+    });
+
+    const businessLineChartData = Object.entries(businessLineTotals)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
     return {
       totalSales,
       avgTicket,
@@ -536,12 +563,13 @@ export default function ReporteComercialPage() {
       branchPerformance,
       channelChartData,
       projectsChartData,
+      businessLineChartData,
       chartYear,
       goalLabel: getGoalLabel(),
       activeRemisiones,
       activeFacturas
     };
-  }, [remisiones, facturas, pedidos, goals, categories, locations, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId, dateFilterType, chartTaxMode]);
+  }, [remisiones, facturas, pedidos, goals, categories, locations, businessLines, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId, dateFilterType, chartTaxMode]);
 
   // Compute category drill down data reactively
   const drillDownData = useMemo(() => {
@@ -1262,8 +1290,8 @@ export default function ReporteComercialPage() {
         </div>
       </div>
 
-      {/* Charts Row 2: Digital vs Tradicional & Proyectos vs Independiente */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Charts Row 2: Digital vs Tradicional, Proyectos vs Independiente & Línea de Negocio */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Digital vs Tradicional */}
         <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-center mb-4">
@@ -1388,6 +1416,73 @@ export default function ReporteComercialPage() {
                       }`}>
                         {percent.toFixed(1)}%
                       </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Venta por Línea de Negocio */}
+        <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-indigo-600" />
+              Venta por Línea de Negocio
+            </h3>
+            {stats.totalSales > 0 && (
+              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
+                Total: {formatMoney(stats.totalSales)}
+              </span>
+            )}
+          </div>
+          
+          {stats.businessLineChartData.reduce((acc, p) => acc + p.value, 0) === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
+              <Layers className="w-10 h-10 text-slate-300 mb-2" />
+              <p className="text-sm text-slate-400 font-semibold">Sin ventas en el período</p>
+            </div>
+          ) : (
+            <>
+              <div className="h-[200px] w-full relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={stats.businessLineChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {stats.businessLineChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip 
+                      formatter={(value: any, name: any, entry: any) => [formatMoney(value), entry.payload.name || name]}
+                      contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="mt-4 space-y-2 max-h-[120px] overflow-y-auto custom-scrollbar pr-2 border-t pt-4">
+                {stats.businessLineChartData.map((bl, idx) => {
+                  const blTotal = stats.businessLineChartData.reduce((acc, p) => acc + p.value, 0);
+                  const percent = blTotal > 0 ? (bl.value / blTotal) * 100 : 0;
+                  return (
+                    <div key={idx} className="flex items-center justify-between text-xs p-1 rounded-lg hover:bg-slate-50/50">
+                      <div className="flex items-center gap-2 truncate">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: COLORS[idx % COLORS.length]}}></div>
+                        <span className="text-slate-600 truncate font-semibold">{bl.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-slate-500 font-bold">{formatMoney(bl.value)}</span>
+                        <span className="text-slate-400 font-medium">({percent.toFixed(1)}%)</span>
+                      </div>
                     </div>
                   );
                 })}

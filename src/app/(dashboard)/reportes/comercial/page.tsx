@@ -1231,7 +1231,7 @@ export default function ReporteComercialPage() {
                       ))}
                     </Pie>
                     <RechartsTooltip 
-                      formatter={(value: any) => [formatMoney(value), "Venta"]}
+                      formatter={(value: any, name: any, entry: any) => [formatMoney(value), entry.payload.name || name]}
                       contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                     />
                   </PieChart>

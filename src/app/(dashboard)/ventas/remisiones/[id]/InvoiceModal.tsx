@@ -220,7 +220,7 @@ export function InvoiceModal({
           
           const discountVal = round2(item.finalDiscountAmt);
           const baseVal = round2(subtotalVal - discountVal);
-          const taxTotalVal = round2(item.tax);
+          const taxTotalVal = round2(baseVal * 0.16);
           const totalVal = round2(baseVal + taxTotalVal);
 
           return {

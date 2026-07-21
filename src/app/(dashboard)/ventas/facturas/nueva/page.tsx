@@ -283,8 +283,8 @@ export default function NuevaFacturaPage() {
           const discountVal = round2(discountAmt);
           const baseVal = round2(subtotalVal - discountVal);
           
-          const taxTotalVal = engineItem ? engineItem.tax : round2(baseVal * 0.16);
-          const totalVal = engineItem ? engineItem.total : round2(baseVal + taxTotalVal);
+          const taxTotalVal = round2(baseVal * 0.16);
+          const totalVal = round2(baseVal + taxTotalVal);
           
           return {
             ProductCode: item.satProductCode || "01010101",

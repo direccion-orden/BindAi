@@ -299,8 +299,8 @@ export default function EditarFacturaPage({ params: paramsPromise }: { params: P
           const itemUnitPriceExVAT = engineItem ? engineItem.unitPrice : (Number(item.unitPrice) || 0);
           
           const subtotalItem = engineItem ? engineItem.finalSubtotal : Number(((item.quantity * itemUnitPriceExVAT) - discountAmt).toFixed(4));
-          const taxTotalVal = engineItem ? engineItem.tax : Number((subtotalItem * 0.16).toFixed(4));
-          const totalVal = engineItem ? engineItem.total : Number((subtotalItem + taxTotalVal).toFixed(4));
+          const taxTotalVal = Number((subtotalItem * 0.16).toFixed(4));
+          const totalVal = Number((subtotalItem + taxTotalVal).toFixed(4));
           
           return {
             ProductCode: "01010101",

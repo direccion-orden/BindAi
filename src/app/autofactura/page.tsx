@@ -223,7 +223,7 @@ function AutofacturaContent() {
                   placeholder="Ej. POS-10025 o 10025" 
                   value={folio}
                   onChange={(e) => setFolio(e.target.value)}
-                  className="bg-slate-900/60 border-slate-800 text-white h-12 focus:border-indigo-500 text-lg placeholder:text-slate-600 font-semibold"
+                  className="!bg-slate-900 !border-slate-800 !text-white h-12 focus:border-indigo-500 text-lg placeholder:text-slate-600 font-semibold"
                   required
                 />
               </div>
@@ -238,7 +238,7 @@ function AutofacturaContent() {
                     placeholder="0.00" 
                     value={total}
                     onChange={(e) => setTotal(e.target.value)}
-                    className="bg-slate-900/60 border-slate-800 text-white h-12 pl-8 focus:border-indigo-500 text-lg placeholder:text-slate-600 font-semibold"
+                    className="!bg-slate-900 !border-slate-800 !text-white h-12 pl-8 focus:border-indigo-500 text-lg placeholder:text-slate-600 font-semibold"
                     required
                   />
                 </div>
@@ -252,7 +252,7 @@ function AutofacturaContent() {
                     placeholder="Código de la tienda" 
                     value={companyId}
                     onChange={(e) => setCompanyId(e.target.value)}
-                    className="bg-slate-900/60 border-slate-800 text-white h-12 focus:border-indigo-500 text-sm placeholder:text-slate-600"
+                    className="!bg-slate-900 !border-slate-800 !text-white h-12 focus:border-indigo-500 text-sm placeholder:text-slate-600"
                     required
                   />
                 </div>
@@ -299,7 +299,7 @@ function AutofacturaContent() {
                     placeholder="RFC de 12 o 13 dígitos" 
                     value={rfc}
                     onChange={(e) => setRfc(e.target.value.toUpperCase())}
-                    className="bg-slate-900/60 border-slate-800 text-white font-mono focus:border-indigo-500 uppercase font-semibold"
+                    className="!bg-slate-900 !border-slate-800 !text-white font-mono focus:border-indigo-500 uppercase font-semibold"
                     maxLength={13}
                     required
                   />
@@ -312,7 +312,7 @@ function AutofacturaContent() {
                     placeholder="Tal como aparece en la Constancia Fiscal" 
                     value={razonSocial}
                     onChange={(e) => setRazonSocial(e.target.value.toUpperCase())}
-                    className="bg-slate-900/60 border-slate-800 text-white focus:border-indigo-500 uppercase font-semibold"
+                    className="!bg-slate-900 !border-slate-800 !text-white focus:border-indigo-500 uppercase font-semibold"
                     required
                   />
                 </div>
@@ -325,7 +325,7 @@ function AutofacturaContent() {
                       placeholder="CP del domicilio fiscal" 
                       value={zipCode}
                       onChange={(e) => setZipCode(e.target.value)}
-                      className="bg-slate-900/60 border-slate-800 text-white focus:border-indigo-500 font-semibold"
+                      className="!bg-slate-900 !border-slate-800 !text-white focus:border-indigo-500 font-semibold"
                       maxLength={5}
                       required
                     />
@@ -334,21 +334,21 @@ function AutofacturaContent() {
                   <div className="space-y-1.5">
                     <label className="text-xs uppercase font-bold text-slate-400 tracking-wider">Régimen Fiscal *</label>
                     <select 
-                      className="flex h-10 w-full rounded-md border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
+                      className="flex h-10 w-full rounded-md border !border-slate-800 !bg-slate-900 px-3 py-2 text-sm !text-white focus:border-indigo-500 focus:outline-none"
                       value={taxRegime}
                       onChange={e => setTaxRegime(e.target.value)}
                       required
                     >
-                      <option value="601">601 - General Personas Morales</option>
-                      <option value="603">603 - Personas Morales con Fines no Lucrativos</option>
-                      <option value="605">605 - Sueldos y Salarios / Asimilados</option>
-                      <option value="606">606 - Arrendamiento</option>
-                      <option value="608">608 - Actividades Agrícolas / Ganaderas</option>
-                      <option value="612">612 - Personas Físicas con Actividad Empresarial</option>
-                      <option value="616">616 - Sin obligaciones fiscales</option>
-                      <option value="621">621 - Incorporación Fiscal</option>
-                      <option value="625">625 - Régimen de las Actividades de las Personas Físicas con Ingresos por Plataformas Tecnológicas</option>
-                      <option value="626">626 - RESICO</option>
+                      <option value="601" className="bg-slate-900 text-white">601 - General Personas Morales</option>
+                      <option value="603" className="bg-slate-900 text-white">603 - Personas Morales con Fines no Lucrativos</option>
+                      <option value="605" className="bg-slate-900 text-white">605 - Sueldos y Salarios / Asimilados</option>
+                      <option value="606" className="bg-slate-900 text-white">606 - Arrendamiento</option>
+                      <option value="608" className="bg-slate-900 text-white">608 - Actividades Agrícolas / Ganaderas</option>
+                      <option value="612" className="bg-slate-900 text-white">612 - Personas Físicas con Actividad Empresarial</option>
+                      <option value="616" className="bg-slate-900 text-white">616 - Sin obligaciones fiscales</option>
+                      <option value="621" className="bg-slate-900 text-white">621 - Incorporación Fiscal</option>
+                      <option value="625" className="bg-slate-900 text-white">625 - Régimen de las Actividades de las Personas Físicas con Ingresos por Plataformas Tecnológicas</option>
+                      <option value="626" className="bg-slate-900 text-white">626 - RESICO</option>
                     </select>
                   </div>
                 </div>
@@ -357,21 +357,21 @@ function AutofacturaContent() {
                   <div className="space-y-1.5">
                     <label className="text-xs uppercase font-bold text-slate-400 tracking-wider">Uso de CFDI *</label>
                     <select 
-                      className="flex h-10 w-full rounded-md border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
+                      className="flex h-10 w-full rounded-md border !border-slate-800 !bg-slate-900 px-3 py-2 text-sm !text-white focus:border-indigo-500 focus:outline-none"
                       value={cfdiUse}
                       onChange={e => setCfdiUse(e.target.value)}
                       required
                     >
-                      <option value="G01">G01 - Adquisición de mercancías</option>
-                      <option value="G03">G03 - Gastos en general</option>
-                      <option value="I01">I01 - Construcciones</option>
-                      <option value="I02">I02 - Mobiliario y equipo</option>
-                      <option value="D01">D01 - Honorarios médicos / dentales</option>
-                      <option value="D02">D02 - Gastos médicos por incapacidad</option>
-                      <option value="D04">D04 - Donativos</option>
-                      <option value="D08">D08 - Gastos de transportación escolar</option>
-                      <option value="D10">D10 - Depósitos en cuentas para el ahorro</option>
-                      <option value="S01">S01 - Sin efectos fiscales</option>
+                      <option value="G01" className="bg-slate-900 text-white">G01 - Adquisición de mercancías</option>
+                      <option value="G03" className="bg-slate-900 text-white">G03 - Gastos en general</option>
+                      <option value="I01" className="bg-slate-900 text-white">I01 - Construcciones</option>
+                      <option value="I02" className="bg-slate-900 text-white">I02 - Mobiliario y equipo</option>
+                      <option value="D01" className="bg-slate-900 text-white">D01 - Honorarios médicos / dentales</option>
+                      <option value="D02" className="bg-slate-900 text-white">D02 - Gastos médicos por incapacidad</option>
+                      <option value="D04" className="bg-slate-900 text-white">D04 - Donativos</option>
+                      <option value="D08" className="bg-slate-900 text-white">D08 - Gastos de transportación escolar</option>
+                      <option value="D10" className="bg-slate-900 text-white">D10 - Depósitos en cuentas para el ahorro</option>
+                      <option value="S01" className="bg-slate-900 text-white">S01 - Sin efectos fiscales</option>
                     </select>
                   </div>
 
@@ -382,7 +382,7 @@ function AutofacturaContent() {
                       placeholder="correo@ejemplo.com" 
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="bg-slate-900/60 border-slate-800 text-white focus:border-indigo-500"
+                      className="!bg-slate-900 !border-slate-800 !text-white focus:border-indigo-500"
                       required
                     />
                   </div>

@@ -77,9 +77,23 @@ export async function createCfdi(data: any) {
       //   };
       // }
 
+      let errorMessage = responseData.Message || `Error al generar CFDI (HTTP ${response.status} ${response.statusText})`;
+      if (responseData.ModelState) {
+        const errors: string[] = [];
+        for (const key of Object.keys(responseData.ModelState)) {
+          const fieldErrors = responseData.ModelState[key];
+          if (Array.isArray(fieldErrors)) {
+            errors.push(...fieldErrors);
+          }
+        }
+        if (errors.length > 0) {
+          errorMessage = `${errorMessage} Detalles: ${errors.join(". ")}`;
+        }
+      }
+
       return {
         success: false,
-        error: responseData.Message || `Error al generar CFDI (HTTP ${response.status} ${response.statusText})`,
+        error: errorMessage,
         details: JSON.stringify(responseData.ModelState || responseData, null, 2)
       };
     }
@@ -515,14 +529,29 @@ export async function createAutofactura(companyId: string, remissionId: string, 
       };
     }));
 
+    let receiverRfc = clientData.rfc.toUpperCase().trim();
+    let receiverName = clientData.razonSocial.toUpperCase().trim();
+    let receiverCfdiUse = clientData.cfdiUse;
+    let receiverTaxRegime = clientData.taxRegime;
+
+    if (receiverRfc === "XAXX010101000" || receiverRfc === "XEXX010101000") {
+      receiverCfdiUse = "S01";
+      receiverTaxRegime = "616";
+      if (receiverRfc === "XAXX010101000") {
+        receiverName = "PUBLICO EN GENERAL";
+      }
+    } else if (receiverTaxRegime === "616") {
+      receiverCfdiUse = "S01";
+    }
+
     // Build CFDI 4.0 Payload
     const facturamaPayload: any = {
       Receiver: {
-        Name: clientData.razonSocial.toUpperCase(),
-        CfdiUse: clientData.cfdiUse,
-        Rfc: clientData.rfc.toUpperCase(),
-        TaxZipCode: (clientData.rfc.toUpperCase() === "XAXX010101000" || clientData.rfc.toUpperCase() === "XEXX010101000") ? companyZipCode : clientData.zipCode,
-        FiscalRegime: clientData.taxRegime
+        Name: receiverName,
+        CfdiUse: receiverCfdiUse,
+        Rfc: receiverRfc,
+        TaxZipCode: (receiverRfc === "XAXX010101000" || receiverRfc === "XEXX010101000") ? companyZipCode : clientData.zipCode.trim(),
+        FiscalRegime: receiverTaxRegime
       },
       CfdiType: "I",
       Exportation: "01",

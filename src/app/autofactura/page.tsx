@@ -173,7 +173,7 @@ function AutofacturaContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-between py-10 px-4 relative overflow-hidden font-sans">
+    <div className="dark min-h-screen bg-slate-900 text-white flex flex-col justify-between py-10 px-4 relative overflow-hidden font-sans">
       {/* Background blobs for premium glassmorphic effect */}
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-emerald-500/10 blur-[120px] pointer-events-none" />

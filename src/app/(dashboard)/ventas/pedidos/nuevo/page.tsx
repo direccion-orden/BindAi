@@ -16,6 +16,7 @@ import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/di
 import { Percent, FileText } from "lucide-react";
 import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
 import { QuickClientModal } from "@/components/pos/QuickClientModal";
+import { getClientDisplayName, matchesClientFilter } from "@/lib/utils";
 
 
 interface OrderItem {
@@ -170,7 +171,7 @@ export default function NuevoPedidoPage() {
 
   const handleSelectClient = (c: Client) => {
     setClientId(c.id);
-    const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";
+    const clientName = getClientDisplayName(c);
     setClientSearch(clientName);
     setProjectId("");
     setIsCreatingProject(false);
@@ -550,21 +551,21 @@ export default function NuevoPedidoPage() {
             {!clientId && clientSearch && (
               <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-48 overflow-y-auto bg-background divide-y z-50 shadow-xl">
                 {clients
-                  .filter(c => (c.name || "").toLowerCase().includes(clientSearch.toLowerCase()) || (c.rfc || "").toLowerCase().includes(clientSearch.toLowerCase()))
+                  .filter(c => matchesClientFilter(c, clientSearch))
                   .map(c => (
                     <div 
                       key={c.id} 
                       className="p-2 hover:bg-muted/50 cursor-pointer text-xs" 
                       onClick={() => {
                         setClientId(c.id);
-                        setClientSearch(c.name || c.LegalName || "");
+                        setClientSearch(getClientDisplayName(c));
                       }}
                     >
-                      <div className="font-medium text-slate-900">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
-                      {(c.rfc || c.RFC) && <div className="text-[10px] text-slate-500">RFC: {c.rfc || c.RFC}</div>}
+                      <div className="font-medium text-slate-900">{getClientDisplayName(c)}</div>
+                      {(c.rfc || c.RFC || c.taxId) && <div className="text-[10px] text-slate-500">RFC: {c.rfc || c.RFC || c.taxId}</div>}
                     </div>
                   ))}
-                {clients.filter(c => (c.name || "").toLowerCase().includes(clientSearch.toLowerCase()) || (c.rfc || "").toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
+                {clients.filter(c => matchesClientFilter(c, clientSearch)).length === 0 && (
                   <div className="p-2 text-xs text-muted-foreground text-center">No se encontraron clientes</div>
                 )}
               </div>
@@ -573,7 +574,7 @@ export default function NuevoPedidoPage() {
                 const selectedClient = clients.find(c => c.id === clientId);
                 return selectedClient && (
                   <div className="mt-1.5 p-2 bg-blue-50/50 border border-blue-100 rounded text-[11px]">
-                    <p className="font-semibold text-blue-900 line-clamp-1">{selectedClient.LegalName || selectedClient.CommercialName || selectedClient.name}</p>
+                    <p className="font-semibold text-blue-900 line-clamp-1">{getClientDisplayName(selectedClient)}</p>
                     <p className="text-blue-700/80 text-[10px] mt-0.5 line-clamp-1">{selectedClient.Email || selectedClient.email || 'Sin email'}</p>
                   </div>
                 );
@@ -988,15 +989,15 @@ export default function NuevoPedidoPage() {
                   {!clientId && clientSearch && (
                     <div className="absolute top-full left-0 right-0 mt-1 border rounded-md max-h-40 overflow-y-auto bg-background divide-y z-50 shadow-xl">
                       {clients
-                        .filter(c => (c.name || "").toLowerCase().includes(clientSearch.toLowerCase()) || (c.rfc || "").toLowerCase().includes(clientSearch.toLowerCase()))
+                        .filter(c => matchesClientFilter(c, clientSearch))
                         .map(c => (
                         <div 
                           key={c.id} 
                           className="p-2 hover:bg-muted/50 cursor-pointer text-xs" 
                           onClick={() => handleSelectClient(c)}
                         >
-                          <div className="font-bold text-slate-900">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
-                          {(c.RFC || c.rfc) && <div className="text-[9px] text-slate-500">RFC: {c.RFC || c.rfc}</div>}
+                          <div className="font-bold text-slate-900">{getClientDisplayName(c)}</div>
+                          {(c.RFC || c.rfc || c.taxId) && <div className="text-[9px] text-slate-500">RFC: {c.RFC || c.rfc || c.taxId}</div>}
                         </div>
                       ))}
                     </div>
@@ -1005,7 +1006,7 @@ export default function NuevoPedidoPage() {
                     const selectedClient = clients.find(c => c.id === clientId);
                     return selectedClient && (
                       <div className="mt-1.5 p-1 px-2 bg-blue-50/50 border border-blue-100 rounded text-[10px] flex justify-between items-center">
-                        <span className="font-bold text-blue-900 truncate">{selectedClient.LegalName || selectedClient.CommercialName || selectedClient.name}</span>
+                        <span className="font-bold text-blue-900 truncate">{getClientDisplayName(selectedClient)}</span>
                         <button type="button" onClick={() => setShowQuickClient(true)} className="text-indigo-600 font-bold shrink-0 ml-2">+ Nuevo Cliente</button>
                       </div>
                     );

@@ -42,9 +42,11 @@ export interface Client {
   // Legacy / API fields
   LegalName?: string;
   CommercialName?: string;
+  businessName?: string;
   Email?: string;
   Phone?: string;
   RFC?: string;
+  taxId?: string;
   address?: string;
   createdAt?: string;
   updatedAt?: string;

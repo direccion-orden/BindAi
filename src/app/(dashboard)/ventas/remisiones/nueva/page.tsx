@@ -16,7 +16,7 @@ import { calculateOrderTotals, EngineItem, EngineDiscount } from "@/lib/utils/di
 import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
 import { QuickClientModal } from "@/components/pos/QuickClientModal";
 import { FileText, Percent } from "lucide-react";
-import { getLocalDateString } from "@/lib/utils";
+import { getLocalDateString, getClientDisplayName, matchesClientFilter } from "@/lib/utils";
 
 
 interface OrderItem {
@@ -131,12 +131,7 @@ export default function NuevaRemisionPage() {
 
   const getFilteredClients = () => {
     if (!clientSearch) return [];
-    const term = clientSearch.toLowerCase();
-    return clients.filter(c => {
-      const nameVal = (c.LegalName || c.CommercialName || c.name || "").toLowerCase();
-      const rfcVal = (c.RFC || c.rfc || "").toLowerCase();
-      return nameVal.includes(term) || rfcVal.includes(term);
-    });
+    return clients.filter(c => matchesClientFilter(c, clientSearch));
   };
 
   const getFilteredProducts = () => {
@@ -150,7 +145,7 @@ export default function NuevaRemisionPage() {
 
   const handleSelectClient = (c: Client) => {
     setClientId(c.id);
-    const clientName = c.LegalName || c.CommercialName || c.name || "Cliente sin nombre";
+    const clientName = getClientDisplayName(c);
     setClientSearch(clientName);
     setProjectId("");
     setIsCreatingProject(false);
@@ -466,14 +461,14 @@ export default function NuevaRemisionPage() {
                       className="p-2 hover:bg-muted/50 cursor-pointer text-xs" 
                       onClick={() => {
                         setClientId(c.id);
-                        setClientSearch(c.name || c.LegalName || "");
+                        setClientSearch(getClientDisplayName(c));
                       }}
                     >
-                      <div className="font-medium text-slate-900">{c.LegalName || c.CommercialName || c.name || "Cliente sin nombre"}</div>
-                      {(c.rfc || c.RFC) && <div className="text-[10px] text-slate-500">RFC: {c.rfc || c.RFC}</div>}
+                      <div className="font-medium text-slate-900">{getClientDisplayName(c)}</div>
+                      {(c.rfc || c.RFC || c.taxId) && <div className="text-[10px] text-slate-500">RFC: {c.rfc || c.RFC || c.taxId}</div>}
                     </div>
                   ))}
-                  {clients.filter(c => (c.name || "").toLowerCase().includes(clientSearch.toLowerCase()) || (c.rfc || "").toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
+                  {clients.filter(c => matchesClientFilter(c, clientSearch)).length === 0 && (
                     <div className="p-2 text-xs text-muted-foreground text-center">No se encontraron clientes</div>
                   )}
                 </div>
@@ -482,7 +477,7 @@ export default function NuevaRemisionPage() {
                   const selectedClient = clients.find(c => c.id === clientId);
                   return selectedClient && (
                     <div className="mt-1.5 p-2 bg-emerald-50/50 border border-emerald-100 rounded text-[11px]">
-                      <p className="font-semibold text-emerald-900 line-clamp-1">{selectedClient.LegalName || selectedClient.CommercialName || selectedClient.name}</p>
+                      <p className="font-semibold text-emerald-900 line-clamp-1">{getClientDisplayName(selectedClient)}</p>
                       <p className="text-emerald-700/80 text-[10px] mt-0.5 line-clamp-1">{selectedClient.Email || selectedClient.email || 'Sin email'}</p>
                     </div>
                   );

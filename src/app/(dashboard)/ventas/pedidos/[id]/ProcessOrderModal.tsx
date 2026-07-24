@@ -12,6 +12,7 @@ import { db } from "@/lib/firebase/client";
 // Re-use utility for sequence
 import { getNextSequence } from "@/lib/firebase/counters";
 import { distributeDiscountAndTax } from "@/lib/utils/discountEngine";
+import { calculateDueDate, validateClientCreditLimit } from "@/lib/utils/creditUtils";
 
 export function ProcessOrderModal({ 
   isOpen, 
@@ -232,6 +233,18 @@ export function ProcessOrderModal({
     const finalPaidAmount = Math.max(order.paidAmount || 0, totalPaidFromPayments);
     const finalIsPaid = finalPaidAmount >= (order.totalAmount - 0.01);
 
+    const selectedClient = clients.find(c => c.id === (selectedClientId || order.clientId));
+    const creditDays = Number(selectedClient?.creditDays || 0);
+    const calculatedDueDate = calculateDueDate(appliedDate, creditDays);
+
+    if (!finalIsPaid && selectedClient && (selectedClient.hasCreditLine || (selectedClient.creditLimit && selectedClient.creditLimit > 0))) {
+      const unpaidBalance = (order.totalAmount || 0) - finalPaidAmount;
+      const creditCheck = await validateClientCreditLimit(companyId, selectedClient, unpaidBalance);
+      if (!creditCheck.allowed) {
+        throw new Error(`⛔ CRÉDITO INSICIENTE / TOPADO:\n\n${creditCheck.message}`);
+      }
+    }
+
     // 1. Create Remission (moved after payment calculation for accurate status)
     await setDoc(doc(db, "companies", companyId, "remisiones", remId), {
       id: remId,
@@ -253,6 +266,8 @@ export function ProcessOrderModal({
       accountId,
       accountCode,
       accountName,
+      creditDays,
+      dueDate: calculatedDueDate,
       createdAt: appliedISO,
       createdBy: order.createdBy,
       status: finalIsPaid ? 'pagada' : 'activa'

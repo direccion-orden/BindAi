@@ -45,6 +45,8 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch, exis
   
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [creditDays, setCreditDays] = useState<number | "">(0);
+  const [creditLimit, setCreditLimit] = useState<number | "">(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [similarClients, setSimilarClients] = useState<Client[]>([]);
@@ -109,6 +111,9 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch, exis
         phone: phone.trim(),
         email: email.trim(),
         rfc: type === 'fiscal' ? "" : "XAXX010101000",
+        hasCreditLine: Boolean(Number(creditLimit) > 0 || Number(creditDays) > 0),
+        creditDays: Number(creditDays || 0),
+        creditLimit: Number(creditLimit || 0),
         points: 0,
         walletBalance: 0,
         preferences: "",
@@ -125,6 +130,9 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch, exis
         phone: newClientData.phone,
         email: newClientData.email,
         rfc: newClientData.rfc,
+        hasCreditLine: newClientData.hasCreditLine,
+        creditDays: newClientData.creditDays,
+        creditLimit: newClientData.creditLimit,
         points: newClientData.points,
         walletBalance: newClientData.walletBalance,
         preferences: newClientData.preferences
@@ -308,6 +316,37 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch, exis
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
               />
+            </div>
+          </div>
+
+          <div className="p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-lg space-y-2">
+            <span className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider block">Línea de Crédito (Opcional)</span>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-0.5">
+                <label className="text-[9px] font-bold text-indigo-700">Días Crédito</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="flex h-8 w-full rounded border border-indigo-200 bg-white px-2 py-1 text-xs"
+                  placeholder="0"
+                  value={creditDays}
+                  onChange={(e) => setCreditDays(e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))}
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-0.5">
+                <label className="text-[9px] font-bold text-indigo-700">Límite Máximo ($)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="flex h-8 w-full rounded border border-indigo-200 bg-white px-2 py-1 text-xs"
+                  placeholder="0.00"
+                  value={creditLimit}
+                  onChange={(e) => setCreditLimit(e.target.value === "" ? "" : Math.max(0, parseFloat(e.target.value) || 0))}
+                  disabled={loading}
+                />
+              </div>
             </div>
           </div>
 

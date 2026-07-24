@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2, Edit2, Users, Search, Building, Mail, Phone, Eye, Upload, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, Plus, Trash2, Edit2, Users, Search, Building, Mail, Phone, Eye, Upload, ArrowUpDown, ArrowUp, ArrowDown, CreditCard } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -39,6 +39,11 @@ export interface Client {
   razonSocial?: string;
   cfdiUse?: string;
   
+  // Credit Line Data
+  hasCreditLine?: boolean;
+  creditDays?: number;
+  creditLimit?: number;
+
   // Legacy / API fields
   LegalName?: string;
   CommercialName?: string;
@@ -214,6 +219,7 @@ export default function ClientesPage() {
   };
 
   const handleOpenForm = (client?: Client, viewMode = false) => {
+    setIsViewing(viewMode);
     if (client) {
       setCurrentId(client.id);
       setFormData({
@@ -222,6 +228,9 @@ export default function ClientesPage() {
         email: client.Email || client.email || "",
         phone: client.Phone || client.phone || "",
         rfc: client.RFC || client.rfc || "",
+        hasCreditLine: client.hasCreditLine ?? Boolean(client.creditDays || client.creditLimit),
+        creditDays: client.creditDays || 0,
+        creditLimit: client.creditLimit || 0,
       });
     } else {
       setCurrentId("");
@@ -243,7 +252,10 @@ export default function ClientesPage() {
         interiorNumber: "", 
         neighborhood: "", 
         city: "", 
-        state: "" 
+        state: "",
+        hasCreditLine: false,
+        creditDays: 0,
+        creditLimit: 0
       });
     }
     setSimilarClients([]);
@@ -253,7 +265,7 @@ export default function ClientesPage() {
 
   const handleCloseForm = () => {
     setIsEditing(false);
-      setIsViewing(false);
+    setIsViewing(false);
     setCurrentId("");
     setFormData({});
   };
@@ -300,6 +312,9 @@ export default function ClientesPage() {
         neighborhood: formData.neighborhood?.trim() || "",
         city: formData.city?.trim() || "",
         state: formData.state?.trim() || "",
+        hasCreditLine: Boolean(formData.hasCreditLine),
+        creditDays: Number(formData.creditDays || 0),
+        creditLimit: Number(formData.creditLimit || 0),
         createdAt: (formData as any).createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }, { merge: true });
@@ -649,6 +664,66 @@ export default function ClientesPage() {
               </div>
             </div>
 
+            {/* LÍNEA DE CRÉDITO */}
+            <div className="pt-4 border-t">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-indigo-700 uppercase tracking-wider flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-indigo-600" /> Línea de Crédito Autorizada
+                </h3>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="hasCreditLine"
+                    disabled={isViewing}
+                    checked={Boolean(formData.hasCreditLine)}
+                    onChange={(e) => setFormData({ ...formData, hasCreditLine: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <label htmlFor="hasCreditLine" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                    Asignar Crédito
+                  </label>
+                </div>
+              </div>
+
+              {formData.hasCreditLine && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg animate-in fade-in duration-200">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-indigo-900 flex items-center gap-1">
+                      Días de Crédito *
+                    </label>
+                    <Input 
+                      disabled={isViewing}
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={formData.creditDays || ""}
+                      onChange={(e) => setFormData({ ...formData, creditDays: Math.max(0, parseInt(e.target.value) || 0) })}
+                      placeholder="Ej. 15, 30, 45, 60"
+                      className="bg-white border-indigo-200 focus-visible:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-indigo-600 font-medium">Plazo autorizado para el vencimiento de facturas y remisiones.</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-indigo-900 flex items-center gap-1">
+                      Monto Máximo Autorizado ($) *
+                    </label>
+                    <Input 
+                      disabled={isViewing}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.creditLimit || ""}
+                      onChange={(e) => setFormData({ ...formData, creditLimit: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      placeholder="Ej. 50000.00"
+                      className="bg-white border-indigo-200 focus-visible:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-indigo-600 font-medium">Límite máximo de saldo acumulado deudor.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center justify-end gap-3 pt-4 border-t">
               <Button type="button" variant={isViewing ? "default" : "ghost"} onClick={handleCloseForm}>{isViewing ? "Cerrar" : "Cancelar"}</Button>
               {!isViewing && (
@@ -699,38 +774,57 @@ export default function ClientesPage() {
                       {renderSortIcon("rfc")}
                     </div>
                   </TableHead>
+                  <TableHead>Línea de Crédito</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedClients.map(c => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium font-semibold">{(c.LegalName || c.CommercialName || c.name)}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col text-sm text-muted-foreground">
-                         {(c.Email || c.email) && <span>{(c.Email || c.email)}</span>}
-                         {(c.Phone || c.phone) && <span>{(c.Phone || c.phone)}</span>}
-                         {!(c.Email || c.email) && !(c.Phone || c.phone) && <span>-</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {(c.RFC || c.rfc) || <span className="text-xs italic text-muted-foreground/60">No registrado</span>}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenForm(c, true)} title="Ver Cliente">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenForm(c)}>
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {sortedClients.map(c => {
+                  const hasCredit = Boolean(c.hasCreditLine || (c.creditLimit && c.creditLimit > 0));
+                  return (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium font-semibold">{(c.LegalName || c.CommercialName || c.name)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col text-sm text-muted-foreground">
+                           {(c.Email || c.email) && <span>{(c.Email || c.email)}</span>}
+                           {(c.Phone || c.phone) && <span>{(c.Phone || c.phone)}</span>}
+                           {!(c.Email || c.email) && !(c.Phone || c.phone) && <span>-</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {(c.RFC || c.rfc) || <span className="text-xs italic text-muted-foreground/60">No registrado</span>}
+                      </TableCell>
+                      <TableCell>
+                        {hasCredit ? (
+                          <div className="flex flex-col text-xs">
+                            <span className="font-bold text-indigo-700 flex items-center gap-1">
+                              <CreditCard className="w-3 h-3 text-indigo-500 inline" />
+                              ${(c.creditLimit || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {c.creditDays || 0} días de plazo
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">Sin crédito</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleOpenForm(c, true)} title="Ver Cliente">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleOpenForm(c)}>
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

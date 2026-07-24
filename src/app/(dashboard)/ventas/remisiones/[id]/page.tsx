@@ -4,7 +4,7 @@ import React, { useState, useEffect, use } from "react";
 import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, ArrowLeft, Truck, Package, Receipt, FileText, XCircle, DollarSign, Printer, MessageSquare } from "lucide-react";
+import { Loader2, ArrowLeft, Truck, Package, Receipt, FileText, XCircle, DollarSign, Printer, MessageSquare, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -200,6 +200,13 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
         </div>
 
         <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            onClick={() => window.open(`/ventas/remisiones/nueva?copyFrom=${remission.id}`, "_blank")}
+            className="gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50 font-bold"
+          >
+            <Copy className="w-4 h-4" /> Copiar Remisión
+          </Button>
           {(remission.isPosSale || remission.orderNumber?.startsWith("POS-")) && (
             <Button 
               onClick={() => window.print()} 

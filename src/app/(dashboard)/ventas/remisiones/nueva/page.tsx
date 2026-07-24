@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { collection, query, onSnapshot, doc, setDoc, getDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Truck, Building2, BookOpen, MessageSquare } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Save, Trash2, User, Package, FolderOpen, Truck, Building2, BookOpen, MessageSquare, Copy } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { Client } from "@/app/(dashboard)/clientes/page";
@@ -17,6 +17,7 @@ import { DocumentPaymentsTab } from "@/components/payments/DocumentPaymentsTab";
 import { QuickClientModal } from "@/components/pos/QuickClientModal";
 import { FileText, Percent } from "lucide-react";
 import { getLocalDateString, getClientDisplayName, matchesClientFilter } from "@/lib/utils";
+import { calculateDueDate, getClientCurrentDebt, validateClientCreditLimit } from "@/lib/utils/creditUtils";
 
 
 interface OrderItem {
@@ -37,9 +38,12 @@ interface OrderItem {
   showComment?: boolean;
 }
 
-export default function NuevaRemisionPage() {
+function NuevaRemisionContent() {
   const { companyId, user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const copyFromId = searchParams ? searchParams.get("copyFrom") : null;
+  const [copiedSourceNumber, setCopiedSourceNumber] = useState<string | null>(null);
 
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<ShopifyProduct[]>([]);
@@ -48,10 +52,10 @@ export default function NuevaRemisionPage() {
   // Form State
   const [clientId, setClientId] = useState("");
   const [clientSearch, setClientSearch] = useState("");
+  const [clientCreditInfo, setClientCreditInfo] = useState<{ totalDebt: number; creditLimit: number; creditDays: number; hasCredit: boolean; remainingCredit: number } | null>(null);
   
   // New Client State
   const [showQuickClient, setShowQuickClient] = useState(false);
-
 
   const [appliedDate, setAppliedDate] = useState(getLocalDateString());
 
@@ -128,6 +132,43 @@ export default function NuevaRemisionPage() {
 
     return () => { unsubC(); unsubP(); unsubProj(); unsubLoc(); unsubAcc(); unsubD(); unsubW(); };
   }, [companyId]);
+
+  // Load copyFrom remission data if parameter is present
+  useEffect(() => {
+    if (!companyId || !copyFromId) return;
+
+    const loadSourceRemission = async () => {
+      try {
+        const docRef = doc(db, "companies", companyId, "remisiones", copyFromId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const sourceData = snap.data();
+          setCopiedSourceNumber(sourceData.remissionNumber || "original");
+
+          if (sourceData.clientId) {
+            setClientId(sourceData.clientId);
+            setClientSearch(sourceData.clientName || "");
+          }
+          if (sourceData.locationId) setLocationId(sourceData.locationId);
+          if (sourceData.warehouseId) setWarehouseId(sourceData.warehouseId);
+          if (sourceData.projectId) setProjectId(sourceData.projectId);
+          if (sourceData.globalDiscountType) setGlobalDiscountType(sourceData.globalDiscountType);
+          if (sourceData.globalDiscountValue) setGlobalDiscountValue(sourceData.globalDiscountValue);
+
+          if (Array.isArray(sourceData.items)) {
+            setItems(sourceData.items.map((item: any) => ({
+              ...item,
+              lineKey: item.lineKey || crypto.randomUUID()
+            })));
+          }
+        }
+      } catch (e) {
+        console.error("Error al cargar datos de remisión a copiar:", e);
+      }
+    };
+
+    loadSourceRemission();
+  }, [companyId, copyFromId]);
 
   const getFilteredClients = () => {
     if (!clientSearch) return [];
@@ -255,6 +296,15 @@ export default function NuevaRemisionPage() {
       return;
     }
 
+    const client = clients.find(c => c.id === clientId);
+    if (client && (client.hasCreditLine || (client.creditLimit && client.creditLimit > 0))) {
+      const creditCheck = await validateClientCreditLimit(companyId, client, totals.total);
+      if (!creditCheck.allowed) {
+        alert(`⛔ CRÉDITO INSICIENTE / TOPADO:\n\n${creditCheck.message}`);
+        return;
+      }
+    }
+
     if (!window.confirm("¿Estás seguro de generar la remisión directa? Esto descontará el inventario del almacén inmediatamente.")) {
       return;
     }
@@ -262,12 +312,10 @@ export default function NuevaRemisionPage() {
     setSaving(true);
     try {
       const finalClientId = clientId;
-      const client = clients.find(c => c.id === clientId);
       const finalClientName = client ? (client.LegalName || client.CommercialName || client.name || "Desconocido") : "Desconocido";
       
       let finalProjectId = projectId;
       let finalProjectName = projectId ? (projects.find(p => p.id === projectId)?.name || null) : null;
-
 
       const remId = crypto.randomUUID();
       const remNumber = await getNextSequence(companyId, 'remisiones');
@@ -278,6 +326,9 @@ export default function NuevaRemisionPage() {
       const seconds = String(now.getSeconds()).padStart(2, '0');
       const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
       const appliedISO = new Date(`${appliedDate}T${hours}:${minutes}:${seconds}.${milliseconds}`).toISOString();
+
+      const creditDays = Number(client?.creditDays || 0);
+      const calculatedDueDate = calculateDueDate(appliedDate, creditDays);
 
       const targetAcc = accounts.find(a => a.code === "401.1");
       const finalAccountId = targetAcc?.id || accountId || "";
@@ -313,6 +364,8 @@ export default function NuevaRemisionPage() {
         accountId: finalAccountId,
         accountCode: finalAccountCode,
         accountName: finalAccountName,
+        creditDays,
+        dueDate: calculatedDueDate,
         status: "activa", 
         createdAt: appliedISO,
         createdBy: user?.email || "Unknown"
@@ -375,6 +428,20 @@ export default function NuevaRemisionPage() {
           <p className="text-muted-foreground">Crea una entrega de mercancía sin necesidad de pedido previo.</p>
         </div>
       </div>
+
+      {copiedSourceNumber && (
+        <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-3 rounded-xl text-xs flex items-center justify-between shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <Copy className="w-4 h-4 text-indigo-600 shrink-0 font-bold" />
+            <span>
+              Copiando datos de la <strong>Remisión #{copiedSourceNumber}</strong>. Puedes modificar clientes, partidas o precios antes de guardar.
+            </span>
+          </div>
+          <span className="bg-indigo-100 text-indigo-800 text-[10px] font-extrabold px-2 py-0.5 rounded">
+            Copia Editable
+          </span>
+        </div>
+      )}
 
       {/* Navigation Tabs */}
       <div className="flex border-b mb-1 px-4 gap-2 bg-card rounded-t-xl border-t border-x pt-2 shrink-0">
@@ -475,10 +542,33 @@ export default function NuevaRemisionPage() {
               )}
               {(() => {
                   const selectedClient = clients.find(c => c.id === clientId);
-                  return selectedClient && (
-                    <div className="mt-1.5 p-2 bg-emerald-50/50 border border-emerald-100 rounded text-[11px]">
-                      <p className="font-semibold text-emerald-900 line-clamp-1">{getClientDisplayName(selectedClient)}</p>
-                      <p className="text-emerald-700/80 text-[10px] mt-0.5 line-clamp-1">{selectedClient.Email || selectedClient.email || 'Sin email'}</p>
+                  if (!selectedClient) return null;
+                  const hasCredit = Boolean(selectedClient.hasCreditLine || (selectedClient.creditLimit && selectedClient.creditLimit > 0));
+                  const dueDateCalculated = hasCredit && selectedClient.creditDays ? calculateDueDate(appliedDate, selectedClient.creditDays) : appliedDate;
+
+                  return (
+                    <div className="mt-2 space-y-1.5">
+                      <div className="p-2 bg-emerald-50/50 border border-emerald-100 rounded text-[11px]">
+                        <p className="font-semibold text-emerald-900 line-clamp-1">{getClientDisplayName(selectedClient)}</p>
+                        <p className="text-emerald-700/80 text-[10px] mt-0.5 line-clamp-1">{selectedClient.Email || selectedClient.email || 'Sin email'}</p>
+                      </div>
+
+                      {hasCredit ? (
+                        <div className="p-2 bg-indigo-50/80 border border-indigo-100 rounded text-[10px] space-y-1">
+                          <div className="flex items-center justify-between font-bold text-indigo-900">
+                            <span>💳 Línea de Crédito:</span>
+                            <span>${(selectedClient.creditLimit || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-indigo-700">
+                            <span>Plazo Vencimiento:</span>
+                            <span className="font-bold">{selectedClient.creditDays || 0} días ({dueDateCalculated})</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">
+                          Cliente de contado (Sin línea de crédito asignada)
+                        </div>
+                      )}
                     </div>
                   );
               })()}
@@ -909,6 +999,14 @@ export default function NuevaRemisionPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function NuevaRemisionPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>}>
+      <NuevaRemisionContent />
+    </Suspense>
   );
 }
 

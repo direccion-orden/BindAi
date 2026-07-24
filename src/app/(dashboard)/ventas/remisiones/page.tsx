@@ -30,26 +30,9 @@ export default function RemisionesPage() {
   const [remissions, setRemissions] = useState<Remission[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const handleCopyRemission = async (remission: any) => {
-    if (!companyId) return;
-    const confirm = window.confirm("¿Deseas duplicar esta remisión?");
-    if (!confirm) return;
-    try {
-      const newId = crypto.randomUUID();
-      const remissionNumber = await getNextSequence(companyId, 'remisiones');
-      const newRemission = {
-        ...remission,
-        id: newId,
-        remissionNumber,
-        status: 'activa',
-        createdAt: new Date().toISOString(),
-      };
-      await setDoc(doc(db, "companies", companyId, "remisiones", newId), newRemission);
-      alert(`Remisión duplicada con éxito bajo el folio ${remissionNumber}`);
-    } catch (error) {
-      console.error("Error duplicating remission:", error);
-      alert("Hubo un error al duplicar la remisión.");
-    }
+  const handleCopyRemission = (remission: any) => {
+    if (!remission?.id) return;
+    window.open(`/ventas/remisiones/nueva?copyFrom=${remission.id}`, "_blank");
   };
 
   const handleCancelRemission = async (remissionId: string) => {

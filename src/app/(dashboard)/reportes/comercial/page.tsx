@@ -31,9 +31,16 @@ export default function ReporteComercialPage() {
 
   // States for filters
   const [selectedSucursal, setSelectedSucursal] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedYear, setSelectedYear] = useState(2026); // Default to 2026 based on DB audit
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [dateFilterType, setDateFilterType] = useState<"por_mes" | "hoy" | "mes_fecha" | "ano_fecha">("por_mes");
+
+  const sortedCategoriesList = useMemo(() => {
+    const list = Object.entries(categories).map(([id, name]) => ({ id, name }));
+    list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    return list;
+  }, [categories]);
 
   // States for product sales table
   const [tableDateFilterOption, setTableDateFilterOption] = useState("this_year");
@@ -329,6 +336,44 @@ export default function ReporteComercialPage() {
       }
     };
 
+    const getDocValueForCategory = (doc: any, taxModeInput: "con_iva" | "sin_iva" = "con_iva") => {
+      const docTotal = taxModeInput === "con_iva" 
+        ? (doc.totalAmount || 0) 
+        : (doc.subtotal || (doc.totalAmount || 0) / 1.16);
+
+      if (selectedCategory === "all") return docTotal;
+      if (!doc.items || doc.items.length === 0) return 0;
+
+      const itemsSum = doc.items.reduce((sum: number, item: any) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+      let catValue = 0;
+
+      doc.items.forEach((item: any) => {
+        const catId = resolveItemCategoryId(item);
+        const catName = categories[catId] || "Otros";
+
+        if (catId === selectedCategory || catName === selectedCategory) {
+          const itemVal = (item.quantity || 0) * (item.unitPrice || 0);
+          const weight = itemsSum > 0 ? (itemVal / itemsSum) : (1 / doc.items.length);
+          catValue += weight * docTotal;
+        }
+      });
+
+      return catValue;
+    };
+
+    const getDocUnitsForCategory = (doc: any) => {
+      if (!doc.items || doc.items.length === 0) return 0;
+      let units = 0;
+      doc.items.forEach((item: any) => {
+        const catId = resolveItemCategoryId(item);
+        const catName = categories[catId] || "Otros";
+        if (selectedCategory === "all" || catId === selectedCategory || catName === selectedCategory) {
+          units += Number(item.quantity || 0);
+        }
+      });
+      return units;
+    };
+
     // 1. Filtered datasets
     const activeRemisiones = remisiones.filter(r => {
       if (r.status === "cancelada") return false;
@@ -350,13 +395,16 @@ export default function ReporteComercialPage() {
     });
 
     // 2. KPI Cards calculations
-    const totalSales = activeRemisiones.reduce((sum, r) => sum + (r.totalAmount || 0), 0) +
-                       activeFacturas.reduce((sum, f) => sum + (f.totalAmount || 0), 0);
+    const totalSales = activeRemisiones.reduce((sum, r) => sum + getDocValueForCategory(r), 0) +
+                       activeFacturas.reduce((sum, f) => sum + getDocValueForCategory(f), 0);
+
+    const totalUnits = activeRemisiones.reduce((sum, r) => sum + getDocUnitsForCategory(r), 0) +
+                       activeFacturas.reduce((sum, f) => sum + getDocUnitsForCategory(f), 0);
     
     // Backlog (pedidos pending delivery 'por_surtir')
     const pendingOrders = activePedidos.filter(p => p.status === 'por_surtir');
-    const backlogAmount = pendingOrders.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-    const backlogBalance = pendingOrders.reduce((sum, p) => sum + ((p.totalAmount || 0) - (p.paidAmount || 0)), 0);
+    const backlogAmount = pendingOrders.reduce((sum, p) => sum + getDocValueForCategory(p), 0);
+    const backlogBalance = pendingOrders.reduce((sum, p) => sum + (getDocValueForCategory(p) - (p.paidAmount || 0)), 0);
 
     // Ticket Promedio
     const salesCount = activeRemisiones.length + activeFacturas.length;
@@ -381,14 +429,29 @@ export default function ReporteComercialPage() {
         if (isNaN(d.getTime()) || d.getFullYear() !== chartYear) return false;
         if (selectedSucursal !== "all" && r.locationId !== selectedSucursal) return false;
         return d.getMonth() + 1 === monthNum;
-      }).reduce((sum, r) => sum + (chartTaxMode === "con_iva" ? (r.totalAmount || 0) : (r.subtotal || (r.totalAmount || 0) / 1.16)), 0) +
+      }).reduce((sum, r) => sum + getDocValueForCategory(r, chartTaxMode), 0) +
       facturas.filter(f => {
         if (f.status === "cancelada" || f.posSaleId || f.remisionId || f.remissionId) return false;
         const d = new Date(f.createdAt || f.date);
         if (isNaN(d.getTime()) || d.getFullYear() !== chartYear) return false;
         if (selectedSucursal !== "all" && f.locationId !== selectedSucursal) return false;
         return d.getMonth() + 1 === monthNum;
-      }).reduce((sum, f) => sum + (chartTaxMode === "con_iva" ? (f.totalAmount || 0) : (f.subtotal || (f.totalAmount || 0) / 1.16)), 0);
+      }).reduce((sum, f) => sum + getDocValueForCategory(f, chartTaxMode), 0);
+
+      const unitsInMonth = remisiones.filter(r => {
+        if (r.status === "cancelada") return false;
+        const d = new Date(r.createdAt || r.date);
+        if (isNaN(d.getTime()) || d.getFullYear() !== chartYear) return false;
+        if (selectedSucursal !== "all" && r.locationId !== selectedSucursal) return false;
+        return d.getMonth() + 1 === monthNum;
+      }).reduce((sum, r) => sum + getDocUnitsForCategory(r), 0) +
+      facturas.filter(f => {
+        if (f.status === "cancelada" || f.posSaleId || f.remisionId || f.remissionId) return false;
+        const d = new Date(f.createdAt || f.date);
+        if (isNaN(d.getTime()) || d.getFullYear() !== chartYear) return false;
+        if (selectedSucursal !== "all" && f.locationId !== selectedSucursal) return false;
+        return d.getMonth() + 1 === monthNum;
+      }).reduce((sum, f) => sum + getDocUnitsForCategory(f), 0);
 
       const goalInMonth = goals.filter(g => {
         if (g.year !== chartYear) return false;
@@ -399,7 +462,8 @@ export default function ReporteComercialPage() {
       return {
         name,
         ventas: Math.round(salesInMonth),
-        meta: Math.round(goalInMonth)
+        meta: Math.round(goalInMonth),
+        piezas: Math.round(unitsInMonth)
       };
     }).filter((_, idx) => {
       if (limitToCurrent) {
@@ -420,13 +484,17 @@ export default function ReporteComercialPage() {
         const itemsSum = doc.items.reduce((sum: number, item: any) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
         
         doc.items.forEach((item: any) => {
+          const catId = resolveItemCategoryId(item);
+          const catName = categories[catId] || "Otros";
+
+          if (selectedCategory !== "all" && catId !== selectedCategory && catName !== selectedCategory) {
+            return;
+          }
+
           const itemVal = (item.quantity || 0) * (item.unitPrice || 0);
           const weight = itemsSum > 0 ? (itemVal / itemsSum) : (1 / doc.items.length);
           const val = weight * docTotal;
           
-          // Find category name
-          const catId = resolveItemCategoryId(item);
-          const catName = categories[catId] || "Otros";
           categoryTotals[catName] = (categoryTotals[catName] || 0) + val;
         });
       });
@@ -442,8 +510,10 @@ export default function ReporteComercialPage() {
     const clientTotals: { [key: string]: number } = {};
     const processClientTotals = (documents: any[]) => {
       documents.forEach(doc => {
+        const val = getDocValueForCategory(doc);
+        if (val <= 0) return;
         const name = doc.clientName || "Público en General";
-        clientTotals[name] = (clientTotals[name] || 0) + (doc.totalAmount || 0);
+        clientTotals[name] = (clientTotals[name] || 0) + val;
       });
     };
     processClientTotals(activeRemisiones);
@@ -459,11 +529,11 @@ export default function ReporteComercialPage() {
       const rSales = remisiones.filter(r => {
         if (r.status === "cancelada" || r.locationId !== loc.id) return false;
         return filterByDate(r.createdAt || r.date);
-      }).reduce((sum, r) => sum + (r.totalAmount || 0), 0) +
+      }).reduce((sum, r) => sum + getDocValueForCategory(r), 0) +
       facturas.filter(f => {
         if (f.status === "cancelada" || f.locationId !== loc.id || f.posSaleId || f.remisionId || f.remissionId) return false;
         return filterByDate(f.createdAt || f.date);
-      }).reduce((sum, f) => sum + (f.totalAmount || 0), 0);
+      }).reduce((sum, f) => sum + getDocValueForCategory(f), 0);
 
       const rGoal = goals.filter(g => g.locationId === loc.id)
                          .reduce((sum, g) => sum + getGoalTarget({ ...g, locationId: "all" }, true), 0);
@@ -550,6 +620,7 @@ export default function ReporteComercialPage() {
 
     return {
       totalSales,
+      totalUnits,
       avgTicket,
       pendingOrdersCount: pendingOrders.length,
       backlogAmount,
@@ -569,7 +640,7 @@ export default function ReporteComercialPage() {
       activeRemisiones,
       activeFacturas
     };
-  }, [remisiones, facturas, pedidos, goals, categories, locations, businessLines, selectedYear, selectedSucursal, selectedMonth, resolveItemCategoryId, dateFilterType, chartTaxMode]);
+  }, [remisiones, facturas, pedidos, goals, categories, locations, businessLines, selectedYear, selectedSucursal, selectedCategory, selectedMonth, resolveItemCategoryId, dateFilterType, chartTaxMode]);
 
   // Compute category drill down data reactively
   const drillDownData = useMemo(() => {
@@ -959,6 +1030,24 @@ export default function ReporteComercialPage() {
             </select>
           </div>
 
+          {/* Categoría filter */}
+          <div className="flex flex-col gap-1 w-full sm:w-48">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Categoría</span>
+            <select
+              className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+              value={selectedCategory}
+              onChange={(e) => {
+                setSelectedCategory(e.target.value);
+                setTableCategory(e.target.value);
+              }}
+            >
+              <option value="all">Todas las Categorías</option>
+              {sortedCategoriesList.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Period filter */}
           <div className="flex flex-col gap-1 w-full sm:w-44">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Período</span>
@@ -1120,8 +1209,9 @@ export default function ReporteComercialPage() {
         </div>
       </div>
 
-      {/* Charts Row 1: Sales vs Goal */}
+      {/* Charts Row 1: Sales vs Goal & Monthly Units Sold */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Sales vs Goal */}
         <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
@@ -1213,17 +1303,86 @@ export default function ReporteComercialPage() {
           </div>
         </div>
 
-        {/* Categories Pie Chart */}
+        {/* Monthly Units Sold */}
+        <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <Package className="w-5 h-5 text-emerald-600" />
+              Ventas en Piezas por Mes ({stats.chartYear})
+            </h3>
+            {stats.totalUnits > 0 && (
+              <span className="text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-lg">
+                Total: {stats.totalUnits.toLocaleString('es-MX')} piezas
+              </span>
+            )}
+          </div>
+          <div className="h-[320px] w-full mb-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.monthlyData} margin={{ top: 20, right: 10, left: 10, bottom: 15 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={(props: any) => {
+                    const { x, y, payload } = props;
+                    if (!payload) return null;
+                    const monthData = stats.monthlyData.find((d: any) => d.name === payload.value);
+                    const unitsVal = monthData ? `${monthData.piezas.toLocaleString('es-MX')} pzs` : "";
+                    return (
+                      <g transform={`translate(${x},${y})`}>
+                        <text x={0} y={0} dy={10} textAnchor="middle" fill="#64748b" style={{ fontSize: 11, fontWeight: 'bold' }}>
+                          {payload.value}
+                        </text>
+                        <text x={0} y={0} dy={24} textAnchor="middle" fill="#059669" style={{ fontSize: 9, fontWeight: 'black' }}>
+                          {unitsVal}
+                        </text>
+                      </g>
+                    );
+                  }}
+                  height={45}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{fill: '#64748b', fontSize: 12}} 
+                  tickFormatter={(val) => `${val >= 1000 ? (val/1000).toFixed(1) + 'k' : val}`}
+                  dx={-10}
+                />
+                <RechartsTooltip 
+                  formatter={(value: any) => [`${Number(value).toLocaleString('es-MX')} piezas`, "Unidades Vendidas"]}
+                  contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontFamily: 'inherit'}}
+                />
+                <Bar dataKey="piezas" name="Piezas Vendidas" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                  <LabelList 
+                    dataKey="piezas" 
+                    position="top" 
+                    formatter={(val: any) => {
+                      const num = Number(val);
+                      if (isNaN(num) || num === 0) return "";
+                      return num >= 1000 ? `${(num/1000).toFixed(1)}k` : `${num}`;
+                    }}
+                    style={{ fill: '#047857', fontSize: 10, fontWeight: 'bold' }} 
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts Row 2: 4 Pie Charts (Venta por Categoría, Digital vs Tradicional, Proyectos vs Independiente & Línea de Negocio) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* 1. Categories Pie Chart */}
         <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
               <Package className="w-5 h-5 text-indigo-600" />
               Venta por Categoría
-              <span className="text-[9px] font-normal text-slate-400 border border-slate-100 px-1.5 py-0.5 rounded bg-slate-50">Drill down disponible</span>
             </h3>
             {stats.categoryChartData.length > 0 && (
-              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
-                Total: {formatMoney(stats.totalSales)}
+              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg">
+                {formatMoney(stats.totalSales)}
               </span>
             )}
           </div>
@@ -1235,15 +1394,15 @@ export default function ReporteComercialPage() {
             </div>
           ) : (
             <>
-              <div className="h-[200px] w-full relative">
+              <div className="h-[180px] w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={stats.categoryChartData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
+                      innerRadius={50}
+                      outerRadius={70}
                       paddingAngle={4}
                       dataKey="value"
                       onClick={(data) => {
@@ -1266,11 +1425,11 @@ export default function ReporteComercialPage() {
                 </ResponsiveContainer>
               </div>
               
-              <div className="mt-4 space-y-2 max-h-[120px] overflow-y-auto custom-scrollbar pr-2">
-                {stats.categoryChartData.slice(0, 5).map((cat, idx) => (
+              <div className="mt-4 space-y-1.5 max-h-[140px] overflow-y-auto custom-scrollbar pr-2 border-t pt-3">
+                {stats.categoryChartData.map((cat, idx) => (
                   <div 
                     key={idx} 
-                    className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50/80 p-1.5 rounded-lg transition-all"
+                    className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50/80 p-1 rounded-lg transition-all"
                     onClick={() => {
                       setSelectedDrillDownCategory(cat.name);
                       setDrillDownSearch("");
@@ -1288,11 +1447,8 @@ export default function ReporteComercialPage() {
             </>
           )}
         </div>
-      </div>
 
-      {/* Charts Row 2: Digital vs Tradicional, Proyectos vs Independiente & Línea de Negocio */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Digital vs Tradicional */}
+        {/* 2. Digital vs Tradicional */}
         <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
@@ -1300,8 +1456,8 @@ export default function ReporteComercialPage() {
               Digital Vs Tradicional
             </h3>
             {stats.totalSales > 0 && (
-              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
-                Total: {formatMoney(stats.totalSales)}
+              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg">
+                {formatMoney(stats.totalSales)}
               </span>
             )}
           </div>
@@ -1313,15 +1469,15 @@ export default function ReporteComercialPage() {
             </div>
           ) : (
             <>
-              <div className="h-[200px] w-full relative">
+              <div className="h-[180px] w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={stats.channelChartData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
+                      innerRadius={50}
+                      outerRadius={70}
                       paddingAngle={4}
                       dataKey="value"
                     >
@@ -1337,15 +1493,15 @@ export default function ReporteComercialPage() {
                 </ResponsiveContainer>
               </div>
               
-              <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4">
+              <div className="mt-4 grid grid-cols-2 gap-2 border-t pt-3">
                 {stats.channelChartData.map((channel, idx) => {
                   const channelTotal = stats.channelChartData.reduce((acc, c) => acc + c.value, 0);
                   const percent = channelTotal > 0 ? (channel.value / channelTotal) * 100 : 0;
                   return (
                     <div key={idx} className="text-center">
-                      <span className="text-xs font-bold text-slate-400 block uppercase tracking-wider">{channel.name}</span>
-                      <h4 className="text-base font-extrabold text-slate-800 mt-1">{formatMoney(channel.value)}</h4>
-                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mt-1 inline-block border ${
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider truncate">{channel.name}</span>
+                      <h4 className="text-sm font-extrabold text-slate-800 mt-0.5">{formatMoney(channel.value)}</h4>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 inline-block border ${
                         idx === 0 ? "bg-indigo-50 text-indigo-700 border-indigo-100" : "bg-pink-50 text-pink-700 border-pink-100"
                       }`}>
                         {percent.toFixed(1)}%
@@ -1358,16 +1514,16 @@ export default function ReporteComercialPage() {
           )}
         </div>
 
-        {/* Proyectos vs Independiente */}
+        {/* 3. Proyectos vs Independiente */}
         <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
               <Package className="w-5 h-5 text-indigo-600" />
-              Venta en Proyectos Vs Independiente
+              Proyectos Vs Independiente
             </h3>
             {stats.totalSales > 0 && (
-              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
-                Total: {formatMoney(stats.totalSales)}
+              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg">
+                {formatMoney(stats.totalSales)}
               </span>
             )}
           </div>
@@ -1379,15 +1535,15 @@ export default function ReporteComercialPage() {
             </div>
           ) : (
             <>
-              <div className="h-[200px] w-full relative">
+              <div className="h-[180px] w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={stats.projectsChartData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
+                      innerRadius={50}
+                      outerRadius={70}
                       paddingAngle={4}
                       dataKey="value"
                     >
@@ -1403,15 +1559,15 @@ export default function ReporteComercialPage() {
                 </ResponsiveContainer>
               </div>
               
-              <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4">
+              <div className="mt-4 grid grid-cols-2 gap-2 border-t pt-3">
                 {stats.projectsChartData.map((group, idx) => {
                   const groupTotal = stats.projectsChartData.reduce((acc, p) => acc + p.value, 0);
                   const percent = groupTotal > 0 ? (group.value / groupTotal) * 100 : 0;
                   return (
                     <div key={idx} className="text-center">
-                      <span className="text-xs font-bold text-slate-400 block uppercase tracking-wider">{group.name}</span>
-                      <h4 className="text-base font-extrabold text-slate-800 mt-1">{formatMoney(group.value)}</h4>
-                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full mt-1 inline-block border ${
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider truncate">{group.name}</span>
+                      <h4 className="text-sm font-extrabold text-slate-800 mt-0.5">{formatMoney(group.value)}</h4>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 inline-block border ${
                         idx === 0 ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-blue-50 text-blue-700 border-blue-100"
                       }`}>
                         {percent.toFixed(1)}%
@@ -1424,16 +1580,16 @@ export default function ReporteComercialPage() {
           )}
         </div>
 
-        {/* Venta por Línea de Negocio */}
+        {/* 4. Venta por Línea de Negocio */}
         <div className="bg-white border rounded-xl p-6 shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
               <Layers className="w-5 h-5 text-indigo-600" />
-              Venta por Línea de Negocio
+              Línea de Negocio
             </h3>
             {stats.totalSales > 0 && (
-              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg">
-                Total: {formatMoney(stats.totalSales)}
+              <span className="text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg">
+                {formatMoney(stats.totalSales)}
               </span>
             )}
           </div>
@@ -1445,15 +1601,15 @@ export default function ReporteComercialPage() {
             </div>
           ) : (
             <>
-              <div className="h-[200px] w-full relative">
+              <div className="h-[180px] w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={stats.businessLineChartData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
+                      innerRadius={50}
+                      outerRadius={70}
                       paddingAngle={4}
                       dataKey="value"
                     >
@@ -1469,7 +1625,7 @@ export default function ReporteComercialPage() {
                 </ResponsiveContainer>
               </div>
               
-              <div className="mt-4 space-y-2 max-h-[120px] overflow-y-auto custom-scrollbar pr-2 border-t pt-4">
+              <div className="mt-4 space-y-1.5 max-h-[140px] overflow-y-auto custom-scrollbar pr-2 border-t pt-3">
                 {stats.businessLineChartData.map((bl, idx) => {
                   const blTotal = stats.businessLineChartData.reduce((acc, p) => acc + p.value, 0);
                   const percent = blTotal > 0 ? (bl.value / blTotal) * 100 : 0;
@@ -1479,10 +1635,7 @@ export default function ReporteComercialPage() {
                         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: COLORS[idx % COLORS.length]}}></div>
                         <span className="text-slate-600 truncate font-semibold">{bl.name}</span>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-slate-500 font-bold">{formatMoney(bl.value)}</span>
-                        <span className="text-slate-400 font-medium">({percent.toFixed(1)}%)</span>
-                      </div>
+                      <span className="text-slate-500 font-bold whitespace-nowrap">{formatMoney(bl.value)}</span>
                     </div>
                   );
                 })}

@@ -317,6 +317,26 @@ function NuevaRemisionContent() {
       let finalProjectId = projectId;
       let finalProjectName = projectId ? (projects.find(p => p.id === projectId)?.name || null) : null;
 
+      if (isCreatingProject) {
+        if (!newProjectName.trim()) {
+          alert("El nombre del nuevo proyecto es obligatorio.");
+          setSaving(false);
+          return;
+        }
+        finalProjectId = crypto.randomUUID();
+        finalProjectName = newProjectName.trim();
+
+        const projectRef = doc(db, "companies", companyId, "projects", finalProjectId);
+        await setDoc(projectRef, {
+          id: finalProjectId,
+          name: finalProjectName,
+          clientId: finalClientId,
+          clientName: finalClientName,
+          status: "activo",
+          createdAt: new Date().toISOString()
+        });
+      }
+
       const remId = crypto.randomUUID();
       const remNumber = await getNextSequence(companyId, 'remisiones');
 

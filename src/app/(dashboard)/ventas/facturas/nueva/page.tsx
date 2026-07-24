@@ -253,6 +253,26 @@ export default function NuevaFacturaPage() {
       let finalProjectId = projectId;
       let finalProjectName = projectId ? (projects.find(p => p.id === projectId)?.name || null) : null;
 
+      if (isCreatingProject) {
+        if (!newProjectName.trim()) {
+          alert("El nombre del nuevo proyecto es obligatorio.");
+          setSaving(false);
+          return;
+        }
+        finalProjectId = crypto.randomUUID();
+        finalProjectName = newProjectName.trim();
+
+        const projectRef = doc(db, "companies", companyId, "projects", finalProjectId);
+        await setDoc(projectRef, {
+          id: finalProjectId,
+          name: finalProjectName,
+          clientId: finalClientId,
+          clientName: finalClientName,
+          status: "activo",
+          createdAt: new Date().toISOString()
+        });
+      }
+
 
       // Build CFDI Payload Defaults based on Client or Generic
       const cfdiPayload = {

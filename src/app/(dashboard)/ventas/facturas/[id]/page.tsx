@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { doc, getDoc, updateDoc, setDoc, onSnapshot, query, collection, where, deleteField } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc, onSnapshot, query, collection, where, deleteField, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, ArrowLeft, Receipt, Package, FileText, FileCode, Download, DollarSign, MessageSquare, Truck } from "lucide-react";
@@ -161,6 +161,58 @@ export default function FacturaDetallePage({ params: paramsPromise }: { params: 
           await updateDoc(doc(db, "companies", companyId, "pedidos", factura.orderId), {
             status: "por_surtir",
             invoiceId: deleteField()
+          });
+        }
+
+        // Revert linked remisiones from "facturada" back to "activa" or "pagada"
+        const remsToUpdateMap = new Map<string, any>();
+
+        // 1. Check direct relation fields in factura
+        const directRemId = (factura as any).posSaleId || (factura as any).remissionId;
+        if (directRemId) {
+          try {
+            const remSnap = await getDoc(doc(db, "companies", companyId, "remisiones", directRemId));
+            if (remSnap.exists()) {
+              remsToUpdateMap.set(remSnap.id, remSnap.data());
+            }
+          } catch (e) {
+            console.error("Error fetching direct remission:", e);
+          }
+        }
+
+        // 2. Query remisiones collection by invoiceId or facturamaId
+        try {
+          const remsQuery1 = query(
+            collection(db, "companies", companyId, "remisiones"),
+            where("invoiceId", "==", factura.id)
+          );
+          const remsSnap1 = await getDocs(remsQuery1);
+          remsSnap1.docs.forEach(d => remsToUpdateMap.set(d.id, d.data()));
+
+          if (factura.facturamaId && factura.facturamaId !== factura.id) {
+            const remsQuery2 = query(
+              collection(db, "companies", companyId, "remisiones"),
+              where("invoiceId", "==", factura.facturamaId)
+            );
+            const remsSnap2 = await getDocs(remsQuery2);
+            remsSnap2.docs.forEach(d => remsToUpdateMap.set(d.id, d.data()));
+          }
+        } catch (e) {
+          console.error("Error querying linked remisiones:", e);
+        }
+
+        // 3. Update each linked remission document
+        for (const [remId, remData] of remsToUpdateMap.entries()) {
+          const paidAmt = Number(remData.paidAmount) || 0;
+          const totalAmt = Number(remData.totalAmount) || 0;
+          const isPaid = paidAmt >= totalAmt - 0.01 && totalAmt > 0;
+          const newStatus = isPaid ? "pagada" : "activa";
+
+          await updateDoc(doc(db, "companies", companyId, "remisiones", remId), {
+            status: newStatus,
+            invoiceId: deleteField(),
+            invoiceUuid: deleteField(),
+            invoiceDate: deleteField()
           });
         }
         

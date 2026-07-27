@@ -842,27 +842,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             }
           }
 
-          // A. Incrementar saldo en bankAccounts
-          if (physicalAccount) {
-            await updateDoc(doc(db, "companies", companyId, "bankAccounts", physicalAccount.id), {
-              balance: increment(p.amount),
-              Balance: increment(p.amount)
-            });
-
-            // Registrar transacción en la subcolección
-            await addDoc(collection(db, "companies", companyId, "bankAccounts", physicalAccount.id, "transactions"), sanitizeFirestoreData({
-              amount: p.amount,
-              date: new Date().toISOString().split("T")[0],
-              concept: `Venta POS ${remNumber}`,
-              reference: remNumber,
-              reconciled: true,
-              matchedAt: new Date().toISOString(),
-              reconcileType: "direct",
-              matchedDocumentId: remId,
-              createdAt: new Date().toISOString(),
-              createdBy: user?.email || "POS"
-            }));
-          }
+          // NOTA: Las cuentas bancarias físicas (bankAccounts) solo se afectan mediante importaciones/sincronizaciones directas del banco.
+          // No se crean movimientos sintéticos de banco ni se altera el saldo de bankAccounts en ventas POS.
 
           // B. Preparar asiento de cargo en la póliza y actualizar saldo contable
           if (accountingAccount) {

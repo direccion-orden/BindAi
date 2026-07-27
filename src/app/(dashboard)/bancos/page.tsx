@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { collection, query, onSnapshot, orderBy, doc, getDoc, getDocs, where } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, getDoc, getDocs, where, deleteDoc, updateDoc, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark } from "lucide-react";
+import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2 } from "lucide-react";
 import { BankTransaction } from "@/types/bank";
 import { BankImportModal } from "./components/BankImportModal";
 import { TransferModal } from "./components/TransferModal";
@@ -354,6 +354,52 @@ export default function BancosPage() {
     }).length;
   };
 
+  const handleCleanSyntheticPosMovements = async () => {
+    if (!companyId || !selectedAccountId) return;
+    
+    const confirmClean = window.confirm(
+      "¿Deseas escanear y eliminar los movimientos sintéticos 'Venta POS REM...' de esta cuenta bancaria y descontar su importe del saldo acumulado para reflejar únicamente los movimientos reales importados?"
+    );
+    if (!confirmClean) return;
+
+    setLoadingTransactions(true);
+    try {
+      const txsRef = collection(db, "companies", companyId, "bankAccounts", selectedAccountId, "transactions");
+      const snap = await getDocs(txsRef);
+      
+      let deletedCount = 0;
+      let totalPosAmount = 0;
+
+      for (const d of snap.docs) {
+        const data = d.data();
+        const concept = (data.concept || "").toLowerCase();
+        const reference = (data.reference || "").toLowerCase();
+        
+        if (concept.includes("venta pos") || concept.includes("pos rem") || reference.includes("pos-") || reference.includes("rem-")) {
+          totalPosAmount += Number(data.amount) || 0;
+          await deleteDoc(d.ref);
+          deletedCount++;
+        }
+      }
+
+      if (deletedCount > 0) {
+        const bankAccRef = doc(db, "companies", companyId, "bankAccounts", selectedAccountId);
+        await updateDoc(bankAccRef, {
+          balance: increment(-totalPosAmount),
+          Balance: increment(-totalPosAmount)
+        });
+        alert(`Se eliminaron ${deletedCount} movimientos sintéticos 'Venta POS REM' por un total de $${totalPosAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}. El saldo acumulado de la cuenta bancaria ha sido ajustado.`);
+      } else {
+        alert("No se encontraron movimientos sintéticos 'Venta POS REM' en esta cuenta bancaria.");
+      }
+    } catch (error) {
+      console.error("Error al limpiar movimientos sintéticos POS:", error);
+      alert("Hubo un error al depurar los movimientos sintéticos.");
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
+
   if (loadingAccounts) {
     return <div className="p-8 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
   }
@@ -369,9 +415,12 @@ export default function BancosPage() {
           <p className="text-muted-foreground mt-1">Consulta y concilia tus estados de cuenta</p>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
             <Button variant="outline" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setIsImportModalOpen(true)} disabled={!selectedAccountId}>
                 <UploadCloud className="w-4 h-4 text-indigo-600" /> Importar Estado de Cuenta (CSV/PDF)
+            </Button>
+            <Button variant="outline" className="gap-2 text-rose-600 border-rose-200 hover:bg-rose-50" onClick={handleCleanSyntheticPosMovements} disabled={!selectedAccountId}>
+                <Trash2 className="w-4 h-4" /> Depurar "Venta POS REM"
             </Button>
             <Button variant="outline" className="gap-2" onClick={() => setIsAdjustmentModalOpen(true)} disabled={!selectedAccountId}>
                 <Settings2 className="w-4 h-4" /> Ajuste Manual

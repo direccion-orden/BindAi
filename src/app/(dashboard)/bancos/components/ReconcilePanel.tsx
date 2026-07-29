@@ -60,12 +60,14 @@ function SearchableSelect({
 
   const filteredItems = useMemo(() => {
     const q = search.toLowerCase().trim();
-    if (!q) return items;
+    if (!q || (selectedItem && q === selectedItem.name.toLowerCase().trim())) {
+      return items;
+    }
     return items.filter(item => 
       item.name.toLowerCase().includes(q) || 
       (item.subtitle && item.subtitle.toLowerCase().includes(q))
     );
-  }, [items, search]);
+  }, [items, search, selectedItem]);
 
   return (
     <div className="space-y-1.5 relative w-full" ref={containerRef}>
@@ -96,7 +98,10 @@ function SearchableSelect({
               onSelect("");
             }
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={(e) => {
+            setOpen(true);
+            e.target.select();
+          }}
           className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-primary outline-none font-semibold text-slate-800"
         />
         <button

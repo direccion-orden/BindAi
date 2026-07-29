@@ -1,15 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useRef, Suspense } from "react";
-import { collection, query, onSnapshot, doc, setDoc, addDoc, getDocs, updateDoc, increment, getDoc, orderBy } from "firebase/firestore";
+import React, { useState, useEffect, useRef, Suspense, useMemo } from "react";
+import { collection, query, onSnapshot, doc, setDoc, addDoc, getDocs, updateDoc, increment, getDoc, orderBy, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getLocalDateString } from "@/lib/utils";
-import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save, Upload, Receipt, X, AlertCircle } from "lucide-react";
+import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save, Upload, Receipt, X, AlertCircle, Sparkles, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 
@@ -99,6 +100,7 @@ function NuevoGastoForm() {
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [vendorDefaults, setVendorDefaults] = useState<{ accountId?: string; costCenterId?: string; locationId?: string } | null>(null);
 
   // Recurrence States
   const [isRecurring, setIsRecurring] = useState(false);
@@ -114,6 +116,9 @@ function NuevoGastoForm() {
       return;
     }
 
+    const selectedBankAccount = bankAccounts.find(a => a.id === bankAccountId);
+    const isCreditAccount = selectedBankAccount?.isCredit === true;
+
     const q = query(
       collection(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions"),
       orderBy("date", "desc")
@@ -121,14 +126,215 @@ function NuevoGastoForm() {
 
     const unsubscribe = onSnapshot(q, (snap) => {
       const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      const filtered = txs.filter(t => t.amount < 0 && !t.reconciled);
+      const filtered = txs.filter(t => {
+        if (t.reconciled) return false;
+        if (isCreditAccount) {
+          // For credit cards, purchases/charges are positive amounts or type === "EXPENSE"
+          return t.amount > 0 || t.type === "EXPENSE";
+        }
+        // For standard debit/bank/cash accounts, expenses/charges are negative amounts or type === "EXPENSE"
+        return t.amount < 0 || t.type === "EXPENSE";
+      });
       setUnreconciledTransactions(filtered);
     }, (error) => {
       console.error("Error loading transactions:", error);
     });
 
     return () => unsubscribe();
-  }, [companyId, bankAccountId]);
+  }, [companyId, bankAccountId, bankAccounts]);
+
+  // Sums
+  const subtotal = selectedItems.reduce((acc, item) => acc + (item.quantity * item.unitCost), 0);
+  const totalCost = subtotal * (1 + vatRate);
+
+  // Auto-suggest and sort exact matches for bank transactions
+  const sortedTransactions = useMemo(() => {
+    if (unreconciledTransactions.length === 0) return [];
+
+    return unreconciledTransactions.map(tx => {
+      const txAbsAmount = Math.abs(tx.amount);
+      const isExactAmount = Math.abs(txAbsAmount - totalCost) < 0.01;
+
+      let diffDays = 999999;
+      if (tx.date && date) {
+        try {
+          const tDate = new Date(tx.date + 'T00:00:00');
+          const cDate = new Date(date + 'T00:00:00');
+          if (!isNaN(tDate.getTime()) && !isNaN(cDate.getTime())) {
+            diffDays = Math.ceil(Math.abs(tDate.getTime() - cDate.getTime()) / (1000 * 60 * 60 * 24));
+          }
+        } catch (e) {
+          console.error("Error calculating day diff for tx suggest:", e);
+        }
+      }
+
+      return { ...tx, isExactAmount, diffDays, txAbsAmount };
+    }).sort((a, b) => {
+      // Priority 1: Exact amount matches
+      if (a.isExactAmount && !b.isExactAmount) return -1;
+      if (!a.isExactAmount && b.isExactAmount) return 1;
+
+      // Priority 2: Closer date first
+      if (a.diffDays !== b.diffDays) {
+        return a.diffDays - b.diffDays;
+      }
+
+      return 0;
+    });
+  }, [unreconciledTransactions, totalCost, date]);
+
+  const searchableTransactions = useMemo(() => {
+    return [
+      {
+        id: "manual",
+        name: "-- Registrar nuevo egreso manualmente --",
+        subtitle: "Sin vincular a un movimiento bancario previo"
+      },
+      ...sortedTransactions.map(tx => {
+        const matchTag = tx.isExactAmount ? "⭐ [SUGERIDO] " : "";
+        return {
+          id: tx.id,
+          name: `${matchTag}${tx.concept || "Movimiento bancario sin concepto"}`,
+          subtitle: `Fecha: ${tx.date} | Monto: $${tx.txAbsAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}${tx.reference ? ` | Ref: ${tx.reference}` : ''}`
+        };
+      })
+    ];
+  }, [sortedTransactions]);
+
+  // Auto-select exact match if found and account is selected
+  useEffect(() => {
+    if (!bankAccountId) return;
+    const exactMatch = sortedTransactions.find(t => t.isExactAmount);
+    if (exactMatch) {
+      setSelectedTransactionId(exactMatch.id);
+    }
+  }, [bankAccountId, sortedTransactions]);
+
+  // Global auto-detection of Bank Account when checking "Registrar pago de inmediato"
+  useEffect(() => {
+    if (!companyId || !isPaidImmediately || totalCost <= 0 || bankAccounts.length === 0) return;
+    
+    // Only auto-detect if bankAccountId is not selected yet
+    if (bankAccountId) return;
+
+    const cid = companyId;
+    let isMounted = true;
+
+    async function scanAllBankAccounts() {
+      try {
+        for (const account of bankAccounts) {
+          const q = query(
+            collection(db, "companies", cid, "bankAccounts", account.id, "transactions")
+          );
+          const snap = await getDocs(q);
+          const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          
+          const match = txs.find(t => {
+            if (t.reconciled) return false;
+            const amt = Math.abs(t.amount);
+            const isExact = Math.abs(amt - totalCost) < 0.01;
+            if (!isExact) return false;
+
+            if (account.isCredit) {
+              return t.amount > 0 || t.type === "EXPENSE";
+            }
+            return t.amount < 0 || t.type === "EXPENSE";
+          });
+
+          if (match && isMounted) {
+            setBankAccountId(account.id);
+            setSelectedTransactionId(match.id);
+            break;
+          }
+        }
+      } catch (err) {
+        console.error("Error scanning bank accounts for match:", err);
+      }
+    }
+
+    scanAllBankAccounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [companyId, isPaidImmediately, totalCost, bankAccounts, bankAccountId]);
+
+  // Auto-fetch vendor default classification (last expense or saved preferences)
+  useEffect(() => {
+    if (!companyId || !vendorId) {
+      setVendorDefaults(null);
+      return;
+    }
+
+    const cid = companyId;
+    let isMounted = true;
+
+    async function fetchVendorDefaults() {
+      try {
+        // 1. Check if vendor document has default classification fields
+        const vendorDocRef = doc(db, "companies", cid, "vendors", vendorId);
+        const vendorSnap = await getDoc(vendorDocRef);
+        
+        let defaults: { accountId?: string; costCenterId?: string; locationId?: string } | null = null;
+
+        if (vendorSnap.exists()) {
+          const vData = vendorSnap.data();
+          if (vData.defaultAccountId || vData.defaultCostCenterId || vData.defaultLocationId) {
+            defaults = {
+              accountId: vData.defaultAccountId || undefined,
+              costCenterId: vData.defaultCostCenterId || undefined,
+              locationId: vData.defaultLocationId || undefined
+            };
+          }
+        }
+
+        // 2. Fallback: Query the most recent expense for this vendor
+        if (!defaults) {
+          const q = query(
+            collection(db, "companies", cid, "expenses"),
+            where("vendorId", "==", vendorId)
+          );
+          const snap = await getDocs(q);
+
+          if (!snap.empty) {
+            const docs = snap.docs.map(d => d.data());
+            docs.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+            const lastExpense = docs[0];
+            const firstItem = lastExpense.items?.[0] || {};
+            
+            defaults = {
+              accountId: firstItem.accountId || lastExpense.accountId || undefined,
+              costCenterId: firstItem.costCenterId || lastExpense.costCenterId || undefined,
+              locationId: firstItem.locationId || lastExpense.locationId || undefined
+            };
+          }
+        }
+
+        if (isMounted) {
+          setVendorDefaults(defaults);
+          if (defaults) {
+            setSelectedItems(prev => {
+              if (prev.length === 0) return prev;
+              return prev.map(item => ({
+                ...item,
+                accountId: item.accountId || defaults.accountId || "",
+                costCenterId: item.costCenterId || defaults.costCenterId || "",
+                locationId: item.locationId || defaults.locationId || ""
+              }));
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching vendor classification defaults:", err);
+      }
+    }
+
+    fetchVendorDefaults();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [companyId, vendorId]);
 
   // Auto-fill when a transaction is selected
   useEffect(() => {
@@ -201,12 +407,18 @@ function NuevoGastoForm() {
 
     // Load bankAccounts (physical)
     const unsubBank = onSnapshot(query(collection(db, "companies", companyId, "bankAccounts")), (snap) => {
-      setBankAccounts(snap.docs.map(d => ({
-        id: d.id,
-        name: d.data().name || d.data().Name || "Cuenta sin nombre",
-        type: d.data().type || "bank",
-        accountId: d.data().accountId || ""
-      })));
+      setBankAccounts(snap.docs.map(d => {
+        const data = d.data();
+        const type = data.type || "bank";
+        const isCredit = data.isCredit === true || type === "credit" || type === "card" || /tc\b|tarjeta|credito|crédito/i.test(data.name || data.Name || "");
+        return {
+          id: d.id,
+          name: data.name || data.Name || "Cuenta sin nombre",
+          type,
+          isCredit,
+          accountId: data.accountId || ""
+        };
+      }));
     });
 
     // Load SAT invoices (unpaid only)
@@ -552,9 +764,9 @@ function NuevoGastoForm() {
         variantTitle: variant.title !== "Default Title" ? variant.title : (variant.sku || ""),
         quantity: 1,
         unitCost: variant.price || 0,
-        accountId: "",
-        costCenterId: "",
-        locationId: ""
+        accountId: vendorDefaults?.accountId || "",
+        costCenterId: vendorDefaults?.costCenterId || "",
+        locationId: vendorDefaults?.locationId || locations[0]?.id || ""
       }]);
     } else {
       setSelectedItems(prev => prev.map(item => 
@@ -575,9 +787,9 @@ function NuevoGastoForm() {
       variantTitle: "",
       quantity: 1,
       unitCost: 0,
-      accountId: "",
-      costCenterId: "",
-      locationId: ""
+      accountId: vendorDefaults?.accountId || "",
+      costCenterId: vendorDefaults?.costCenterId || "",
+      locationId: vendorDefaults?.locationId || locations[0]?.id || ""
     }]);
   };
 
@@ -620,10 +832,6 @@ function NuevoGastoForm() {
     setBulkLocationId("");
     setSelectedItemKeys([]);
   };
-
-  // Sums
-  const subtotal = selectedItems.reduce((acc, item) => acc + (item.quantity * item.unitCost), 0);
-  const totalCost = subtotal * (1 + vatRate);
 
   // Save Expense Form
   const handleSave = async () => {
@@ -715,6 +923,19 @@ function NuevoGastoForm() {
       };
 
       await setDoc(doc(db, "companies", companyId, "expenses", expenseId), expenseDoc);
+
+      // Update vendor default classification preferences for future expenses
+      if (vendorId && firstItem) {
+        try {
+          await updateDoc(doc(db, "companies", companyId, "vendors", vendorId), {
+            defaultAccountId: firstItem.accountId || null,
+            defaultCostCenterId: firstItem.costCenterId || null,
+            defaultLocationId: firstItem.locationId || null
+          });
+        } catch (e) {
+          console.error("Error saving vendor classification defaults:", e);
+        }
+      }
 
       // If linked to a SAT Invoice, update it to reflect it's been processed
       if (linkedSatInvoiceId) {
@@ -1147,6 +1368,23 @@ function NuevoGastoForm() {
             />
           </div>
         </div>
+
+        {vendorDefaults && (vendorDefaults.accountId || vendorDefaults.costCenterId || vendorDefaults.locationId) && (
+          <div className="bg-indigo-50/80 border border-indigo-200/80 text-indigo-950 rounded-lg p-3 text-xs flex items-center justify-between shadow-sm animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 font-medium">
+              <Lightbulb className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>
+                <strong>Clasificación sugerida para {vendors.find(v => v.id === vendorId)?.name}:</strong>{" "}
+                {accounts.find(a => a.id === vendorDefaults.accountId) ? `Cuenta: ${accounts.find(a => a.id === vendorDefaults.accountId)?.code} - ${accounts.find(a => a.id === vendorDefaults.accountId)?.name}` : ""}
+                {vendorDefaults.locationId && locations.find(l => l.id === vendorDefaults.locationId) ? ` | Sucursal: ${locations.find(l => l.id === vendorDefaults.locationId)?.name}` : ""}
+                {vendorDefaults.costCenterId && costCenters.find(c => c.id === vendorDefaults.costCenterId) ? ` | CC: ${costCenters.find(c => c.id === vendorDefaults.costCenterId)?.name}` : ""}
+              </span>
+            </div>
+            <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full uppercase shrink-0">
+              Historial Proveedor
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="space-y-6">
@@ -1541,20 +1779,29 @@ function NuevoGastoForm() {
                 </div>
 
                 {bankAccountId && (
-                  <div className="space-y-1.5 col-span-2 animate-in fade-in duration-200">
-                    <label className="text-xs font-semibold text-slate-700 uppercase">Vincular a Egreso Bancario Existente</label>
-                    <select
-                      value={selectedTransactionId}
-                      onChange={e => setSelectedTransactionId(e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background font-semibold"
-                    >
-                      <option value="manual">-- Registrar nuevo egreso manualmente --</option>
-                      {unreconciledTransactions.map(tx => (
-                        <option key={tx.id} value={tx.id}>
-                          {tx.date} - {tx.concept} (${Math.abs(tx.amount).toLocaleString('es-MX', {minimumFractionDigits:2})} {tx.reference ? `| Ref: ${tx.reference}` : ''})
-                        </option>
-                      ))}
-                    </select>
+                  <div className="col-span-2 space-y-2 animate-in fade-in duration-200">
+                    <SearchableSelect
+                      label="Vincular a Egreso Bancario Existente"
+                      placeholder="Busca por concepto, fecha, monto o referencia..."
+                      items={searchableTransactions}
+                      selectedId={selectedTransactionId}
+                      onSelect={setSelectedTransactionId}
+                      dropdownPosition="up"
+                    />
+
+                    {sortedTransactions.find(t => t.isExactAmount) && (
+                      <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in zoom-in-95">
+                        <Sparkles className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-extrabold flex items-center gap-1.5 text-emerald-900">
+                            ¡Coincidencia de Egreso Encontrada!
+                          </p>
+                          <p className="text-[11px] text-emerald-700 mt-0.5">
+                            Hemos localizado un movimiento bancario{bankAccounts.find(a => a.id === bankAccountId)?.name ? ` en "${bankAccounts.find(a => a.id === bankAccountId)?.name}"` : ""} por el monto exacto de ${totalCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })} y hemos preseleccionado automáticamente la cuenta y el movimiento.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

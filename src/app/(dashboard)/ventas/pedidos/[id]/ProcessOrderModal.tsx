@@ -14,16 +14,16 @@ import { getNextSequence } from "@/lib/firebase/counters";
 import { distributeDiscountAndTax } from "@/lib/utils/discountEngine";
 import { calculateDueDate, validateClientCreditLimit } from "@/lib/utils/creditUtils";
 
-export function ProcessOrderModal({ 
-  isOpen, 
-  onClose, 
-  order, 
-  companyId 
-}: { 
-  isOpen: boolean, 
-  onClose: () => void, 
+export function ProcessOrderModal({
+  isOpen,
+  onClose,
+  order,
+  companyId
+}: {
+  isOpen: boolean,
+  onClose: () => void,
   order: any,
-  companyId: string 
+  companyId: string
 }) {
   const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
   const [loading, setLoading] = useState(false);
@@ -43,7 +43,7 @@ export function ProcessOrderModal({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  
+
   const [appliedDate, setAppliedDate] = useState(() => {
     const today = new Date();
     const year = today.getFullYear();
@@ -65,15 +65,15 @@ export function ProcessOrderModal({
   useEffect(() => {
     const fetchClient = async () => {
       if (!isOpen || !companyId || !order) return;
-      
+
       let clientId = order.clientId;
-      
+
       try {
         const companySnap = await getDoc(doc(db, "companies", companyId));
         if (companySnap.exists() && companySnap.data().zipCode) {
           setCompanyZipCode(companySnap.data().zipCode);
         }
-      } catch(e) { console.error(e); }
+      } catch (e) { console.error(e); }
 
       // Fetch all clients catalog
       try {
@@ -88,7 +88,7 @@ export function ProcessOrderModal({
           return nameA.localeCompare(nameB, "es");
         });
         setClients(clientsList);
-      } catch(e) { console.error("Error loading clients list:", e); }
+      } catch (e) { console.error("Error loading clients list:", e); }
 
       if (clientId) {
         setSelectedClientId(clientId);
@@ -97,19 +97,19 @@ export function ProcessOrderModal({
           if (clientSnap.exists()) {
             const client = clientSnap.data();
             if (client.rfc || client.RFC) setRfc(client.rfc || client.RFC);
-            
+
             let name = "";
             if (client.razonSocial) name = client.razonSocial;
             else if (client.LegalName) name = client.LegalName;
             else if (client.name) name = client.name;
             setRazonSocial(name);
             setClientSearchQuery(name);
-            
+
             if (client.taxRegime) setTaxRegime(client.taxRegime);
             if (client.zipCode || client.ZipCode) setZipCode(client.zipCode || client.ZipCode);
             if (client.cfdiUse) setCfdiUse(client.cfdiUse);
           }
-        } catch(e) { console.error(e); }
+        } catch (e) { console.error(e); }
       } else {
         if (order?.clientName) {
           setClientSearchQuery(order.clientName);
@@ -292,7 +292,7 @@ export function ProcessOrderModal({
           return v;
         });
         await updateDoc(productRef, { variants: updatedVariants });
-        
+
         // Log movement
         const movId = crypto.randomUUID();
         await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
@@ -373,7 +373,7 @@ export function ProcessOrderModal({
       Items: resolvedItems.map((item: any) => {
         const unitPriceRounded = round2(item.unitPrice);
         const subtotalVal = round2(item.quantity * unitPriceRounded);
-        
+
         const discountVal = round2(item.finalDiscountAmt);
         const baseVal = round2(subtotalVal - discountVal);
         const taxTotalVal = round2(baseVal * 0.16);
@@ -553,7 +553,7 @@ export function ProcessOrderModal({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-indigo-600" /> 
+            <Receipt className="w-5 h-5 text-indigo-600" />
             Procesar Pedido {order.orderNumber}
           </DialogTitle>
           <DialogDescription>
@@ -564,7 +564,7 @@ export function ProcessOrderModal({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700">Tipo de Documento a Generar *</label>
-            <select 
+            <select
               className="flex h-12 w-full rounded-md border-2 border-indigo-200 bg-indigo-50/30 px-3 py-2 text-md font-bold text-indigo-900 ring-offset-background"
               value={actionType}
               onChange={e => setActionType(e.target.value)}
@@ -578,7 +578,7 @@ export function ProcessOrderModal({
           {actionType === "remision" && (
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Fecha de Aplicación *</label>
-              <Input 
+              <Input
                 type="date"
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                 value={appliedDate}
@@ -594,8 +594,8 @@ export function ProcessOrderModal({
                 <div className="space-y-2 col-span-2 relative" ref={clientSelectorRef}>
                   <label className="text-sm font-semibold text-slate-700">Seleccionar Cliente</label>
                   <div className="relative">
-                    <Input 
-                      placeholder="Escribe para buscar cliente..." 
+                    <Input
+                      placeholder="Escribe para buscar cliente..."
                       value={clientSearchQuery}
                       onChange={e => {
                         setClientSearchQuery(e.target.value);
@@ -614,7 +614,7 @@ export function ProcessOrderModal({
                       </button>
                     )}
                   </div>
-                  
+
                   {showClientDropdown && (
                     <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
                       {filteredClients.length === 0 ? (
@@ -623,7 +623,7 @@ export function ProcessOrderModal({
                         </div>
                       ) : (
                         filteredClients.map(c => (
-                          <div 
+                          <div
                             key={c.id}
                             className={`p-2.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer transition-colors text-sm ${selectedClientId === c.id ? 'bg-indigo-50/50 font-medium' : ''}`}
                             onClick={() => handleClientSelect(c)}
@@ -655,7 +655,7 @@ export function ProcessOrderModal({
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Régimen Fiscal *</label>
-                  <select 
+                  <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                     value={taxRegime}
                     onChange={e => setTaxRegime(e.target.value)}
@@ -672,7 +672,7 @@ export function ProcessOrderModal({
               <div className="grid grid-cols-2 gap-4 border-t pt-4">
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Uso de CFDI *</label>
-                  <select 
+                  <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                     value={cfdiUse}
                     onChange={e => setCfdiUse(e.target.value)}
@@ -685,7 +685,7 @@ export function ProcessOrderModal({
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Método de Pago *</label>
-                  <select 
+                  <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                     value={paymentMethod}
                     onChange={e => setPaymentMethod(e.target.value)}
@@ -696,7 +696,7 @@ export function ProcessOrderModal({
                 </div>
                 <div className="space-y-2 col-span-2">
                   <label className="text-sm font-semibold text-slate-700">Forma de Pago *</label>
-                  <select 
+                  <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                     value={paymentForm}
                     onChange={e => setPaymentForm(e.target.value)}
@@ -713,13 +713,13 @@ export function ProcessOrderModal({
               </div>
             </>
           )}
-          
+
           <div className="bg-slate-50 border p-4 rounded-lg mt-4 flex justify-between items-center text-sm">
             <span className="font-semibold text-slate-600">Total del Documento:</span>
-            <span className="text-xl font-black text-indigo-700">${order.totalAmount?.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+            <span className="text-xl font-black text-indigo-700">${order.totalAmount?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
           </div>
 
-          <Button 
+          <Button
             className={`w-full h-12 text-md mt-4 font-bold text-white ${actionType === 'remision' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}
             onClick={handleProcess}
             disabled={loading}

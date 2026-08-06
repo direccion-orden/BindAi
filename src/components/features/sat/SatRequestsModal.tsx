@@ -99,13 +99,13 @@ export function SatRequestsModal({ isOpen, onClose, companyId }: SatRequestsModa
       } else if (verRes.ok && verData.status === 'rejected') {
         await setDoc(requestRef, {
           status: "rejected",
-          satCode: 5, // Rechazada
+          satCode: verData.code ?? 5, // Rechazada
           satMessage: verData.message || "Solicitud rechazada",
           updatedAt: new Date().toISOString()
         }, { merge: true });
       } else if (verRes.ok && verData.status === 'pending') {
         await setDoc(requestRef, {
-          satCode: verData.code,
+          satCode: verData.code ?? 1,
           satMessage: verData.message || "En proceso",
           updatedAt: new Date().toISOString()
         }, { merge: true });

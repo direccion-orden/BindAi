@@ -207,7 +207,8 @@ export default function GastosPage() {
     try {
       const satDoc = await getDoc(doc(db, "companies", companyId, "credentials", "sat"));
       if (!satDoc.exists()) {
-        throw new Error("FIEL no configurada.");
+        setSyncStatus("Error: FIEL no configurada.");
+        return;
       }
       const fielData = satDoc.data();
 
@@ -225,7 +226,10 @@ export default function GastosPage() {
       });
       const reqData = await reqRes.json();
 
-      if (!reqRes.ok) throw new Error(reqData.error || "Error al solicitar descarga");
+      if (!reqRes.ok) {
+        setSyncStatus(`Error: ${reqData.error || "Error al solicitar descarga al SAT."}`);
+        return;
+      }
 
       const requestId = reqData.requestId;
       setSyncStatus(`Solicitud aceptada (ID: ${requestId}). Esperando al SAT...`);
@@ -290,7 +294,15 @@ export default function GastosPage() {
 
           setSyncStatus(`¡Listo! Se extrajeron ${verData.invoices?.length || 0} facturas.`);
         } else if (verRes.ok && verData.status === 'rejected') {
-          throw new Error("El SAT rechazó la solicitud.");
+          await setDoc(doc(db, "companies", companyId, "sat_requests", requestId), {
+            status: "rejected",
+            satCode: verData.code ?? 5,
+            satMessage: verData.message || "Solicitud rechazada",
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          const reason = verData.message ? `El SAT rechazó la solicitud: ${verData.message}` : "El SAT rechazó la solicitud.";
+          setSyncStatus(`Error: ${reason}`);
+          finished = true;
         } else {
           setSyncStatus(`El SAT sigue procesando... (Intento ${attempts}/12)`);
         }
@@ -301,8 +313,8 @@ export default function GastosPage() {
       }
 
     } catch (error: any) {
-      console.error(error);
-      setSyncStatus(`Error: ${error.message}`);
+      console.warn("Sync SAT:", error?.message || error);
+      setSyncStatus(`Error: ${error.message || "Error al sincronizar con el SAT"}`);
     } finally {
       setTimeout(() => setSyncing(false), 3000);
     }
@@ -322,9 +334,12 @@ export default function GastosPage() {
         setTimeout(() => setSyncing(false), 3000);
         return;
       }
-
       const satDoc = await getDoc(doc(db, "companies", companyId, "credentials", "sat"));
-      if (!satDoc.exists()) throw new Error("FIEL no configurada.");
+      if (!satDoc.exists()) {
+        setSyncStatus("Error: FIEL no configurada.");
+        setTimeout(() => setSyncing(false), 3000);
+        return;
+      }
       const fielData = satDoc.data();
 
       setSyncStatus(`Verificando ${querySnapshot.size} solicitudes pendientes...`);
@@ -377,6 +392,8 @@ export default function GastosPage() {
         } else if (verRes.ok && verData.status === 'rejected') {
           await setDoc(doc(db, "companies", companyId, "sat_requests", requestId), {
             status: "rejected",
+            satCode: verData.code ?? 5,
+            satMessage: verData.message || "Solicitud rechazada",
             updatedAt: new Date().toISOString()
           }, { merge: true });
         }
@@ -389,8 +406,8 @@ export default function GastosPage() {
       }
 
     } catch (error: any) {
-      console.error(error);
-      setSyncStatus(`Error: ${error.message}`);
+      console.warn("Check pending SAT:", error?.message || error);
+      setSyncStatus(`Error: ${error.message || "Error al verificar solicitudes"}`);
     } finally {
       setTimeout(() => setSyncing(false), 3000);
     }

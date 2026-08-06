@@ -28,11 +28,20 @@ export async function POST(req: Request) {
         const verifyResult = await service.verify(requestId);
         
         if (!verifyResult.getStatus().isAccepted()) {
-            return NextResponse.json({ status: "rejected", message: verifyResult.getStatus().getMessage() });
+            const msg = verifyResult.getStatus().getMessage() || verifyResult.getCodeRequest().getMessage() || "El SAT rechazó la comunicación.";
+            return NextResponse.json({ status: "rejected", message: msg });
         }
 
-        if (!verifyResult.getStatusRequest().isTypeOf('Finished')) {
-            const state = verifyResult.getStatusRequest().getValue();
+        const statusRequest = verifyResult.getStatusRequest();
+
+        if (statusRequest.isTypeOf('Failure') || statusRequest.isTypeOf('Rejected') || statusRequest.isTypeOf('Expired')) {
+            const code = statusRequest.getValue();
+            const msg = verifyResult.getCodeRequest().getMessage() || `Solicitud ${statusRequest.getValue()}`;
+            return NextResponse.json({ status: "rejected", code, message: msg });
+        }
+
+        if (!statusRequest.isTypeOf('Finished')) {
+            const state = statusRequest.getValue();
             return NextResponse.json({ status: "pending", code: state, message: verifyResult.getCodeRequest().getMessage() });
         }
 

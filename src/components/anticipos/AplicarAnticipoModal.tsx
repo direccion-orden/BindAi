@@ -162,12 +162,16 @@ export function AplicarAnticipoModal({ anticipo, isOpen, onOpenChange, onSuccess
       for (const [docId, amount] of docsToApply) {
         const docObj = documents.find(d => d.id === docId);
         
+        const originalMethod = anticipo.paymentTermName || anticipo.method || "Efectivo";
+        const folioStr = anticipo.folio ? String(anticipo.folio).padStart(4, '0') : anticipo.id.substring(0, 5).toUpperCase();
+        
         // 1. Registrar pago localmente en Firestore
         const paymentData = {
           amount: amount,
           date: paymentDate,
-          method: "Anticipo",
-          reference: `Aplicación de Anticipo - ANT-${anticipo.folio ? String(anticipo.folio).padStart(4, '0') : anticipo.id.substring(0, 5).toUpperCase()}`,
+          method: originalMethod,
+          originalMethod: "Anticipo",
+          reference: `Aplicación de Anticipo ANT-${folioStr} (${originalMethod})`,
           documentId: docId,
           documentType: docObj?.type === "Invoice" ? "factura" : (docObj?.type === "Remission" ? "remision" : "pedido"),
           documentNumber: docObj?.number || docId,

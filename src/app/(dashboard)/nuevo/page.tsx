@@ -206,6 +206,8 @@ export default function NuevoAnticipoPage() {
         finalBankTransactionId = "";
       }
 
+      const termName = PAYMENT_TERMS.find(p => p.id === selectedPaymentTerm)?.name || "Efectivo";
+
       // 3. Guardar Anticipo en Firestore
       await addDoc(collection(db, "companies", companyId, "anticipos"), {
         folio: nextFolio,
@@ -218,7 +220,7 @@ export default function NuevoAnticipoPage() {
         bankAccountName: bankAccounts.find(b => b.id === selectedAccountId)?.name || "",
         bankTransactionId: finalBankTransactionId || null,
         paymentTermId: parseInt(selectedPaymentTerm),
-        paymentTermName: PAYMENT_TERMS.find(p => p.id === selectedPaymentTerm)?.name || "",
+        paymentTermName: termName,
         imageUrl,
         receivedAt,
         createdBy: user?.email,

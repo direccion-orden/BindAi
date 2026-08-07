@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, getDocs, writeBatch, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, DollarSign, ArrowUpRight, Search, FileText, PlusCircle, Calendar, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, DollarSign, ArrowUpRight, Search, FileText, PlusCircle, Calendar, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -120,12 +120,27 @@ export default function IngresosPage() {
     // 2.6. Payment Method filter
     if (methodFilter !== "all") {
       const pMethod = p.method?.toLowerCase() || "";
+      const pOrigMethod = p.originalMethod?.toLowerCase() || "";
+      const pRef = p.reference?.toLowerCase() || "";
       const filterMethod = methodFilter.toLowerCase();
-      if (filterMethod === "tarjeta") {
-        if (!pMethod.includes("tarjeta")) return false;
-      } else {
-        if (pMethod !== filterMethod) return false;
+      
+      const matchesMethod = (m: string) => {
+        if (filterMethod === "tarjeta") return m.includes("tarjeta");
+        return m === filterMethod;
+      };
+
+      let isMatch = matchesMethod(pMethod);
+
+      // Si el método está guardado como "anticipo", verificar método original o referencia
+      if (!isMatch && (pMethod === "anticipo" || pOrigMethod === "anticipo")) {
+        if (pOrigMethod && pOrigMethod !== "anticipo") {
+          isMatch = matchesMethod(pOrigMethod);
+        } else if (pRef.includes(filterMethod)) {
+          isMatch = true;
+        }
       }
+
+      if (!isMatch) return false;
     }
     // 3. Date filter
     if (dateFrom || dateTo) {
@@ -197,6 +212,7 @@ export default function IngresosPage() {
       case "pedido": return `/ventas/pedidos/${id}`;
       case "remision": return `/ventas/remisiones/${id}`;
       case "factura": return `/ventas/facturas/${id}`;
+      case "anticipo": return `/anticipos`;
       case "pos": return null; // No detail page for POS sales yet
       default: return null;
     }
@@ -204,13 +220,14 @@ export default function IngresosPage() {
 
   const getDocumentLabel = (type: string, number: string) => {
     const num = number || "N/A";
-    if (num.includes("-")) return num; // If it already has a prefix like REM- or PED-, return it
+    if (num.includes("-")) return num; // If it already has a prefix like REM- or PED- or ANT-, return it
     
     switch (type) {
       case "pedido": return `PED-${num}`;
       case "remision": return `REM-${num}`;
       case "factura": return `FAC-${num}`;
       case "pos": return `POS-${num}`;
+      case "anticipo": return `ANT-${num}`;
       default: return `DOC-${num}`;
     }
   };

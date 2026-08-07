@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Plus, Loader2, Search, Calendar, Wallet } from "lucide-react";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, getDocs, addDoc, updateDoc, doc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { AplicarAnticipoModal } from "@/components/anticipos/AplicarAnticipoModal";
 import { DetalleAnticipoModal } from "@/components/anticipos/DetalleAnticipoModal";
 import { useAuth } from "@/context/AuthContext";
+import { getLocalDateString } from "@/lib/utils";
+import { RefreshCw } from "lucide-react";
 
 export default function DashboardPage() {
   const { companyId } = useAuth();

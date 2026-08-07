@@ -259,6 +259,7 @@ export default function MobileAnticipo() {
         status: "pending",
         bankAccountId: selectedAccountId,
         paymentTermId: paymentTerm,
+        paymentTermName: paymentTerm === "1" ? "Efectivo" : (paymentTerm === "2" ? "Transferencia" : "Tarjeta"),
         imageUrl,
         createdAt: serverTimestamp(),
         createdBy: user?.email || "Cajero Móvil"

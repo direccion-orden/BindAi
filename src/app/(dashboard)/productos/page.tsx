@@ -61,10 +61,8 @@ export default function ProductosPage() {
       const exportData: any[] = [];
       products.forEach(p => {
         const pAny = p as any;
-        const isShopify = !!pAny.shopifyId || pAny.vendor?.toLowerCase() === "shopify";
-        const origin = isShopify ? "Shopify" : "Bind ERP";
 
-        // Resolver nombre de categoría 1
+        // Resolver nombre de categoría
         const catId = pAny.categoryId || pAny.Category1ID || "";
         const matchedCat = categories.find(c => c.id === catId);
         let categoryName = "";
@@ -80,60 +78,60 @@ export default function ProductosPage() {
           }
         }
 
-        // Resolver nombre de categoría 2 y 3 (o tags en su defecto)
-        const cat2Id = pAny.Category2ID || "";
-        const matchedCat2 = categories.find(c => c.id === cat2Id);
-        const category2Name = matchedCat2 ? matchedCat2.name : (pAny.tags && pAny.tags[0] ? pAny.tags[0] : "");
-
-        const cat3Id = pAny.Category3ID || "";
-        const matchedCat3 = categories.find(c => c.id === cat3Id);
-        const category3Name = matchedCat3 ? matchedCat3.name : (pAny.tags && pAny.tags[1] ? pAny.tags[1] : "");
+        const tagsString = Array.isArray(pAny.tags) ? pAny.tags.join(", ") : "";
 
         if (!pAny.variants || pAny.variants.length === 0) {
           exportData.push({
             ID: pAny.id || "",
             Titulo: pAny.title || "",
-            Codigo: pAny.Code || "",
-            SKU: pAny.SKU || "",
-            Costo: pAny.cost !== undefined ? pAny.cost : (pAny.initialCost || 0),
+            Variante: "",
+            SKU: pAny.SKU || pAny.sku || "",
+            CodigoBarras: pAny.Code || pAny.barcode || "",
             Precio: 0,
-            "Tipo de IVA.": pAny.iva !== undefined ? `${pAny.iva}%` : "0%",
-            Descripcion: pAny.bodyHtml || "",
-            "Categoria 1": categoryName,
-            "Categoria 2": category2Name,
-            "Categoria 3": category3Name,
-            "Clave CFDI": pAny.satProductCode || "",
-            "Unidad CFDI": pAny.satUnitCode || "",
+            PrecioComparacion: "",
+            Costo: pAny.cost !== undefined ? pAny.cost : (pAny.initialCost || 0),
+            Categoria: categoryName,
+            Proveedor: pAny.vendor || "",
+            Estado: pAny.status || "ACTIVE",
+            RolInventario: pAny.inventoryRole || "PRODUCTO",
+            EsServicio: pAny.isService ? "SI" : "NO",
+            Etiquetas: tagsString,
+            ClaveSAT: pAny.satProductCode || "",
+            UnidadSAT: pAny.satUnitCode || "",
             Peso: 0,
             Moneda: pAny.currency || "MXN",
-            Origen: origin
+            Descripcion: pAny.bodyHtml || ""
           });
         } else {
           pAny.variants.forEach((v: any) => {
+            const variantTitle = pAny.variants.length > 1 || (v.title && v.title !== "Default Title") ? v.title : "";
             exportData.push({
               ID: pAny.id || "",
-              Titulo: pAny.variants.length > 1 ? `${pAny.title} - ${v.title}` : pAny.title,
-              Codigo: v.barcode || "",
+              Titulo: pAny.title || "",
+              Variante: variantTitle,
               SKU: v.sku || "",
-              Costo: v.cost !== undefined ? v.cost : (pAny.cost !== undefined ? pAny.cost : (pAny.initialCost || 0)),
+              CodigoBarras: v.barcode || "",
               Precio: v.price !== undefined ? v.price : 0,
-              "Tipo de IVA.": pAny.iva !== undefined ? `${pAny.iva}%` : "0%",
-              Descripcion: pAny.bodyHtml || "",
-              "Categoria 1": categoryName,
-              "Categoria 2": category2Name,
-              "Categoria 3": category3Name,
-              "Clave CFDI": pAny.satProductCode || "",
-              "Unidad CFDI": pAny.satUnitCode || "",
+              PrecioComparacion: v.compareAtPrice !== undefined && v.compareAtPrice !== null ? v.compareAtPrice : "",
+              Costo: v.cost !== undefined ? v.cost : (pAny.cost !== undefined ? pAny.cost : (pAny.initialCost || 0)),
+              Categoria: categoryName,
+              Proveedor: pAny.vendor || "",
+              Estado: pAny.status || "ACTIVE",
+              RolInventario: pAny.inventoryRole || "PRODUCTO",
+              EsServicio: pAny.isService ? "SI" : "NO",
+              Etiquetas: tagsString,
+              ClaveSAT: pAny.satProductCode || "",
+              UnidadSAT: pAny.satUnitCode || "",
               Peso: v.weight || 0,
               Moneda: pAny.currency || "MXN",
-              Origen: origin
+              Descripcion: pAny.bodyHtml || ""
             });
           });
         }
       });
 
       const csv = Papa.unparse(exportData);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);

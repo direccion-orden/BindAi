@@ -35,6 +35,12 @@ export default function ImportarHistorialPage() {
   const router = useRouter();
   const { companyId } = useAuth();
   const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+  const parseNumber = (val: any): number => {
+    if (val === undefined || val === null) return 0;
+    const str = String(val).replace(/,/g, "").trim();
+    const parsed = parseFloat(str.replace(/[^0-9.-]/g, ""));
+    return isNaN(parsed) ? 0 : parsed;
+  };
   
   // State for files
   const [cotizacionesFile, setCotizacionesFile] = useState<File | null>(null);
@@ -891,9 +897,9 @@ export default function ImportarHistorialPage() {
               const subtotalVal = getFlexibleValue(firstLine, ["subtotal", "subtotalamount", "submonto"]);
               const taxVal = getFlexibleValue(firstLine, ["impuestos", "impuesto", "iva", "tax", "taxes"]);
 
-              const totalAmount = round2(parseFloat(String(totalVal).replace(/[^0-9.-]/g, "")) || 0);
-              const subtotal = round2(parseFloat(String(subtotalVal).replace(/[^0-9.-]/g, "")) || (totalAmount / 1.16));
-              const tax = round2(parseFloat(String(taxVal).replace(/[^0-9.-]/g, "")) || (totalAmount - subtotal));
+              const totalAmount = round2(parseNumber(totalVal));
+              const subtotal = round2(parseNumber(subtotalVal) || (totalAmount / 1.16));
+              const tax = round2(parseNumber(taxVal) || (totalAmount - subtotal));
 
               // Build Items array from detailed CSV lines
               const items: any[] = [];
@@ -903,9 +909,9 @@ export default function ImportarHistorialPage() {
                 if (!productName) continue;
 
                 const sku = String(line["Producto_SKU"] || "").trim();
-                const qty = parseFloat(String(line["Producto_Cantidad"] || "").replace(/[^0-9.-]/g, "")) || 0;
-                const unitPrice = round2(parseFloat(String(line["Producto_PrecioUnitario"] || "").replace(/[^0-9.-]/g, "")) || 0);
-                const discountPercentage = parseFloat(String(line["Producto_DescuentoPorcentaje"] || "").replace(/[^0-9.-]/g, "")) || 0;
+                const qty = parseNumber(line["Producto_Cantidad"]);
+                const unitPrice = round2(parseNumber(line["Producto_PrecioUnitario"]));
+                const discountPercentage = parseNumber(line["Producto_DescuentoPorcentaje"]);
 
                 // Resolve Product on the fly
                 let product = null;

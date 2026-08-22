@@ -421,10 +421,26 @@ export default function DetalleOrdenCompraPage() {
       y += 6;
 
       // --- Totals ---
+      const pdfSubtotal = order.items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+      const pdfIva = pdfSubtotal * 0.16;
+      const pdfTotal = pdfSubtotal + pdfIva;
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
+
+      doc.text("Subtotal:", pageWidth - 55, y);
+      doc.text(`$${pdfSubtotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 2, y, { align: "right" });
+
+      y += 5;
+      doc.text("IVA (16%):", pageWidth - 55, y);
+      doc.text(`$${pdfIva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 2, y, { align: "right" });
+
+      y += 6;
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("TOTAL:", pageWidth - 40, y, { align: "right" });
-      doc.text(`$${order.totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, pageWidth - margin - 2, y, { align: "right" });
+      doc.text("TOTAL:", pageWidth - 55, y);
+      doc.text(`$${pdfTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 2, y, { align: "right" });
 
       // --- Notes ---
       if (order.notes) {
@@ -837,27 +853,30 @@ export default function DetalleOrdenCompraPage() {
 
         <div className="mt-8 flex justify-end">
           <div className="w-full max-w-sm bg-slate-50 p-6 rounded-xl border">
-            <div className="space-y-2">
-              <div className="flex justify-between text-slate-500">
-                <span>Subtotal Estimado</span>
-                <span>
-                  $
-                  {(isEditing
-                    ? editData?.items?.reduce((sum: number, item: any) => sum + (item.quantity * (Number(item.unitCost) || 0)), 0)
-                    : order.totalAmount
-                  ).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between font-black text-xl pt-2 border-t mt-2 text-slate-900">
-                <span>Total Requisición</span>
-                <span className="text-indigo-700">
-                  $
-                  {(isEditing
-                    ? editData?.items?.reduce((sum: number, item: any) => sum + (item.quantity * (Number(item.unitCost) || 0)), 0)
-                    : order.totalAmount
-                  ).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
+            <div className="space-y-2 text-sm">
+              {(() => {
+                const subtotal = isEditing
+                  ? editData?.items?.reduce((sum: number, item: any) => sum + (item.quantity * (Number(item.unitCost) || 0)), 0) || 0
+                  : (order.items?.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0) || order.totalAmount || 0);
+                const iva = subtotal * 0.16;
+                const total = subtotal + iva;
+                return (
+                  <>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Subtotal Estimado</span>
+                      <span className="font-medium">${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>IVA (16%)</span>
+                      <span className="font-medium">${iva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between font-black text-xl pt-2 border-t mt-2 text-slate-900">
+                      <span>Total Requisición</span>
+                      <span className="text-indigo-700">${total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </>
+                );
+              })()}
               {(order.paidAmount || 0) > 0 && (
                 <>
                   <div className="flex justify-between text-rose-600 font-medium pt-2">
@@ -866,7 +885,7 @@ export default function DetalleOrdenCompraPage() {
                   </div>
                   <div className="flex justify-between text-orange-600 font-bold border-t mt-2 pt-2">
                     <span>Saldo Pendiente</span>
-                    <span>${Math.max(0, order.totalAmount - (order.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                    <span>${Math.max(0, ((order.items?.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0) || order.totalAmount) * 1.16) - (order.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
                   </div>
                 </>
               )}

@@ -17,6 +17,8 @@ interface TicketConfig {
   logoWidth: number;
   showCompanyName: boolean;
   customCompanyName: string;
+  showCompanyCode: boolean;
+  customCompanyCode: string;
   showAddress: boolean;
   customAddress: string;
   showRfc: boolean;
@@ -45,6 +47,8 @@ const DEFAULT_CONFIG: TicketConfig = {
   logoWidth: 160,
   showCompanyName: true,
   customCompanyName: "",
+  showCompanyCode: true,
+  customCompanyCode: "",
   showAddress: true,
   customAddress: "",
   showRfc: true,
@@ -73,6 +77,7 @@ export default function TicketDesignerPage() {
   const [config, setConfig] = useState<TicketConfig>(DEFAULT_CONFIG);
   const [companyProfile, setCompanyProfile] = useState<any>({
     name: "Nombre de tu Empresa",
+    companyCode: "100780",
     address: "Av. Constitución 123, Monterrey, N.L.",
     rfc: "XAXX010101000",
     phone: "8122009693"
@@ -93,6 +98,7 @@ export default function TicketDesignerPage() {
           const profileData = companySnap.data();
           setCompanyProfile({
             name: profileData.name || "Nombre de tu Empresa",
+            companyCode: profileData.companyCode ? String(profileData.companyCode) : "100780",
             address: profileData.address || "Av. Constitución 123, Monterrey, N.L.",
             rfc: profileData.rfc || "XAXX010101000",
             phone: profileData.phone || profileData.whatsappPhone || "8122009693"
@@ -195,6 +201,9 @@ export default function TicketDesignerPage() {
   // Pre-determined Fallback display values
   const previewName = config.showCompanyName 
     ? (config.customCompanyName || companyProfile.name)
+    : "";
+  const previewCompanyCode = config.showCompanyCode
+    ? (config.customCompanyCode || companyProfile.companyCode || "")
     : "";
   const previewAddress = config.showAddress 
     ? (config.customAddress || companyProfile.address)
@@ -399,7 +408,7 @@ export default function TicketDesignerPage() {
               </div>
 
               {/* Phone */}
-              <div className="space-y-2">
+              <div className="border-b pb-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-semibold">Mostrar Teléfono</label>
                   <Switch 
@@ -412,6 +421,27 @@ export default function TicketDesignerPage() {
                     placeholder={`Por defecto: ${companyProfile.phone}`}
                     value={config.customPhone}
                     onChange={(e) => handleValueChange("customPhone", e.target.value)}
+                  />
+                )}
+              </div>
+
+              {/* Company Code */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-semibold block">Mostrar Código de Empresa</label>
+                    <span className="text-xs text-muted-foreground">Código corto numérico indispensable para autofacturación (ej. {companyProfile.companyCode || "100780"}).</span>
+                  </div>
+                  <Switch 
+                    checked={config.showCompanyCode} 
+                    onCheckedChange={() => handleToggle("showCompanyCode")} 
+                  />
+                </div>
+                {config.showCompanyCode && (
+                  <Input 
+                    placeholder={`Por defecto: ${companyProfile.companyCode || "100780"}`}
+                    value={config.customCompanyCode}
+                    onChange={(e) => handleValueChange("customCompanyCode", e.target.value)}
                   />
                 )}
               </div>
@@ -641,10 +671,11 @@ export default function TicketDesignerPage() {
                   <h3 className="font-bold text-sm uppercase tracking-tight">{previewName}</h3>
                 )}
 
-                {/* Company Address, RFC, Phone */}
+                {/* Company Address, RFC, Phone, Code */}
                 {previewAddress && <p className="text-[10px] whitespace-pre-wrap">{previewAddress}</p>}
                 {previewRfc && <p className="text-[10px]">RFC: {previewRfc.toUpperCase()}</p>}
                 {previewPhone && <p className="text-[10px]">TEL: {previewPhone}</p>}
+                {previewCompanyCode && <p className="text-[10px] font-semibold">CÓDIGO EMPRESA: {previewCompanyCode}</p>}
                 
                 {/* Header text */}
                 {config.headerText && (
@@ -728,6 +759,7 @@ export default function TicketDesignerPage() {
                   )}
                   <div className="text-[9px] text-left pt-1 border-t border-slate-100 space-y-0.5 font-mono">
                     <p className="truncate">PORTAL: {config.billingUrl || "https://facturama.mx/autofactura"}</p>
+                    {previewCompanyCode && <p className="font-bold text-indigo-900">CÓDIGO EMPRESA: {previewCompanyCode}</p>}
                     <p>FOLIO: POS-10025</p>
                     <p>TOTAL: $1,580.42</p>
                   </div>

@@ -17,6 +17,8 @@ const DEFAULT_CONFIG = {
   logoWidth: 80,
   showCompanyName: true,
   customCompanyName: "",
+  showCompanyCode: true,
+  customCompanyCode: "",
   showAddress: true,
   customAddress: "",
   showRfc: true,
@@ -75,6 +77,9 @@ export default function TicketPrintView({
 
   const previewName = config.showCompanyName
     ? (config.customCompanyName || companyProfile.name)
+    : "";
+  const previewCompanyCode = config.showCompanyCode
+    ? (config.customCompanyCode || (companyProfile.companyCode ? String(companyProfile.companyCode) : ""))
     : "";
   const previewAddress = config.showAddress
     ? (config.customAddress || companyProfile.address)
@@ -229,6 +234,7 @@ export default function TicketPrintView({
                   {previewAddress && <p className="whitespace-pre-wrap">{previewAddress}</p>}
                   {previewRfc && <p>RFC: {previewRfc.toUpperCase()}</p>}
                   {previewPhone && <p>TEL: {previewPhone}</p>}
+                  {previewCompanyCode && <p className="font-semibold">CÓDIGO EMPRESA: {previewCompanyCode}</p>}
                 </div>
 
                 {config.headerText && (
@@ -323,6 +329,9 @@ export default function TicketPrintView({
                     <p className="break-all">
                       <span className="font-bold">Portal:</span> https://bind-ai-6f1fc.web.app/autofactura
                     </p>
+                    {previewCompanyCode && (
+                      <p><span className="font-bold">Código Empresa:</span> {previewCompanyCode}</p>
+                    )}
                     <p><span className="font-bold">Folio:</span> {folioText}</p>
                     <p><span className="font-bold">Total:</span> {formatMoney(total)}</p>
                   </div>

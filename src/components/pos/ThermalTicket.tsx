@@ -15,6 +15,8 @@ interface TicketConfig {
   logoWidth: number;
   showCompanyName: boolean;
   customCompanyName: string;
+  showCompanyCode: boolean;
+  customCompanyCode: string;
   showAddress: boolean;
   customAddress: string;
   showRfc: boolean;
@@ -43,6 +45,8 @@ const DEFAULT_CONFIG: TicketConfig = {
   logoWidth: 160,
   showCompanyName: true,
   customCompanyName: "",
+  showCompanyCode: true,
+  customCompanyCode: "",
   showAddress: true,
   customAddress: "",
   showRfc: true,
@@ -69,6 +73,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
   const [config, setConfig] = useState<TicketConfig>(DEFAULT_CONFIG);
   const [companyProfile, setCompanyProfile] = useState<any>({
     name: "El Orden de las Cosas",
+    companyCode: "",
     address: "",
     rfc: "",
     phone: ""
@@ -87,6 +92,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
           const profileData = companySnap.data();
           setCompanyProfile({
             name: profileData.name || "El Orden de las Cosas",
+            companyCode: profileData.companyCode ? String(profileData.companyCode) : "",
             address: profileData.address || "",
             rfc: profileData.rfc || "",
             phone: profileData.phone || profileData.whatsappPhone || ""
@@ -142,6 +148,9 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
   // Dynamic overrides
   const previewName = config.showCompanyName 
     ? (config.customCompanyName || companyProfile.name)
+    : "";
+  const previewCompanyCode = config.showCompanyCode 
+    ? (config.customCompanyCode || companyProfile.companyCode)
     : "";
   const previewAddress = config.showAddress 
     ? (config.customAddress || companyProfile.address)
@@ -205,6 +214,7 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
           {previewAddress && <p className="whitespace-pre-wrap">{previewAddress}</p>}
           {previewRfc && <p>RFC: {previewRfc.toUpperCase()}</p>}
           {previewPhone && <p>TEL: {previewPhone}</p>}
+          {previewCompanyCode && <p className="font-semibold">CÓDIGO EMPRESA: {previewCompanyCode}</p>}
         </div>
 
         {/* Custom Header Text */}
@@ -310,6 +320,9 @@ export function ThermalTicket({ saleId, saleData }: ThermalTicketProps) {
               <p className="break-all font-sans">
                 <span className="font-bold">Portal:</span> {config.billingUrl.replace('{folio}', '').replace('{total}', '')}
               </p>
+            )}
+            {previewCompanyCode && (
+              <p><span className="font-bold">Código Empresa:</span> {previewCompanyCode}</p>
             )}
             <p><span className="font-bold">Folio:</span> {folioText}</p>
             <p><span className="font-bold">Total:</span> {formatMoney(total)}</p>

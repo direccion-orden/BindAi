@@ -6,11 +6,12 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Receipt, CloudDownload, RefreshCw, Loader2, AlertCircle, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Search, Truck } from "lucide-react";
+import { Receipt, CloudDownload, RefreshCw, Loader2, AlertCircle, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Search, Truck, Sparkles, Pause, Play, Square } from "lucide-react";
 import Link from "next/link";
 
 import { SatRequestsModal } from "@/components/features/sat/SatRequestsModal";
 import { UploadSatFilesModal } from "@/components/features/sat/UploadSatFilesModal";
+import { runClientRegularizationAgent } from "@/lib/services/regularizeProvisionalExpensesService";
 
 const decodeBase64Utf8 = (str: string) => {
   try {
@@ -26,12 +27,18 @@ const decodeBase64Utf8 = (str: string) => {
 };
 
 export default function GastosPage() {
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [fielConfigured, setFielConfigured] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [invoices, setInvoices] = useState<any[]>([]);
+
+  const [runningRegularize, setRunningRegularize] = useState(false);
+  const [isPausedRegularize, setIsPausedRegularize] = useState(false);
+  const [regularizeStatus, setRegularizeStatus] = useState<string | null>(null);
+  const isPausedRegularizeRef = React.useRef(false);
+  const isCancelledRegularizeRef = React.useRef(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
@@ -413,6 +420,52 @@ export default function GastosPage() {
     }
   };
 
+  const handleRunRegularizeAgent = async () => {
+    if (!companyId) return;
+    isPausedRegularizeRef.current = false;
+    isCancelledRegularizeRef.current = false;
+    setIsPausedRegularize(false);
+    setRunningRegularize(true);
+    setRegularizeStatus("Iniciando Agente Regularizador IA...");
+
+    try {
+      const dateRange = (dateFrom || dateTo) ? { startDate: dateFrom || undefined, endDate: dateTo || undefined } : undefined;
+      const control = {
+        isPaused: () => isPausedRegularizeRef.current,
+        isCancelled: () => isCancelledRegularizeRef.current,
+        onProgress: (current: number, total: number, message: string) => {
+          setRegularizeStatus(`[${current}/${total}] ${message}`);
+        }
+      };
+
+      const result = await runClientRegularizationAgent(db, companyId, user?.email || undefined, dateRange, control);
+
+      if (result.cancelled) {
+        setRegularizeStatus(`Proceso cancelado. Se regularizaron ${result.regularizedCount} facturas.`);
+        setTimeout(() => setRegularizeStatus(null), 6000);
+      } else if (result.success) {
+        if (result.regularizedCount > 0) {
+          setRegularizeStatus(`¡Regularización completada con éxito! Se regularizaron ${result.regularizedCount} gastos provisionales con facturas SAT.`);
+        } else {
+          setRegularizeStatus("Análisis completado: No se encontraron nuevas coincidencias entre facturas SAT y gastos provisionales.");
+        }
+        setTimeout(() => setRegularizeStatus(null), 6000);
+      } else {
+        setRegularizeStatus(`Error: ${result.error || "Fallo en la regularización"}`);
+        setTimeout(() => setRegularizeStatus(null), 6000);
+      }
+    } catch (err: any) {
+      console.error("Error al ejecutar Agente Regularizador:", err);
+      setRegularizeStatus(`Error: ${err.message}`);
+      setTimeout(() => setRegularizeStatus(null), 6000);
+    } finally {
+      setRunningRegularize(false);
+      setIsPausedRegularize(false);
+      isPausedRegularizeRef.current = false;
+      isCancelledRegularizeRef.current = false;
+    }
+  };
+
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
   };
@@ -463,16 +516,77 @@ export default function GastosPage() {
               )}
             </div>
           </div>
-          {fielConfigured && (
-            <div className="flex justify-end border-t pt-2">
-              <Button onClick={() => setIsUploadModalOpen(true)} className="gap-2 h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-end gap-2 border-t pt-2">
+            <Button
+              onClick={handleRunRegularizeAgent}
+              disabled={runningRegularize}
+              className="bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-600 hover:via-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md h-9 px-3.5 rounded-lg flex items-center gap-2 w-full sm:w-auto transition-all"
+            >
+              {runningRegularize ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>Procesando Regularización...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                  <span>Agente Regularizador IA</span>
+                </>
+              )}
+            </Button>
+            {fielConfigured && (
+              <Button onClick={() => setIsUploadModalOpen(true)} className="gap-2 h-9 bg-slate-800 hover:bg-slate-900 text-white font-semibold shadow-sm w-full sm:w-auto">
                 <FileText className="w-4 h-4" />
                 Carga Manual
               </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {regularizeStatus && (
+        <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 border border-indigo-500/40 text-white text-xs px-4 py-3 rounded-xl flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2 gap-3">
+          <div className="flex items-center gap-2.5 font-medium truncate">
+            <Sparkles className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
+            <span className="truncate">{regularizeStatus}</span>
+          </div>
+          
+          {runningRegularize && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isPausedRegularize;
+                  setIsPausedRegularize(next);
+                  isPausedRegularizeRef.current = next;
+                }}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded flex items-center gap-1.5 transition-colors shadow-sm ${
+                  isPausedRegularize
+                    ? "bg-emerald-500 hover:bg-emerald-600 text-slate-950"
+                    : "bg-amber-500 hover:bg-amber-600 text-slate-950"
+                }`}
+                title={isPausedRegularize ? "Reanudar proceso" : "Pausar temporalmente"}
+              >
+                {isPausedRegularize ? <Play className="w-3 h-3 fill-current" /> : <Pause className="w-3 h-3 fill-current" />}
+                <span>{isPausedRegularize ? "Reanudar" : "Pausar"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  isCancelledRegularizeRef.current = true;
+                  setRegularizeStatus("Cancelando proceso...");
+                }}
+                className="px-2.5 py-1 text-[11px] font-bold rounded bg-red-600 hover:bg-red-700 text-white flex items-center gap-1.5 transition-colors shadow-sm"
+                title="Detener y cancelar"
+              >
+                <Square className="w-3 h-3 fill-current" />
+                <span>Cancelar</span>
+              </button>
             </div>
           )}
         </div>
-      </div>
+      )}
 
       {syncStatus && (
         <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm border border-blue-200 font-medium flex items-center gap-2">

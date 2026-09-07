@@ -1,17 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { collection, query, onSnapshot, orderBy, doc, getDoc, getDocs, where, deleteDoc, updateDoc, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2 } from "lucide-react";
+import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2, Pause, Play, Square } from "lucide-react";
 import { BankTransaction } from "@/types/bank";
 import { BankImportModal } from "./components/BankImportModal";
 import { TransferModal } from "./components/TransferModal";
 import { AdjustmentModal } from "./components/AdjustmentModal";
 import { ReconcilePanel } from "./components/ReconcilePanel";
 import { Input } from "@/components/ui/input";
+import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 
 interface BankAccount {
   id: string;
@@ -59,7 +60,7 @@ function normalizeDateToISO(dateStr: string): string {
 }
 
 export default function BancosPage() {
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
@@ -122,6 +123,7 @@ export default function BancosPage() {
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"history" | "reconcile">("history");
+  const [reconcileTypeFilter, setReconcileTypeFilter] = useState<"all" | "inflow" | "outflow">("all");
   const [selectedTxs, setSelectedTxs] = useState<BankTransaction[]>([]);
 
   // Sync state from URL on mount
@@ -169,6 +171,59 @@ export default function BancosPage() {
   const [accountingAccountsAll, setAccountingAccountsAll] = useState<any[]>([]);
   const [loadingReconcileData, setLoadingReconcileData] = useState(false);
   const [reconcileTrigger, setReconcileTrigger] = useState(0);
+
+  const [runningAiReconcile, setRunningAiReconcile] = useState(false);
+  const [isPausedAiReconcile, setIsPausedAiReconcile] = useState(false);
+  const [aiReconcileStatus, setAiReconcileStatus] = useState<string | null>(null);
+
+  const isPausedRef = useRef(false);
+  const isCancelledRef = useRef(false);
+
+  const handleRunAiReconciliation = async () => {
+    if (!companyId || !selectedAccountId) return;
+    
+    isPausedRef.current = false;
+    isCancelledRef.current = false;
+    setIsPausedAiReconcile(false);
+    setRunningAiReconcile(true);
+    setAiReconcileStatus("Iniciando análisis del Agente IA...");
+
+    try {
+      const dateRange = (startDate || endDate) ? { startDate: startDate || undefined, endDate: endDate || undefined } : undefined;
+      
+      const controlSignal = {
+        isPaused: () => isPausedRef.current,
+        isCancelled: () => isCancelledRef.current,
+        onProgress: (current: number, total: number, message: string) => {
+          setAiReconcileStatus(`[${current}/${total}] ${message}`);
+        }
+      };
+
+      const result = await runClientAiReconciliation(db, companyId, selectedAccountId, user?.email || undefined, dateRange, controlSignal);
+      
+      if (result.cancelled) {
+        setAiReconcileStatus(`Proceso cancelado por el usuario. Se procesaron ${result.processedCount} movimientos antes de detener.`);
+        setReconcileTrigger(prev => prev + 1);
+        setTimeout(() => setAiReconcileStatus(null), 6000);
+      } else if (result.success) {
+        setAiReconcileStatus(`¡Conciliación autónoma completada! Se procesaron ${result.processedCount} movimientos.`);
+        setReconcileTrigger(prev => prev + 1);
+        setTimeout(() => setAiReconcileStatus(null), 5000);
+      } else {
+        setAiReconcileStatus(`Error: ${result.error || "Fallo al conciliar"}`);
+        setTimeout(() => setAiReconcileStatus(null), 5000);
+      }
+    } catch (err: any) {
+      console.error("Error al ejecutar Agente IA:", err);
+      setAiReconcileStatus(`Error: ${err.message}`);
+      setTimeout(() => setAiReconcileStatus(null), 5000);
+    } finally {
+      setRunningAiReconcile(false);
+      setIsPausedAiReconcile(false);
+      isPausedRef.current = false;
+      isCancelledRef.current = false;
+    }
+  };
 
   useEffect(() => {
     if (!companyId) return;
@@ -306,10 +361,16 @@ export default function BancosPage() {
 
   const displayedTransactions = useMemo(() => {
     if (activeTab === "reconcile") {
-      return filteredTransactions.filter(t => !t.reconciled);
+      let pending = filteredTransactions.filter(t => !t.reconciled);
+      if (reconcileTypeFilter === "inflow") {
+        pending = pending.filter(t => t.amount > 0);
+      } else if (reconcileTypeFilter === "outflow") {
+        pending = pending.filter(t => t.amount < 0);
+      }
+      return pending;
     }
     return filteredTransactions;
-  }, [filteredTransactions, activeTab]);
+  }, [filteredTransactions, activeTab, reconcileTypeFilter]);
 
   const eligibleTransactions = useMemo(() => {
     if (displayedTransactions.length === 0) return [];
@@ -478,13 +539,13 @@ export default function BancosPage() {
                           }`}
                       >
                           Historial de Movimientos
-                          {transactions.length > 0 && (
+                          {filteredTransactions.length > 0 && (
                             <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-full transition-colors ${
                               activeTab === 'history'
                                 ? 'bg-purple-800 text-purple-100'
                                 : 'bg-purple-100 text-purple-700'
                             }`}>
-                              {transactions.length}
+                              {filteredTransactions.length}
                             </span>
                           )}
                       </button>
@@ -497,16 +558,33 @@ export default function BancosPage() {
                           }`}
                       >
                           Conciliación Pendiente
-                          {transactions.filter(t => !t.reconciled).length > 0 && (
+                          {filteredTransactions.filter(t => !t.reconciled).length > 0 && (
                             <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-full transition-colors ${
                               activeTab === 'reconcile'
                                 ? 'bg-purple-800 text-purple-100'
                                 : 'bg-purple-100 text-purple-700 animate-pulse'
                             }`}>
-                              {transactions.filter(t => !t.reconciled).length}
+                              {filteredTransactions.filter(t => !t.reconciled).length}
                             </span>
                           )}
                       </button>
+                      <Button
+                        onClick={handleRunAiReconciliation}
+                        disabled={runningAiReconcile || !selectedAccountId}
+                        className="bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-600 hover:via-purple-700 hover:to-indigo-700 text-white font-extrabold text-xs shadow-sm h-8 px-3 rounded-lg flex items-center gap-1.5 transition-all ml-1"
+                      >
+                        {runningAiReconcile ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                            <span>Procesando IA...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                            <span>Agente Conciliador IA</span>
+                          </>
+                        )}
+                      </Button>
                   </div>
                   <div className="flex items-center gap-2">                       <div className="flex items-center bg-background border rounded-md px-1.5 h-9 shadow-sm">
                         <select
@@ -577,7 +655,51 @@ export default function BancosPage() {
               </div>
 
               <div className="flex-1 overflow-hidden p-0 flex flex-col">
-                  {loadingTransactions ? (
+                  {aiReconcileStatus && (
+                <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 border-b border-indigo-500/30 text-white text-xs px-4 py-2.5 flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 gap-3">
+                  <div className="flex items-center gap-2.5 font-medium truncate">
+                    <Sparkles className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
+                    <span className="truncate">{aiReconcileStatus}</span>
+                  </div>
+                  
+                  {runningAiReconcile && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !isPausedAiReconcile;
+                          setIsPausedAiReconcile(next);
+                          isPausedRef.current = next;
+                        }}
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded flex items-center gap-1.5 transition-colors shadow-sm ${
+                          isPausedAiReconcile
+                            ? "bg-emerald-500 hover:bg-emerald-600 text-slate-950"
+                            : "bg-amber-500 hover:bg-amber-600 text-slate-950"
+                        }`}
+                        title={isPausedAiReconcile ? "Reanudar proceso de conciliación" : "Pausar temporalmente"}
+                      >
+                        {isPausedAiReconcile ? <Play className="w-3 h-3 fill-current" /> : <Pause className="w-3 h-3 fill-current" />}
+                        <span>{isPausedAiReconcile ? "Reanudar" : "Pausar"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          isCancelledRef.current = true;
+                          setAiReconcileStatus("Cancelando proceso...");
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded bg-red-600 hover:bg-red-700 text-white flex items-center gap-1.5 transition-colors shadow-sm"
+                        title="Detener y cancelar el proceso"
+                      >
+                        <Square className="w-3 h-3 fill-current" />
+                        <span>Cancelar</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {loadingTransactions ? (
                       <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
                   ) : displayedTransactions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground opacity-60 flex-1">
@@ -625,37 +747,56 @@ export default function BancosPage() {
                                   ))}
                               </tbody>
                           </table>
-                      </div>
+                       </div>
                   ) : (
                       /* Split Pane Layout for Reconcile Tab */
                       <div className="flex-1 flex flex-col lg:flex-row gap-6 p-4 bg-slate-50/40 overflow-hidden">
                           {/* Left pane: list of pending transactions */}
                           <div className="lg:w-[40%] bg-card border rounded-xl shadow-sm flex flex-col h-full overflow-hidden">
-                              <div className="p-3 border-b bg-slate-50 flex items-center justify-between shrink-0">
-                                  <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                                      Movimientos ({displayedTransactions.length})
-                                  </span>
-                                  {displayedTransactions.length > 0 && (
-                                      <button
-                                          type="button"
-                                          onClick={handleSelectAllToggle}
-                                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1.5 transition-all bg-white hover:bg-slate-50 border border-slate-200 px-2 py-1 rounded"
-                                      >
-                                          <div className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 transition-all ${
-                                              allEligibleSelected 
-                                                  ? 'bg-indigo-600 border-indigo-600 text-white' 
-                                                  : 'border-slate-300 bg-white'
-                                          }`}>
-                                              {allEligibleSelected && (
-                                                  <svg className="w-2 h-2 fill-current text-white" viewBox="0 0 20 20">
-                                                      <path d="M0 11l2-2 5 5L18 3l2 2L7 18z" />
-                                                  </svg>
-                                              )}
-                                          </div>
-                                          {allEligibleSelected ? 'Deseleccionar todos' : 'Seleccionar todos'}
-                                      </button>
-                                  )}
-                              </div>
+                              <div className="p-2.5 border-b bg-slate-50 flex items-center justify-between shrink-0 gap-2">
+                                   <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">
+                                       Movimientos ({displayedTransactions.length})
+                                   </span>
+                                   <div className="flex items-center gap-2">
+                                       <select
+                                           value={reconcileTypeFilter}
+                                           onChange={(e) => {
+                                               const newFilter = e.target.value as "all" | "inflow" | "outflow";
+                                               setReconcileTypeFilter(newFilter);
+                                               setSelectedTxs(prev => {
+                                                   if (newFilter === "inflow") return prev.filter(t => t.amount > 0);
+                                                   if (newFilter === "outflow") return prev.filter(t => t.amount < 0);
+                                                   return prev;
+                                               });
+                                           }}
+                                           className="bg-white border border-slate-200 text-slate-700 text-[11px] font-bold rounded px-2 py-1 outline-none shadow-sm focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                                       >
+                                           <option value="all">Todos los tipos</option>
+                                           <option value="outflow">Egresos (-)</option>
+                                           <option value="inflow">Ingresos (+)</option>
+                                       </select>
+                                       {displayedTransactions.length > 0 && (
+                                           <button
+                                               type="button"
+                                               onClick={handleSelectAllToggle}
+                                               className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1.5 transition-all bg-white hover:bg-slate-50 border border-slate-200 px-2 py-1 rounded shrink-0 shadow-sm"
+                                           >
+                                               <div className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 transition-all ${
+                                                   allEligibleSelected 
+                                                       ? 'bg-indigo-600 border-indigo-600 text-white' 
+                                                       : 'border-slate-300 bg-white'
+                                               }`}>
+                                                   {allEligibleSelected && (
+                                                       <svg className="w-2 h-2 fill-current text-white" viewBox="0 0 20 20">
+                                                           <path d="M0 11l2-2 5 5L18 3l2 2L7 18z" />
+                                                       </svg>
+                                                   )}
+                                               </div>
+                                               {allEligibleSelected ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                                           </button>
+                                       )}
+                                   </div>
+                               </div>
                               <div className="flex-1 overflow-y-auto divide-y custom-scrollbar">
                                   {displayedTransactions.map((tx) => {
                                       const matches = getMatchCount(tx);

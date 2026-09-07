@@ -7,12 +7,13 @@ import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X } from "lucide-react";
+import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X, ShieldCheck, CheckSquare, Square } from "lucide-react";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
+import { FormalizeProvisionalModal } from "./components/FormalizeProvisionalModal";
 import Link from "next/link";
 
 export default function GastosManualesPage() {
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,6 +28,11 @@ export default function GastosManualesPage() {
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<any>(null);
+
+  // Provisional Formalization State
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([]);
+  const [isFormalizeModalOpen, setIsFormalizeModalOpen] = useState(false);
+  const [formalizeTargetExpenses, setFormalizeTargetExpenses] = useState<any[]>([]);
 
   // Sorting state
   const [sortField, setSortField] = useState<string>("date");
@@ -193,6 +199,13 @@ export default function GastosManualesPage() {
         if (exp.isRecurring && getPendingBalance(exp) < 0.01) return false;
       }
       if (statusFilter === "cancelado" && exp.status !== "cancelado") return false;
+      if (statusFilter === "provisionales") {
+        const isProv = exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"));
+        if (!isProv) return false;
+      }
+      if (statusFilter === "no_deducibles") {
+        if (!exp.isNonDeductible) return false;
+      }
     }
     // 3. Date range filter
     if (dateFrom || dateTo) {
@@ -333,16 +346,18 @@ export default function GastosManualesPage() {
           </div>
 
           {/* Estatus */}
-          <div className="space-y-1 w-full sm:w-40">
+          <div className="space-y-1 w-full sm:w-44">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Estatus</span>
             <select
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="all">Todos</option>
               <option value="paid">Pagados</option>
               <option value="pending">Pendientes</option>
+              <option value="provisionales">Provisionales / Sin Factura</option>
+              <option value="no_deducibles">Oficial No Deducible</option>
               <option value="cancelado">Cancelados</option>
             </select>
           </div>
@@ -392,12 +407,85 @@ export default function GastosManualesPage() {
         </div>
       </div>
 
+      {/* Batch Action Banner for Provisional Expenses */}
+      {selectedExpenseIds.length > 0 && (
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white px-5 py-3 rounded-xl shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-600/30 rounded-lg border border-indigo-400/40 text-indigo-300">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold">
+                {selectedExpenseIds.length} {selectedExpenseIds.length === 1 ? "gasto provisional seleccionado" : "gastos provisionales seleccionados"}
+              </p>
+              <p className="text-xs text-slate-300">
+                Suma total: {formatMoney(
+                  expenses
+                    .filter(e => selectedExpenseIds.includes(e.id))
+                    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedExpenseIds([])}
+              className="text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border-white/20 h-8"
+            >
+              Deseleccionar
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                const targetList = expenses.filter(e => selectedExpenseIds.includes(e.id));
+                setFormalizeTargetExpenses(targetList);
+                setIsFormalizeModalOpen(true);
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-8 px-4 gap-2 shadow-sm"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              Oficializar Seleccionados (Lote)
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Main Expenses Table */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
+                <th className="px-3 py-3 w-10 text-center">
+                  {(() => {
+                    const visibleProvs = sortedExpenses.filter(e => e.isProvisional || e.isPendingFiscalInvoice || (e.documentNumber && e.documentNumber.startsWith("PROV-")));
+                    const allSelected = visibleProvs.length > 0 && visibleProvs.every(e => selectedExpenseIds.includes(e.id));
+                    if (visibleProvs.length === 0) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (allSelected) {
+                            setSelectedExpenseIds(prev => prev.filter(id => !visibleProvs.some(v => v.id === id)));
+                          } else {
+                            const newIds = Array.from(new Set([...selectedExpenseIds, ...visibleProvs.map(v => v.id)]));
+                            setSelectedExpenseIds(newIds);
+                          }
+                        }}
+                        className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                        title={allSelected ? "Deseleccionar todos los provisionales" : "Seleccionar todos los provisionales visibles"}
+                      >
+                        {allSelected ? (
+                          <CheckSquare className="w-4 h-4 text-indigo-600" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-300" />
+                        )}
+                      </button>
+                    );
+                  })()}
+                </th>
                 <th className="px-4 py-3 w-24 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
                   <div className="flex items-center">Fecha {renderSortIcon("date")}</div>
                 </th>
@@ -411,27 +499,50 @@ export default function GastosManualesPage() {
                   <div className="flex items-center">Concepto {renderSortIcon("concept")}</div>
                 </th>
                 <th className="px-4 py-3 w-32">Sucursal</th>
-                <th className="px-4 py-3 w-24">Estatus</th>
+                <th className="px-4 py-3 w-28">Estatus</th>
                 <th className="px-4 py-3 w-28 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
                   <div className="flex items-center justify-end">Monto {renderSortIcon("amount")}</div>
                 </th>
                 <th className="px-4 py-3 w-28 text-right">Pagado</th>
                 <th className="px-4 py-3 w-28 text-right">Pendiente</th>
-                <th className="px-4 py-3 w-24 text-center">Acciones</th>
+                <th className="px-4 py-3 w-28 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {sortedExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
                     No se encontraron gastos operativos registrados.
                   </td>
                 </tr>
               ) : (
                 sortedExpenses.map((exp) => {
-                  const saldo = Math.max(0, exp.amount - (exp.paidAmount || 0));
+                  const isProv = exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"));
+                  const isSelected = selectedExpenseIds.includes(exp.id);
+
                   return (
-                     <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
+                     <tr key={exp.id} className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                       <td className="px-3 py-3 text-center">
+                         {isProv ? (
+                           <button
+                             type="button"
+                             onClick={() => {
+                               if (isSelected) {
+                                 setSelectedExpenseIds(prev => prev.filter(id => id !== exp.id));
+                               } else {
+                                 setSelectedExpenseIds(prev => [...prev, exp.id]);
+                               }
+                             }}
+                             className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                           >
+                             {isSelected ? (
+                               <CheckSquare className="w-4 h-4 text-indigo-600" />
+                             ) : (
+                               <Square className="w-4 h-4 text-slate-300" />
+                             )}
+                           </button>
+                         ) : null}
+                       </td>
                        <td className="px-4 py-3 whitespace-nowrap">
                          {exp.date}
                        </td>
@@ -445,10 +556,18 @@ export default function GastosManualesPage() {
                          {exp.concept}
                        </td>
                        <td className="px-4 py-3 text-slate-500 font-medium">
-                         {exp.locationName}
+                         {exp.locationName || "-"}
                        </td>
                        <td className="px-4 py-3">
-                         {exp.isRecurring ? (
+                         {exp.isNonDeductible ? (
+                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-300">
+                             No Deducible
+                           </span>
+                         ) : isProv ? (
+                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold border border-amber-300 animate-pulse">
+                             Provisional
+                           </span>
+                         ) : exp.isRecurring ? (
                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold border border-purple-200">
                              Recurrente
                            </span>
@@ -476,7 +595,22 @@ export default function GastosManualesPage() {
                          {formatMoney(getPendingBalance(exp))}
                        </td>
                        <td className="px-4 py-3 text-center">
-                         <div className="flex items-center justify-center gap-2">
+                         <div className="flex items-center justify-center gap-1.5">
+                           {isProv && (
+                             <Button
+                               variant="outline"
+                               size="sm"
+                               onClick={() => {
+                                 setFormalizeTargetExpenses([exp]);
+                                 setIsFormalizeModalOpen(true);
+                               }}
+                               className="h-8 px-2 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 text-[11px] font-bold gap-1 shrink-0"
+                               title="Oficializar como gasto no deducible"
+                             >
+                               <ShieldCheck className="w-3.5 h-3.5" />
+                               <span>Oficializar</span>
+                             </Button>
+                           )}
                            <Link href={`/gastos/${exp.id}`} target="_blank">
                              <Button 
                                variant="outline" 
@@ -523,8 +657,6 @@ export default function GastosManualesPage() {
         </div>
       </div>
 
-      {/* Register New Expense Page Link */}
-
       {/* Pay Pending Expense Modal */}
       {selectedExpense && (
         <ExpensePaymentModal
@@ -538,6 +670,21 @@ export default function GastosManualesPage() {
           companyId={companyId || ""}
         />
       )}
+
+      {/* Formalize Provisional Expenses Modal (Single & Batch) */}
+      <FormalizeProvisionalModal
+        isOpen={isFormalizeModalOpen}
+        onClose={() => {
+          setIsFormalizeModalOpen(false);
+          setFormalizeTargetExpenses([]);
+        }}
+        expenses={formalizeTargetExpenses}
+        companyId={companyId || ""}
+        userEmail={user?.email || undefined}
+        onSuccess={() => {
+          setSelectedExpenseIds([]);
+        }}
+      />
     </div>
   );
 }

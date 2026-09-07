@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft, ChevronDown } from "lucide-react";
 import { BankTransaction } from "@/types/bank";
+import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 
 interface ReconcilePanelProps {
   transactions: BankTransaction[];
@@ -1479,6 +1480,23 @@ export function ReconcilePanel({
       {/* Form content */}
       <form onSubmit={handleReconcile} className="flex-1 overflow-y-auto p-5 flex flex-col justify-between space-y-6">
         
+        {((transactions.length === 1 && (transactions[0] as any).aiReasoning) || (transactions.length === 1 && (transactions[0] as any).requiresHumanReview)) && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900 text-xs space-y-1 shadow-sm">
+            <div className="flex items-center gap-1.5 font-bold text-amber-800">
+              <Sparkles className="w-4 h-4 text-amber-600 animate-pulse" />
+              <span>Sugerencia del Agente Conciliador IA</span>
+              {(transactions[0] as any).aiConfidenceScore && (
+                <span className="ml-auto text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full font-extrabold">
+                  Confianza: {Math.round(((transactions[0] as any).aiConfidenceScore || 0) * 100)}%
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              {(transactions[0] as any).aiReasoning || "El movimiento fue evaluado por la IA y requiere confirmación manual."}
+            </p>
+          </div>
+        )}
+
         {reconcileMode === "match" ? (
           <div className="space-y-4">
             <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">

@@ -198,6 +198,9 @@ service cloud.firestore {
       match /cost_centers/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /costCenters/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
       match /sat_requests/{document=**} {
         allow read, write: if isUserOfCompany(companyId);
       }

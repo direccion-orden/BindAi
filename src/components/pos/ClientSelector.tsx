@@ -11,6 +11,8 @@ import { QuickClientModal } from "@/components/pos/QuickClientModal";
 
 export interface Client {
   id: string;
+  number?: string;
+  clientNumber?: number;
   name: string;
   rfc: string;
   email?: string;
@@ -49,6 +51,8 @@ export function ClientSelector() {
         const data = doc.data() as any;
         return {
           id: doc.id,
+          number: data.number || (data.clientNumber ? `CLI-${String(data.clientNumber).padStart(5, '0')}` : undefined),
+          clientNumber: data.clientNumber,
           name: data.name || data.ClientName || data.LegalName || data.CommercialName || "",
           rfc: data.rfc || data.RFC || "XAXX010101000",
           email: data.email || data.Email || "",
@@ -96,10 +100,12 @@ export function ClientSelector() {
       const lowerQ = queryText.toLowerCase();
       const filtered = allClients.filter(c => {
         const clientNameStr = c.name || "";
+        const numStr = c.number || (c.clientNumber !== undefined ? String(c.clientNumber) : "");
         return (clientNameStr.toLowerCase().includes(lowerQ)) || 
+        (numStr.toLowerCase().includes(lowerQ)) ||
         (c.rfc && c.rfc.toLowerCase().includes(lowerQ)) ||
         (c.email && c.email.toLowerCase().includes(lowerQ)) ||
-        (c.phone && c.phone.includes(lowerQ))
+        (c.phone && c.phone.includes(lowerQ));
       });
       
       setResults(filtered.slice(0, 10)); // Show top 10
@@ -216,10 +222,17 @@ export function ClientSelector() {
                         handleSelect(client);
                       }}
                     >
-                      <p className="font-medium text-sm flex items-center justify-between">
-                        {client.name}
+                      <p className="font-medium text-sm flex items-center justify-between gap-2">
+                        <span className="truncate flex items-center gap-1.5">
+                          {client.number && (
+                            <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-1 py-0.5 rounded border border-slate-200 shrink-0">
+                              {client.number}
+                            </span>
+                          )}
+                          <span className="truncate">{client.name}</span>
+                        </span>
                         {client.points !== undefined && (
-                          <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 rounded-full flex items-center font-bold">
+                          <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 rounded-full flex items-center font-bold shrink-0">
                             ★ {client.points.toFixed(0)}
                           </span>
                         )}

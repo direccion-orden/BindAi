@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, getDoc, getDocs, where, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, Truck, User, FileText, CheckCircle2, XCircle, Receipt, Plus, Search, DollarSign, Copy, Eye, FileDown, Ban, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
@@ -37,12 +37,131 @@ export default function RemisionesPage() {
 
   const handleCancelRemission = async (remissionId: string) => {
     if (!companyId) return;
-    const confirm = window.confirm("¿Estás seguro de que deseas cancelar esta remisión?");
+    const confirm = window.confirm("¿Estás seguro de que deseas cancelar esta remisión? Se revertirá el inventario y se sincronizará el pedido de origen.");
     if (!confirm) return;
     try {
-      await updateDoc(doc(db, "companies", companyId, "remisiones", remissionId), {
-        status: 'cancelada'
+      const remRef = doc(db, "companies", companyId, "remisiones", remissionId);
+      const remSnap = await getDoc(remRef);
+      if (!remSnap.exists()) {
+        alert("La remisión no existe.");
+        return;
+      }
+      const remData = remSnap.data();
+
+      // 1. Cancel Remission
+      await updateDoc(remRef, {
+        status: 'cancelada',
+        updatedAt: new Date().toISOString()
       });
+
+      // 2. Reconcile Order & Payments
+      const orderId = remData.orderId || remData.idPedido;
+      const orderNumber = remData.orderNumber;
+      let targetOrderDocRef: any = null;
+      let targetOrderData: any = null;
+
+      if (orderId) {
+        const orderRef = doc(db, "companies", companyId, "pedidos", orderId);
+        const orderSnap = await getDoc(orderRef);
+        if (orderSnap.exists()) {
+          targetOrderDocRef = orderRef;
+          targetOrderData = orderSnap.data();
+        }
+      }
+
+      if (!targetOrderDocRef && orderNumber) {
+        const q = query(collection(db, "companies", companyId, "pedidos"), where("orderNumber", "==", orderNumber));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          targetOrderDocRef = qSnap.docs[0].ref;
+          targetOrderData = qSnap.docs[0].data();
+        }
+      }
+
+      if (targetOrderDocRef && targetOrderData) {
+        const finalTargetOrderId = targetOrderDocRef.id;
+        const paymentsRef = collection(db, "companies", companyId, "payments");
+        const [snapRemPayments, snapOrderPayments] = await Promise.all([
+          getDocs(query(paymentsRef, where("documentId", "==", remissionId))),
+          getDocs(query(paymentsRef, where("orderId", "==", finalTargetOrderId)))
+        ]);
+
+        const paymentDocsMap = new Map<string, any>();
+        snapRemPayments.docs.forEach(d => paymentDocsMap.set(d.id, d));
+        snapOrderPayments.docs.forEach(d => paymentDocsMap.set(d.id, d));
+
+        let activePaymentsSum = 0;
+        for (const pDoc of paymentDocsMap.values()) {
+          const pData = pDoc.data();
+          const isCancelled = pData.status === "cancelado" || pData.status === "cancelada";
+          if (!isCancelled) {
+            activePaymentsSum += Number(pData.amount) || 0;
+            if (pData.documentId === remissionId) {
+              await updateDoc(pDoc.ref, {
+                documentId: finalTargetOrderId,
+                documentType: "pedido",
+                updatedAt: new Date().toISOString()
+              });
+            }
+          }
+        }
+
+        const orderTotal = Number(targetOrderData.totalAmount) || 0;
+        let newOrderStatus = "por_surtir";
+        if (activePaymentsSum >= orderTotal - 0.01 && orderTotal > 0) {
+          newOrderStatus = "pagado";
+        }
+
+        await updateDoc(targetOrderDocRef, {
+          status: newOrderStatus,
+          paidAmount: activePaymentsSum,
+          remissionId: deleteField(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      // 3. Revert Inventory Deductions
+      if (remData.items && Array.isArray(remData.items)) {
+        for (const item of remData.items) {
+          try {
+            const productRef = doc(db, "companies", companyId, "products", item.productId);
+            const productDoc = await getDoc(productRef);
+            if (productDoc.exists()) {
+              const productData = productDoc.data();
+              const targetVariantId = item.variantId || item.id;
+              const targetSku = item.sku;
+              
+              const updatedVariants = productData.variants?.map((v: any) => {
+                const isMatch = targetVariantId ? v.id === targetVariantId : (targetSku && v.sku === targetSku);
+                if (isMatch) {
+                  return { ...v, stock: (v.stock || 0) + (Number(item.quantity) || 0) };
+                }
+                return v;
+              });
+              
+              await updateDoc(productRef, { 
+                variants: updatedVariants,
+                updatedAt: new Date().toISOString()
+              });
+              
+              const movId = crypto.randomUUID();
+              await setDoc(doc(db, "companies", companyId, "inventory_movements", movId), {
+                id: movId,
+                productId: item.productId,
+                variantId: targetVariantId || productData.variants?.[0]?.id || "",
+                type: "IN",
+                quantity: Number(item.quantity) || 0,
+                reason: `Cancelación de Remisión ${remData.remissionNumber || ""}`,
+                referenceId: remissionId,
+                createdAt: new Date().toISOString()
+              });
+            }
+          } catch (err) {
+            console.error(`Error al revertir stock de item ${item.productName}:`, err);
+          }
+        }
+      }
+
       alert("Remisión cancelada con éxito");
     } catch (error) {
       console.error("Error cancelling remission:", error);

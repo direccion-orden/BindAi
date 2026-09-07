@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
+import { doc, getDoc, updateDoc, deleteField, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, ArrowLeft, Truck, Package, Receipt, FileText, XCircle, DollarSign, Printer, MessageSquare, Copy } from "lucide-react";
@@ -69,39 +69,78 @@ export default function RemisionDetallePage({ params: paramsPromise }: { params:
       });
       console.log("Paso 1: Remisión marcada como cancelada.");
 
-      // 2. Update Order status
+      // 2. Update Order status and reconcile payments
       const orderId = remission.orderId || remission.idPedido;
       const orderNumber = remission.orderNumber;
       
+      let targetOrderDocRef: any = null;
+      let targetOrderData: any = null;
+
       if (orderId) {
+        const orderRef = doc(db, "companies", companyId, "pedidos", orderId);
+        const orderSnap = await getDoc(orderRef);
+        if (orderSnap.exists()) {
+          targetOrderDocRef = orderRef;
+          targetOrderData = orderSnap.data();
+        }
+      }
+
+      if (!targetOrderDocRef && orderNumber) {
+        const q = query(collection(db, "companies", companyId, "pedidos"), where("orderNumber", "==", orderNumber));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          targetOrderDocRef = qSnap.docs[0].ref;
+          targetOrderData = qSnap.docs[0].data();
+        }
+      }
+
+      if (targetOrderDocRef && targetOrderData) {
         try {
-          const orderRef = doc(db, "companies", companyId, "pedidos", orderId);
-          const orderSnap = await getDoc(orderRef);
+          const finalTargetOrderId = targetOrderDocRef.id;
           
-          if (orderSnap.exists()) {
-            await updateDoc(orderRef, {
-              status: "por_surtir",
-              remissionId: deleteField(),
-              updatedAt: new Date().toISOString()
-            });
-            console.log("Paso 2: Pedido actualizado por ID.");
-          } else if (orderNumber) {
-            // Fallback: search by orderNumber if ID doesn't exist
-            const { query, collection, where, getDocs } = await import("firebase/firestore");
-            const q = query(collection(db, "companies", companyId, "pedidos"), where("orderNumber", "==", orderNumber));
-            const qSnap = await getDocs(q);
-            if (!qSnap.empty) {
-              await updateDoc(doc(db, "companies", companyId, "pedidos", qSnap.docs[0].id), {
-                status: "por_surtir",
-                remissionId: deleteField(),
-                updatedAt: new Date().toISOString()
-              });
-              console.log("Paso 2: Pedido actualizado por número (fallback).");
+          // Reconcile payments associated with this remission or order
+          const paymentsRef = collection(db, "companies", companyId, "payments");
+          const [snapRemPayments, snapOrderPayments] = await Promise.all([
+            getDocs(query(paymentsRef, where("documentId", "==", remission.id))),
+            getDocs(query(paymentsRef, where("orderId", "==", finalTargetOrderId)))
+          ]);
+
+          const paymentDocsMap = new Map<string, any>();
+          snapRemPayments.docs.forEach(d => paymentDocsMap.set(d.id, d));
+          snapOrderPayments.docs.forEach(d => paymentDocsMap.set(d.id, d));
+
+          let activePaymentsSum = 0;
+          for (const pDoc of paymentDocsMap.values()) {
+            const pData = pDoc.data();
+            const isCancelled = pData.status === "cancelado" || pData.status === "cancelada";
+            if (!isCancelled) {
+              activePaymentsSum += Number(pData.amount) || 0;
+              // If the payment was pointing to this remission, point it back to the order
+              if (pData.documentId === remission.id) {
+                await updateDoc(pDoc.ref, {
+                  documentId: finalTargetOrderId,
+                  documentType: "pedido",
+                  updatedAt: new Date().toISOString()
+                });
+              }
             }
           }
+
+          const orderTotal = Number(targetOrderData.totalAmount) || 0;
+          let newOrderStatus = "por_surtir";
+          if (activePaymentsSum >= orderTotal - 0.01 && orderTotal > 0) {
+            newOrderStatus = "pagado";
+          }
+
+          await updateDoc(targetOrderDocRef, {
+            status: newOrderStatus,
+            paidAmount: activePaymentsSum,
+            remissionId: deleteField(),
+            updatedAt: new Date().toISOString()
+          });
+          console.log("Paso 2: Pedido y pagos reconciliados exitosamente. paidAmount:", activePaymentsSum);
         } catch (err) {
-          console.error("Error al actualizar pedido:", err);
-          // We continue to Step 3 even if Step 2 has issues, to at least revert inventory
+          console.error("Error al actualizar pedido y pagos:", err);
         }
       }
 

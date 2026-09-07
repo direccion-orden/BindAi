@@ -70,6 +70,33 @@ export async function cancelPaymentOperation(companyId: string, paymentId: strin
     }
   }
 
+  // 4b. If the payment originated from an order and was assigned to a remission/invoice, also update the order's paidAmount and status
+  if (payment.orderId && (documentType === "remision" || documentType === "factura")) {
+    try {
+      const orderRef = doc(db, "companies", companyId, "pedidos", payment.orderId);
+      const orderSnap = await getDoc(orderRef);
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data();
+        const currentOrderPaid = orderData.paidAmount || 0;
+        const newOrderPaid = Math.max(0, currentOrderPaid - payment.amount);
+        const orderTotal = orderData.totalAmount || 0;
+        const orderUpdates: any = {
+          paidAmount: newOrderPaid,
+          updatedAt: new Date().toISOString()
+        };
+
+        if (newOrderPaid < orderTotal - 0.01) {
+          if (orderData.status === "pagado" || orderData.status === "pagada") {
+            orderUpdates.status = "por_surtir";
+          }
+        }
+        await updateDoc(orderRef, orderUpdates);
+      }
+    } catch (err) {
+      console.error("Error updating linked order on payment cancellation:", err);
+    }
+  }
+
   // 5. If it was an Anticipo application, revert the balance on the Anticipo document
   if (payment.method === "Anticipo" || (payment.reference && payment.reference.toLowerCase().includes("anticipo"))) {
     let anticipoId = payment.anticipoId;
@@ -258,6 +285,37 @@ export async function editPaymentOperation(
         }
       }
       await updateDoc(docRef, updates);
+    }
+  }
+
+  // 4b. If the payment originated from an order and was assigned to a remission/invoice, also update the order's paidAmount
+  if (originalPayment.orderId && (originalPayment.documentType === "remision" || originalPayment.documentType === "factura")) {
+    try {
+      const orderRef = doc(db, "companies", companyId, "pedidos", originalPayment.orderId);
+      const orderSnap = await getDoc(orderRef);
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data();
+        const currentOrderPaid = orderData.paidAmount || 0;
+        const newOrderPaid = Math.max(0, currentOrderPaid + updatedFields.amount);
+        const orderTotal = orderData.totalAmount || 0;
+        const orderUpdates: any = {
+          paidAmount: newOrderPaid,
+          updatedAt: new Date().toISOString()
+        };
+
+        if (newOrderPaid >= orderTotal - 0.01) {
+          if (orderData.status !== "cancelado" && orderData.status !== "cancelada") {
+            orderUpdates.status = "pagado";
+          }
+        } else {
+          if (orderData.status === "pagado" || orderData.status === "pagada") {
+            orderUpdates.status = "por_surtir";
+          }
+        }
+        await updateDoc(orderRef, orderUpdates);
+      }
+    } catch (err) {
+      console.error("Error updating linked order on payment edit:", err);
     }
   }
 

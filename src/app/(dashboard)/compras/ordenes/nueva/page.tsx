@@ -81,7 +81,8 @@ export default function NuevaOrdenCompraPage() {
     const queryText = vendorSearchQuery.toLowerCase();
     const name = (v.name || "").toLowerCase();
     const rfc = (v.rfc || "").toLowerCase();
-    return name.includes(queryText) || rfc.includes(queryText);
+    const num = (v.number || (v.vendorNumber !== undefined ? String(v.vendorNumber) : "")).toLowerCase();
+    return name.includes(queryText) || rfc.includes(queryText) || num.includes(queryText);
   });
 
   useEffect(() => {
@@ -92,6 +93,8 @@ export default function NuevaOrdenCompraPage() {
         const data = d.data();
         return {
           id: d.id,
+          number: data.number || (data.vendorNumber ? `PROV-${String(data.vendorNumber).padStart(5, '0')}` : undefined),
+          vendorNumber: data.vendorNumber,
           name: data.LegalName || data.name || data.CommercialName || "Proveedor sin nombre",
           rfc: data.rfc || data.RFC || ""
         };
@@ -321,8 +324,13 @@ export default function NuevaOrdenCompraPage() {
                       className={`p-2 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer transition-colors text-xs ${vendorId === v.id ? 'bg-indigo-50/50 font-medium' : ''}`}
                       onClick={() => handleVendorSelect(v)}
                     >
-                      <div className="font-semibold text-slate-800">
-                        {v.name}
+                      <div className="font-semibold text-slate-800 flex items-center justify-between gap-1">
+                        <span className="truncate">{v.name}</span>
+                        {v.number && (
+                          <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-1 py-0.5 rounded border border-slate-200 shrink-0">
+                            {v.number}
+                          </span>
+                        )}
                       </div>
                       {v.rfc && (
                         <div className="text-[10px] text-slate-500 mt-0.5">

@@ -5,8 +5,12 @@ import { X, UserPlus, Loader2 } from "lucide-react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
+import { getNextSequenceDetails } from "@/lib/firebase/counters";
+
 interface Client {
   id: string;
+  number?: string;
+  clientNumber?: number;
   name?: string;
   LegalName?: string;
   CommercialName?: string;
@@ -100,8 +104,22 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch, exis
     setError("");
 
     try {
+      if (!companyId) throw new Error("No company ID");
+
+      let clientNumber: number | undefined;
+      let number: string | undefined;
+
+      try {
+        const seq = await getNextSequenceDetails(companyId, 'clients');
+        number = seq.formatted;
+        clientNumber = seq.number;
+      } catch (seqErr) {
+        console.error("Error obteniendo secuencia en QuickClientModal:", seqErr);
+      }
+
       const newClientData = {
         type,
+        ...(number ? { number, clientNumber } : {}),
         firstName: type === 'general' ? firstName.trim().toUpperCase() : "",
         paternalLastName: type === 'general' ? paternalLastName.trim().toUpperCase() : "",
         maternalLastName: type === 'general' ? maternalLastName.trim().toUpperCase() : "",
@@ -121,11 +139,12 @@ export function QuickClientModal({ onClose, onClientCreated, initialSearch, exis
         isActive: true
       };
 
-      if (!companyId) throw new Error("No company ID");
       const docRef = await addDoc(collection(db, "companies", companyId, "clients"), newClientData);
       
       onClientCreated({
         id: docRef.id,
+        number: newClientData.number,
+        clientNumber: newClientData.clientNumber,
         name: newClientData.name,
         phone: newClientData.phone,
         email: newClientData.email,

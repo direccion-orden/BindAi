@@ -6,7 +6,8 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2, Edit2, Search, Truck, Mail, Phone, Upload, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, Plus, Trash2, Edit2, Search, Truck, Mail, Phone, Upload, ArrowUpDown, ArrowUp, ArrowDown, Hash } from "lucide-react";
+import { getNextSequenceDetails } from "@/lib/firebase/counters";
 import {
   Table,
   TableBody,
@@ -18,6 +19,8 @@ import {
 
 export interface Vendor {
   id: string;
+  number?: string;
+  vendorNumber?: number;
   name: string;
   email?: string;
   phone?: string;
@@ -215,8 +218,23 @@ export default function ProveedoresPage() {
     try {
       const docId = currentId || crypto.randomUUID();
       const ref = doc(db, "companies", companyId, "vendors", docId);
+
+      let vendorNumber = formData.vendorNumber;
+      let number = formData.number;
+
+      if (!currentId && !number) {
+        try {
+          const seq = await getNextSequenceDetails(companyId, 'vendors');
+          number = seq.formatted;
+          vendorNumber = seq.number;
+        } catch (seqErr) {
+          console.error("Error obteniendo secuencia de proveedor:", seqErr);
+        }
+      }
+
       await setDoc(ref, {
         name: formData.name.trim(),
+        ...(number ? { number, vendorNumber } : {}),
         email: formData.email?.trim() || "",
         phone: formData.phone?.trim() || "",
         rfc: formData.rfc?.trim() || "",
@@ -226,7 +244,7 @@ export default function ProveedoresPage() {
         neighborhood: formData.neighborhood?.trim() || "",
         city: formData.city?.trim() || "",
         state: formData.state?.trim() || "",
-        createdAt: new Date().toISOString()
+        createdAt: (formData as any).createdAt || new Date().toISOString()
       }, { merge: true });
       handleCloseForm();
     } catch (error) {
@@ -250,8 +268,10 @@ export default function ProveedoresPage() {
   const filteredVendors = vendors.filter(v => {
     const nameVal = (v.LegalName || v.name || "").toLowerCase();
     const emailVal = (v.Email || v.email || "").toLowerCase();
+    const rfcVal = (v.rfc || "").toLowerCase();
+    const numVal = (v.number || (v.vendorNumber !== undefined ? String(v.vendorNumber) : "")).toLowerCase();
     const search = searchTerm.toLowerCase();
-    return nameVal.includes(search) || emailVal.includes(search);
+    return nameVal.includes(search) || emailVal.includes(search) || rfcVal.includes(search) || numVal.includes(search);
   });
 
   // Sorting state
@@ -279,6 +299,12 @@ export default function ProveedoresPage() {
   };
 
   const sortedVendors = [...filteredVendors].sort((a, b) => {
+    if (sortField === "number") {
+      const aNum = a.vendorNumber || (a.number ? parseInt(a.number.replace(/\D/g, '')) : 0) || 0;
+      const bNum = b.vendorNumber || (b.number ? parseInt(b.number.replace(/\D/g, '')) : 0) || 0;
+      return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+    }
+
     let aVal = "";
     let bVal = "";
 
@@ -333,7 +359,15 @@ export default function ProveedoresPage() {
       {isEditing ? (
         <div className="bg-white border rounded-xl shadow-sm p-6 max-w-4xl animate-in fade-in zoom-in duration-300">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold">{currentId ? "Editar Proveedor" : "Nuevo Proveedor"}</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold">{currentId ? "Editar Proveedor" : "Nuevo Proveedor"}</h2>
+              {formData.number && (
+                <span className="px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-bold text-xs flex items-center gap-1 shadow-sm">
+                  <Hash className="w-3.5 h-3.5 text-indigo-500" />
+                  {formData.number}
+                </span>
+              )}
+            </div>
             <Button variant="ghost" size="sm" onClick={handleCloseForm}>Cerrar</Button>
           </div>
           
@@ -375,6 +409,7 @@ export default function ProveedoresPage() {
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Teléfono</label>
                     <Input 
+                      type="tel"
                       value={formData.phone || ""} 
                       onChange={e => setFormData({...formData, phone: e.target.value})} 
                       placeholder="(55) 1234-5678" 
@@ -458,7 +493,7 @@ export default function ProveedoresPage() {
              <div className="relative max-w-sm">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
-                  placeholder="Buscar proveedor..." 
+                  placeholder="Buscar por número, nombre, correo o RFC..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9"
@@ -473,6 +508,12 @@ export default function ProveedoresPage() {
             <Table>
               <TableHeader className="bg-slate-50 border-b">
                 <TableRow>
+                  <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors text-slate-500 uppercase text-xs font-semibold w-[110px]" onClick={() => handleSort("number")}>
+                    <div className="flex items-center">
+                      No.
+                      {renderSortIcon("number")}
+                    </div>
+                  </TableHead>
                   <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors text-slate-500 uppercase text-xs font-semibold" onClick={() => handleSort("name")}>
                     <div className="flex items-center">
                       Nombre
@@ -489,42 +530,54 @@ export default function ProveedoresPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedVendors.map(v => (
-                  <TableRow key={v.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Truck className="w-4 h-4 text-muted-foreground/50" />
-                        {(v.LegalName || v.name)}
-                      </div>
-                      {v.rfc && <div className="text-xs text-muted-foreground mt-1 ml-6">{v.rfc}</div>}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        {(v.Email || v.email) && (
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Mail className="w-3 h-3" /> {(v.Email || v.email)}
-                          </div>
+                {sortedVendors.map(v => {
+                  const displayNum = v.number || (v.vendorNumber ? `PROV-${String(v.vendorNumber).padStart(5, '0')}` : null);
+                  return (
+                    <TableRow key={v.id}>
+                      <TableCell>
+                        {displayNum ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            {displayNum}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-300 italic">-</span>
                         )}
-                        {(v.Phone || v.phone) && (
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Phone className="w-3 h-3" /> {(v.Phone || v.phone)}
-                          </div>
-                        )}
-                        {!(v.Email || v.email) && !(v.Phone || v.phone) && <span className="text-sm text-muted-foreground/50">Sin contacto</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenForm(v)}>
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                          <span>{(v.LegalName || v.name)}</span>
+                        </div>
+                        {v.rfc && <div className="text-xs text-muted-foreground mt-1 ml-6">{v.rfc}</div>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {(v.Email || v.email) && (
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Mail className="w-3 h-3" /> {(v.Email || v.email)}
+                            </div>
+                          )}
+                          {(v.Phone || v.phone) && (
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Phone className="w-3 h-3" /> {(v.Phone || v.phone)}
+                            </div>
+                          )}
+                          {!(v.Email || v.email) && !(v.Phone || v.phone) && <span className="text-sm text-muted-foreground/50">Sin contacto</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleOpenForm(v)}>
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -533,5 +586,3 @@ export default function ProveedoresPage() {
     </div>
   );
 }
-
-

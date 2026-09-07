@@ -1,7 +1,19 @@
 import { doc, runTransaction } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 
-export async function getNextSequence(companyId: string, type: 'cotizaciones' | 'pedidos' | 'remisiones' | 'facturas' | 'gastos'): Promise<string> {
+export type SequenceType = 'cotizaciones' | 'pedidos' | 'remisiones' | 'facturas' | 'gastos' | 'clients' | 'vendors';
+
+export interface SequenceResult {
+  formatted: string;
+  number: number;
+}
+
+export async function getNextSequence(companyId: string, type: SequenceType): Promise<string> {
+  const res = await getNextSequenceDetails(companyId, type);
+  return res.formatted;
+}
+
+export async function getNextSequenceDetails(companyId: string, type: SequenceType): Promise<SequenceResult> {
   const counterRef = doc(db, "companies", companyId, "counters", "sequences");
   
   return await runTransaction(db, async (transaction) => {
@@ -24,7 +36,13 @@ export async function getNextSequence(companyId: string, type: 'cotizaciones' | 
     if (type === 'remisiones') prefix = 'REM';
     if (type === 'facturas') prefix = 'FAC';
     if (type === 'gastos') prefix = 'GAS';
+    if (type === 'clients') prefix = 'CLI';
+    if (type === 'vendors') prefix = 'PROV';
     
-    return `${prefix}-${nextVal.toString().padStart(5, '0')}`;
+    return {
+      formatted: `${prefix}-${nextVal.toString().padStart(5, '0')}`,
+      number: nextVal
+    };
   });
 }
+

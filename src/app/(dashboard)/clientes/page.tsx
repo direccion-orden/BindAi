@@ -6,7 +6,8 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2, Edit2, Users, Search, Building, Mail, Phone, Eye, Upload, ArrowUpDown, ArrowUp, ArrowDown, CreditCard } from "lucide-react";
+import { Loader2, Plus, Trash2, Edit2, Users, Search, Building, Mail, Phone, Eye, Upload, ArrowUpDown, ArrowUp, ArrowDown, CreditCard, Hash } from "lucide-react";
+import { getNextSequenceDetails } from "@/lib/firebase/counters";
 import {
   Table,
   TableBody,
@@ -18,6 +19,8 @@ import {
 
 export interface Client {
   id: string;
+  number?: string;
+  clientNumber?: number;
   name: string;
   type?: 'general' | 'fiscal';
   firstName?: string;
@@ -293,8 +296,23 @@ export default function ClientesPage() {
     try {
       const docId = currentId || crypto.randomUUID();
       const ref = doc(db, "companies", companyId, "clients", docId);
+
+      let clientNumber = formData.clientNumber;
+      let number = formData.number;
+
+      if (!currentId && !number) {
+        try {
+          const seq = await getNextSequenceDetails(companyId, 'clients');
+          number = seq.formatted;
+          clientNumber = seq.number;
+        } catch (seqErr) {
+          console.error("Error obteniendo secuencia de cliente:", seqErr);
+        }
+      }
+
       await setDoc(ref, {
         ...formData,
+        ...(number ? { number, clientNumber } : {}),
         firstName: formData.firstName?.trim().toUpperCase() || "",
         paternalLastName: formData.paternalLastName?.trim().toUpperCase() || "",
         maternalLastName: formData.maternalLastName?.trim().toUpperCase() || "",
@@ -367,8 +385,9 @@ export default function ClientesPage() {
     const nameVal = (c.LegalName || c.CommercialName || c.name || "").toLowerCase();
     const emailVal = (c.Email || c.email || "").toLowerCase();
     const rfcVal = (c.RFC || c.rfc || "").toLowerCase();
+    const numVal = (c.number || (c.clientNumber !== undefined ? String(c.clientNumber) : "")).toLowerCase();
     const search = searchTerm.toLowerCase();
-    return nameVal.includes(search) || emailVal.includes(search) || rfcVal.includes(search);
+    return nameVal.includes(search) || emailVal.includes(search) || rfcVal.includes(search) || numVal.includes(search);
   });
 
   // Sorting state
@@ -396,6 +415,12 @@ export default function ClientesPage() {
   };
 
   const sortedClients = [...filteredClients].sort((a, b) => {
+    if (sortField === "number") {
+      const aNum = a.clientNumber || (a.number ? parseInt(a.number.replace(/\D/g, '')) : 0) || 0;
+      const bNum = b.clientNumber || (b.number ? parseInt(b.number.replace(/\D/g, '')) : 0) || 0;
+      return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+    }
+
     let aVal = "";
     let bVal = "";
 
@@ -453,7 +478,15 @@ export default function ClientesPage() {
 
       {isEditing ? (
         <div className="bg-card border rounded-lg p-6 max-w-3xl animate-in fade-in zoom-in duration-300">
-          <h2 className="text-xl font-bold mb-4">{currentId ? (isViewing ? "Ver Cliente" : "Editar Cliente") : "Nuevo Cliente"}</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">{currentId ? (isViewing ? "Ver Cliente" : "Editar Cliente") : "Nuevo Cliente"}</h2>
+            {formData.number && (
+              <span className="px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-bold text-xs flex items-center gap-1 shadow-sm">
+                <Hash className="w-3.5 h-3.5 text-indigo-500" />
+                {formData.number}
+              </span>
+            )}
+          </div>
           <form onSubmit={handleSave} className="space-y-6">
             
             {/* TIPO DE CLIENTE */}
@@ -756,6 +789,12 @@ export default function ClientesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors w-[110px]" onClick={() => handleSort("number")}>
+                    <div className="flex items-center">
+                      No.
+                      {renderSortIcon("number")}
+                    </div>
+                  </TableHead>
                   <TableHead className="cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("name")}>
                     <div className="flex items-center">
                       Nombre
@@ -781,8 +820,18 @@ export default function ClientesPage() {
               <TableBody>
                 {sortedClients.map(c => {
                   const hasCredit = Boolean(c.hasCreditLine || (c.creditLimit && c.creditLimit > 0));
+                  const displayNum = c.number || (c.clientNumber ? `CLI-${String(c.clientNumber).padStart(5, '0')}` : null);
                   return (
                     <TableRow key={c.id}>
+                      <TableCell>
+                        {displayNum ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            {displayNum}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-300 italic">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="font-medium font-semibold">{(c.LegalName || c.CommercialName || c.name)}</TableCell>
                       <TableCell>
                         <div className="flex flex-col text-sm text-muted-foreground">

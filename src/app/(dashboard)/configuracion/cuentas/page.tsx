@@ -17,6 +17,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+import { isCreditAccount } from "@/types/bank";
+
 interface BankAccount {
   id: string;
   name: string;
@@ -27,6 +29,8 @@ interface BankAccount {
   Name?: string;
   CurrencyCode?: string;
   isCredit?: boolean;
+  Type?: number;
+  TypeText?: string;
 }
 
 export default function CuentasPage() {
@@ -62,7 +66,7 @@ export default function CuentasPage() {
       setType(acc.type || "bank");
       setCurrency((acc.CurrencyCode || acc.currency || 'MXN') || "MXN");
       setInitialBalance(acc.initialBalance || 0);
-      setIsCredit(acc.isCredit || false);
+      setIsCredit(isCreditAccount(acc));
     } else {
       setCurrentId("");
       setName("");
@@ -291,7 +295,7 @@ export default function CuentasPage() {
                   <TableRow key={acc.id}>
                     <TableCell className="font-medium font-semibold flex items-center gap-2">
                       {(acc.Name || acc.name)}
-                      {acc.isCredit && (
+                      {isCreditAccount(acc) && (
                         <Badge variant="outline" className="text-[9px] bg-purple-50 text-purple-700 border-purple-200 uppercase font-extrabold">
                           Crédito
                         </Badge>

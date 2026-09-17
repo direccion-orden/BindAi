@@ -1,6 +1,7 @@
 import { doc, getDoc, getDocs, collection, setDoc, updateDoc, query, where } from "firebase/firestore";
 import { Firestore } from "firebase/firestore";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { isCreditAccount } from "@/types/bank";
 
 export interface ReconcileResult {
   success: boolean;
@@ -190,7 +191,23 @@ export async function runClientAiReconciliation(
 
     const bankAccDoc = await getDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId));
     const bankAccData = bankAccDoc.data() || {};
-    const bankAccountInfo = allAccounts.find(a => a.id === bankAccData.accountId) || allAccounts.find(a => a.code?.startsWith("102")) || { id: "acc-102-01", code: "102.01", name: bankAccData.name || "Banco" };
+    const isCredit = isCreditAccount(bankAccData);
+    const defaultPaymentMethod = isCredit ? "Tarjeta de Crédito" : "Transferencia";
+
+    let bankAccountInfo = allAccounts.find(a => a.id === bankAccData.accountId);
+    if (!bankAccountInfo) {
+      if (isCredit) {
+        const bankNameLower = (bankAccData.Name || bankAccData.name || "").toLowerCase();
+        bankAccountInfo = allAccounts.find(a => 
+          (a.code?.startsWith("205") || a.code?.startsWith("201")) && 
+          (bankNameLower.includes((a.name || "").toLowerCase()) || (a.name || "").toLowerCase().includes("tarjeta") || (a.name || "").toLowerCase().includes("credito"))
+        ) || allAccounts.find(a => a.code?.startsWith("205")) 
+          || allAccounts.find(a => a.code?.startsWith("201")) 
+          || { id: "acc-205-01", code: "205.01", name: bankAccData.name || "Tarjetas de Crédito (Pasivo)" };
+      } else {
+        bankAccountInfo = allAccounts.find(a => a.code?.startsWith("102")) || { id: "acc-102-01", code: "102.01", name: bankAccData.name || "Banco" };
+      }
+    }
 
     const vendorsSnap = await getDocs(collection(db, "companies", companyId, "vendors"));
     const officialVendors = vendorsSnap.docs.map(d => {
@@ -211,7 +228,7 @@ export async function runClientAiReconciliation(
     ): { vendorId: string; vendorName: string; vendorRfc: string; concept: string } => {
       const conceptUpper = (rawConcept || "").toUpperCase().trim();
 
-      // 1. Detectar si es un cargo/comisión propio del banco
+      // 1. Detectar si es un cargo/comisión propio del banco o tarjeta de crédito
       const isBankCharge = 
         conceptUpper.includes("TASA DE DES") || 
         conceptUpper.includes("COM. VTA.") || 
@@ -220,13 +237,23 @@ export async function runClientAiReconciliation(
         conceptUpper.includes("RETIRO CAJERO") || 
         conceptUpper.includes("COMISION") || 
         conceptUpper.includes("ANUALIDAD") ||
+        conceptUpper.includes("INTERES") ||
+        conceptUpper.includes("SEGURO") ||
+        conceptUpper.includes("CARGO POR") ||
+        conceptUpper.includes("DISPOSICION") ||
         conceptUpper.includes("TERMINALES PUNTO DE VENTA");
 
       if (isBankCharge) {
         const cleanBankName = bankName || "Institución Bancaria";
         const matchedBank = officialVendors.find(v => {
           const vName = v.name.toUpperCase();
-          return vName.includes(cleanBankName.toUpperCase()) || cleanBankName.toUpperCase().includes(vName) || vName.includes("BBVA");
+          return vName.includes(cleanBankName.toUpperCase()) || 
+                 cleanBankName.toUpperCase().includes(vName) || 
+                 vName.includes("BBVA") || 
+                 vName.includes("BANREGIO") || 
+                 vName.includes("SANTANDER") || 
+                 vName.includes("BANORTE") || 
+                 vName.includes("CITIBANAMEX");
         });
 
         let cleanConceptDesc = "Comisiones y servicios bancarios";
@@ -236,6 +263,16 @@ export async function runClientAiReconciliation(
           cleanConceptDesc = "Comisión / Tasa de descuento por terminal TPV";
         } else if (conceptUpper.includes("RETIRO CAJERO")) {
           cleanConceptDesc = "Retiro de efectivo en cajero automático";
+        } else if (conceptUpper.includes("IVA INTERES")) {
+          cleanConceptDesc = "IVA de intereses por financiamiento";
+        } else if (conceptUpper.includes("INTERES")) {
+          cleanConceptDesc = "Intereses por financiamiento de tarjeta de crédito";
+        } else if (conceptUpper.includes("ANUALIDAD")) {
+          cleanConceptDesc = "Comisión por anualidad de tarjeta de crédito";
+        } else if (conceptUpper.includes("SEGURO")) {
+          cleanConceptDesc = "Seguro asociado a tarjeta / cuenta bancaria";
+        } else if (conceptUpper.includes("DISPOSICION")) {
+          cleanConceptDesc = "Comisión por disposición de efectivo";
         }
 
         return {
@@ -483,7 +520,7 @@ Formato JSON estricto:
             id: outflowId,
             amount: txAbsAmount,
             date: txDate,
-            method: "Transferencia",
+            method: defaultPaymentMethod,
             reference: tx.reference || tx.concept || "CONCILIACION_IA",
             documentId: targetExpenseId,
             documentType: "gasto_manual",
@@ -565,7 +602,7 @@ Formato JSON estricto:
             id: outflowId,
             amount: txAbsAmount,
             date: txDate,
-            method: "Transferencia",
+            method: defaultPaymentMethod,
             reference: tx.reference || tx.concept || "CONCILIACION_IA_PROVISIONAL",
             documentId: expenseId,
             documentType: "gasto_manual",

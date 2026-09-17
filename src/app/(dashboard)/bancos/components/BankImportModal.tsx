@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import Papa from "papaparse";
-import { doc, collection, writeBatch, query, where, getDocs } from "firebase/firestore";
+import { doc, collection, writeBatch, query, where, getDocs, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Loader2, UploadCloud, X, ArrowRight, CheckCircle2, FileText, AlertCircle, Info, ShieldCheck } from "lucide-react";
-import { BankTransaction } from "@/types/bank";
+import { Loader2, UploadCloud, X, ArrowRight, CheckCircle2, FileText, AlertCircle, Info, ShieldCheck, CreditCard, ArrowRightLeft } from "lucide-react";
+import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { parseBBVAPdf } from "@/lib/bank-parsers/bbva";
 
 interface BankImportModalProps {
@@ -21,7 +21,28 @@ type ImportStep = 1 | 2 | 3 | 4 | 5; // 1: Upload, 2: Map (CSV), 3: De-duplicate
 export function BankImportModal({ accounts, initialAccountId, onClose }: BankImportModalProps) {
   const { companyId } = useAuth();
   const [targetAccountId, setTargetAccountId] = useState(initialAccountId);
-  const isCredit = accounts.find(a => a.id === targetAccountId)?.isCredit === true;
+  
+  // Reactively track isCredit based on account data and allow manual toggle
+  const [isCredit, setIsCredit] = useState(false);
+
+  useEffect(() => {
+    const acc = accounts.find(a => a.id === targetAccountId);
+    setIsCredit(isCreditAccount(acc));
+  }, [targetAccountId, accounts]);
+
+  const handleToggleCredit = async (checked: boolean) => {
+    setIsCredit(checked);
+    if (companyId && targetAccountId) {
+      try {
+        await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetAccountId), {
+          isCredit: checked
+        });
+      } catch (err) {
+        console.error("Error saving isCredit on account:", err);
+      }
+    }
+  };
+
   const [step, setStep] = useState<ImportStep>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -56,18 +77,13 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
         if (txs.length === 0) {
             throw new Error("No se encontraron movimientos en el PDF o el formato no es compatible.");
         }
-        if (isCredit) {
-          txs.forEach(t => {
-            t.amount = -t.amount;
-            t.type = t.amount > 0 ? "INCOME" : "EXPENSE";
-          });
-        }
         setCandidateTransactions(txs);
         await prepareDeduplication(txs);
       } catch (err: any) {
         setError(err.message || "Error al procesar PDF.");
         setLoading(false);
       }
+
     } else if (file.name.endsWith(".csv")) {
       setFileType("csv");
       setLoading(true);
@@ -169,20 +185,19 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
     csvData.forEach((row, i) => {
       let amount = 0;
       if (amountStrategy === "single") {
-        amount = parseNumber(row[amountCol]);
+        const raw = parseNumber(row[amountCol]);
+        // Para tarjetas de crédito en formato de 1 columna:
+        // Los consumos/compras suelen venir en positivo y los pagos en negativo.
+        // En el ERP: Gasto = negativo (-), Abono/Pago a la tarjeta = positivo (+).
+        amount = isCredit ? -raw : raw;
       } else {
-        const inc = parseNumber(row[incomeCol]);
-        const exp = parseNumber(row[expenseCol]);
-        if (inc !== 0) amount = Math.abs(inc);
-        else if (exp !== 0) amount = -Math.abs(exp);
+        const inc = parseNumber(row[incomeCol]); // Abonos / Pagos a la tarjeta
+        const exp = parseNumber(row[expenseCol]); // Cargos / Consumos
+        if (inc !== 0) amount = Math.abs(inc); // Abono = positivo (+)
+        else if (exp !== 0) amount = -Math.abs(exp); // Cargo = negativo (-)
       }
 
       if (amount !== 0) {
-        // Invert charges and credits for credit cards
-        if (isCredit) {
-          amount = -amount;
-        }
-
         txs.push({
           id: `temp-${Date.now()}-${i}`,
           date: parseDateStr(row[dateCol]),
@@ -313,17 +328,38 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
                     className="h-11 w-full px-3 rounded-md border bg-background text-sm font-bold focus:ring-2 focus:ring-primary outline-none text-indigo-700"
                   >
                     {accounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>{(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})</option>
+                      <option key={acc.id} value={acc.id}>
+                        {(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})
+                        {isCreditAccount(acc) ? " [Tarjeta de Crédito]" : ""}
+                      </option>
                     ))}
                   </select>
-                  {isCredit && (
-                    <div className="bg-purple-50 text-purple-700 border border-purple-200 p-3 rounded-lg text-xs flex items-start gap-2 mt-2">
-                      <Info className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />
-                      <span>
-                        <strong>Tarjeta de Crédito:</strong> Los cargos y abonos se procesarán con lógica inversa de signos automáticamente.
-                      </span>
+
+                  <div className="flex items-center justify-between p-3 rounded-lg border bg-card text-xs mt-3">
+                    <div className="flex items-center gap-2.5">
+                      <CreditCard className={`w-4 h-4 shrink-0 ${isCredit ? 'text-purple-600' : 'text-slate-400'}`} />
+                      <div>
+                        <label htmlFor="modal-is-credit" className="font-bold text-slate-800 cursor-pointer flex items-center gap-1.5">
+                          Es Cuenta de Tarjeta de Crédito
+                          {isCredit && (
+                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-extrabold border border-purple-200">
+                              Activa
+                            </span>
+                          )}
+                        </label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Aplica reglas para que los consumos se registren como Gastos (-) y los pagos como Abonos (+).
+                        </p>
+                      </div>
                     </div>
-                  )}
+                    <input 
+                      type="checkbox"
+                      id="modal-is-credit"
+                      checked={isCredit}
+                      onChange={(e) => handleToggleCredit(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer ml-2"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -358,19 +394,25 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
           {step === 2 && (
             <div className="space-y-6">
               <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
-                 <Info className="w-5 h-5 text-indigo-600" />
+                 <Info className="w-5 h-5 text-indigo-600 shrink-0" />
                  <div>
-                    <h4 className="text-sm font-bold text-indigo-900">Mapeo de CSV</h4>
+                    <h4 className="text-sm font-bold text-indigo-900">Mapeo de Columnas CSV</h4>
                     <p className="text-xs text-indigo-700">Identifica las columnas de tu archivo para procesar los movimientos.</p>
                  </div>
               </div>
 
               {isCredit && (
-                <div className="bg-purple-50 text-purple-700 border border-purple-200 p-3 rounded-lg text-xs flex items-center gap-2">
-                  <Info className="w-4 h-4 text-purple-600 shrink-0" />
-                  <span>
-                    <strong>Tarjeta de Crédito detectada:</strong> La lógica de signos de cargos y abonos se invertirá automáticamente (cargos positivos, abonos negativos).
-                  </span>
+                <div className="bg-purple-50 text-purple-700 border border-purple-200 p-3.5 rounded-xl text-xs space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-purple-900">
+                    <CreditCard className="w-4 h-4 text-purple-600 shrink-0" />
+                    Reglas de Tarjeta de Crédito Activas
+                  </div>
+                  <p className="text-purple-800 leading-relaxed text-[11px]">
+                    {amountStrategy === "single" 
+                      ? "• Estructura de 1 Columna: Como los estados de cuenta de tarjeta muestran consumos en positivo y pagos en negativo, el sistema invertirá los signos automáticamente para guardar las compras como Gastos (-) y los pagos a la tarjeta como Abonos (+)."
+                      : "• Estructura de 2 Columnas: La columna de Cargos se registrará como Gastos (-) y la de Abonos/Pagos como Entradas (+)."
+                    }
+                  </p>
                 </div>
               )}
               
@@ -449,18 +491,37 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
             <div className="space-y-4">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
                   <div className="flex items-center gap-3">
-                     <ShieldCheck className="w-6 h-6 text-emerald-600" />
+                     <ShieldCheck className="w-6 h-6 text-emerald-600 shrink-0" />
                      <div>
-                        <h3 className="font-bold text-emerald-900 text-sm">Validación de Duplicados Completa</h3>
+                        <h3 className="font-bold text-emerald-900 text-sm">Validación de Movimientos Completa</h3>
                         <p className="text-xs text-emerald-700">
-                           Se detectaron {finalTransactions.filter(t => t.isDuplicate).length} movimientos ya registrados.
+                           Se detectaron {finalTransactions.filter(t => t.isDuplicate).length} duplicados. Revisa la columna de Monto y confirma que los Gastos y Abonos tengan el signo correcto.
                         </p>
                      </div>
                   </div>
-                  <Button onClick={handleImport} disabled={loading || finalTransactions.filter(t => t.selected).length === 0} className="bg-emerald-600 hover:bg-emerald-700 font-bold">
-                      {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                      Importar {finalTransactions.filter(t => t.selected).length} nuevos
-                  </Button>
+                  <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          setFinalTransactions(prev => prev.map(t => {
+                            const newAmt = -t.amount;
+                            return {
+                              ...t,
+                              amount: newAmt,
+                              type: newAmt > 0 ? 'INCOME' : 'EXPENSE'
+                            };
+                          }));
+                        }}
+                        className="text-xs h-9 border-indigo-200 text-indigo-700 hover:bg-indigo-50 gap-1.5 font-medium"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" /> Invertir signos (Gastos ↔ Abonos)
+                      </Button>
+                      <Button onClick={handleImport} disabled={loading || finalTransactions.filter(t => t.selected).length === 0} className="bg-emerald-600 hover:bg-emerald-700 font-bold h-9">
+                          {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                          Importar {finalTransactions.filter(t => t.selected).length} nuevos
+                      </Button>
+                  </div>
               </div>
               
               <div className="border rounded-xl overflow-hidden flex-1 flex flex-col max-h-[400px]">
@@ -480,7 +541,7 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
                               </th>
                               <th className="px-3 py-2 text-left">Fecha</th>
                               <th className="px-3 py-2 text-left">Concepto / Ref</th>
-                              <th className="px-3 py-2 text-right">Monto</th>
+                              <th className="px-3 py-2 text-right">Tipo / Monto</th>
                               <th className="px-3 py-2 text-center">Estado</th>
                           </tr>
                       </thead>
@@ -503,7 +564,10 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
                                      {tx.reference && <p className="text-[10px] text-muted-foreground truncate max-w-[250px]">{tx.reference}</p>}
                                   </td>
                                   <td className={`px-3 py-2 text-right font-bold ${tx.amount < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                                     {tx.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                     <span className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold border ${tx.amount < 0 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                                        {tx.amount < 0 ? 'Gasto' : 'Abono'}
+                                     </span>
+                                     {tx.amount < 0 ? '-' : '+'}${Math.abs(tx.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                                   </td>
                                   <td className="px-3 py-2 text-center">
                                      {tx.isDuplicate ? (

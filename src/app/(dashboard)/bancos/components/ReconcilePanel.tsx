@@ -7,7 +7,7 @@ import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft, ChevronDown } from "lucide-react";
-import { BankTransaction } from "@/types/bank";
+import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 
 interface ReconcilePanelProps {
@@ -155,9 +155,29 @@ export const findBankAccountingAccount = (physicalBankAccount: any, accountingAc
     if (acc) return acc;
   }
   
+  const isCredit = isCreditAccount(physicalBankAccount);
+
   // Fallback: search by name
   const bankName = (physicalBankAccount.Name || physicalBankAccount.name || "").toLowerCase().trim();
   if (bankName) {
+    if (isCredit) {
+      // Try exact or partial match on credit/liability accounts (205, 201)
+      let matchedAcc = accountingAccountsAll.find(a => 
+        (a.code?.startsWith("205") || a.code?.startsWith("201")) && 
+        a.name.toLowerCase().trim() === bankName
+      );
+      if (matchedAcc) return matchedAcc;
+
+      matchedAcc = accountingAccountsAll.find(a => 
+        (a.code?.startsWith("205") || a.code?.startsWith("201")) && 
+        (bankName.includes(a.name.toLowerCase().trim()) || a.name.toLowerCase().trim().includes(bankName))
+      );
+      if (matchedAcc) return matchedAcc;
+
+      matchedAcc = accountingAccountsAll.find(a => a.code?.startsWith("205"));
+      if (matchedAcc) return matchedAcc;
+    }
+
     // Try exact match first on bank accounts (102) or cash accounts (101)
     let matchedAcc = accountingAccountsAll.find(a => 
       (a.code?.startsWith("102") || a.code?.startsWith("101")) && 
@@ -752,7 +772,7 @@ export function ReconcilePanel({
             const outflowData = {
               amount: txAbsAmount,
               date: tx.date,
-              method: "Transferencia",
+              method: isCreditAccount(physicalBankAccount) ? "Tarjeta de Crédito" : "Transferencia",
               reference: tx.reference || "CONCILIACION",
               documentId: targetDocId,
               documentType: targetDocType,
@@ -1038,7 +1058,7 @@ export function ReconcilePanel({
             const outflowData = {
               amount: txAbsAmount,
               date: tx.date,
-              method: "Transferencia",
+              method: isCreditAccount(physicalBankAccount) ? "Tarjeta de Crédito" : "Transferencia",
               reference: tx.reference || "CONCILIACION_DIRECTA",
               documentId: expenseId,
               documentType: "gasto_manual",

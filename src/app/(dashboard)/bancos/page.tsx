@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2, Pause, Play, Square } from "lucide-react";
-import { BankTransaction } from "@/types/bank";
+import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { BankImportModal } from "./components/BankImportModal";
 import { TransferModal } from "./components/TransferModal";
 import { AdjustmentModal } from "./components/AdjustmentModal";
@@ -22,6 +22,9 @@ interface BankAccount {
   initialBalance: number;
   Name?: string;
   CurrencyCode?: string;
+  isCredit?: boolean;
+  Type?: number;
+  TypeText?: string;
 }
 
 function normalizeDateToISO(dateStr: string): string {
@@ -496,16 +499,23 @@ export default function BancosPage() {
       <div className="bg-card border rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cuenta Seleccionada</label>
-          <select 
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="h-10 w-64 px-3 rounded-md border bg-background text-sm font-semibold focus:ring-2 focus:ring-primary outline-none"
-          >
-              {accounts.length === 0 && <option value="">Sin cuentas...</option>}
-              {accounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})</option>
-              ))}
-          </select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select 
+                value={selectedAccountId}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+                className="h-10 w-64 px-3 rounded-md border bg-background text-sm font-semibold focus:ring-2 focus:ring-primary outline-none"
+            >
+                {accounts.length === 0 && <option value="">Sin cuentas...</option>}
+                {accounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>{(acc.Name || acc.name)} ({(acc.CurrencyCode || acc.currency || 'MXN')})</option>
+                ))}
+            </select>
+            {selectedAccount && isCreditAccount(selectedAccount) && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 border border-purple-200 shrink-0">
+                Tarjeta de Crédito
+              </span>
+            )}
+          </div>
         </div>
 
         {selectedAccount && (

@@ -446,7 +446,7 @@ export default function GastosManualesPage() {
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-8 px-4 gap-2 shadow-sm"
             >
               <ShieldCheck className="w-4 h-4" />
-              Oficializar Seleccionados (Lote)
+              Formalizar Seleccionados (Lote)
             </Button>
           </div>
         </div>
@@ -604,11 +604,11 @@ export default function GastosManualesPage() {
                                  setFormalizeTargetExpenses([exp]);
                                  setIsFormalizeModalOpen(true);
                                }}
-                               className="h-8 px-2 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 text-[11px] font-bold gap-1 shrink-0"
-                               title="Oficializar como gasto no deducible"
+                               className="h-8 px-2.5 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 text-[11px] font-bold gap-1 shrink-0"
+                               title="Formalizar gasto (vincular CFDI fiscal o declarar no deducible)"
                              >
                                <ShieldCheck className="w-3.5 h-3.5" />
-                               <span>Oficializar</span>
+                               <span>Formalizar</span>
                              </Button>
                            )}
                            <Link href={`/gastos/${exp.id}`} target="_blank">

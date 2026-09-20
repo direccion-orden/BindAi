@@ -528,15 +528,39 @@ export function ReconcilePanel({
   // Set default values for expenseDate and directDescription when transactions changes
   useEffect(() => {
     if (transactions.length > 0) {
-      setExpenseDate(transactions[0].date || new Date().toISOString().split("T")[0]);
-      setDirectDescription(transactions[0].concept || "");
+      const tx = transactions[0];
+      setExpenseDate(tx.date || new Date().toISOString().split("T")[0]);
+      setDirectDescription(tx.concept || "");
       setSelectedVendorId("");
       setSelectedLocationId("");
       setSelectedCostCenterId("");
-      setSelectedTargetAccountId("");
       setSelectedTargetTxId("");
+
+      const conceptLower = (tx.concept || "").toLowerCase();
+      const isTransferConcept = conceptLower.includes("traspas") || (tx as any).aiSuggestedAction === "REVIEW_TRANSFER";
+
+      // Auto-detect target bank account if concept mentions another bank name
+      let detectedTargetAccountId = "";
+      if (bankAccounts.length > 0) {
+        const otherBanks = bankAccounts.filter(b => b.id !== accountId);
+        const matchedBank = otherBanks.find(b => {
+          const bName = (b.name || b.Name || b.bankName || b.BankName || "").toLowerCase().trim();
+          return bName && conceptLower.includes(bName);
+        });
+        if (matchedBank) {
+          detectedTargetAccountId = matchedBank.id;
+        }
+      }
+
+      if (detectedTargetAccountId) {
+        setSelectedTargetAccountId(detectedTargetAccountId);
+      }
+
+      if (isTransferConcept) {
+        setReconcileMode("transfer");
+      }
     }
-  }, [transactions]);
+  }, [transactions, bankAccounts, accountId]);
 
   // Pre-fill selections from selected document when selectedDocId changes (for charges in match mode)
   useEffect(() => {
@@ -573,11 +597,17 @@ export function ReconcilePanel({
     const currentTx = transactions[0];
     const currentTxAbsAmount = Math.abs(currentTx.amount);
 
+    const cTokens = ((currentTx.concept || "") + " " + (currentTx.reference || "")).match(/\d{6,14}/g) || [];
+    const validCTokens = Array.from(new Set(cTokens.filter(tok => !/^0+$/.test(tok))));
+
     return targetAccountTransactions.map(tx => {
       const txAbsAmount = Math.abs(tx.amount);
       const isExactAmount = Math.abs(txAbsAmount - currentTxAbsAmount) < 0.01;
       const isOppositeSign = Math.sign(tx.amount) !== Math.sign(currentTx.amount);
       
+      const oCombined = (tx.concept || "") + " " + (tx.reference || "");
+      const hasExactRef = validCTokens.some(tok => oCombined.includes(tok));
+
       // Calculate day difference
       let diffDays = 999999;
       if (tx.date && currentTx.date) {
@@ -592,14 +622,18 @@ export function ReconcilePanel({
         }
       }
 
-      return { ...tx, isExactAmount, isOppositeSign, diffDays };
+      return { ...tx, isExactAmount, isOppositeSign, hasExactRef, diffDays };
     }).filter(tx => tx.isOppositeSign) // Show only opposite sign transactions
     .sort((a, b) => {
-      // First priority: Exact amount matches
+      // Prioridad 1: Monto exacto Y Folio/Referencia SPEI exacta
+      if (a.isExactAmount && a.hasExactRef && (!b.isExactAmount || !b.hasExactRef)) return -1;
+      if (b.isExactAmount && b.hasExactRef && (!a.isExactAmount || !a.hasExactRef)) return 1;
+
+      // Prioridad 2: Monto exacto
       if (a.isExactAmount && !b.isExactAmount) return -1;
       if (!a.isExactAmount && b.isExactAmount) return 1;
 
-      // Second priority: Days difference (closer date first)
+      // Prioridad 3: Diferencia de días menor (fecha más cercana primero)
       if (a.diffDays !== b.diffDays) {
         return a.diffDays - b.diffDays;
       }
@@ -1500,22 +1534,93 @@ export function ReconcilePanel({
       {/* Form content */}
       <form onSubmit={handleReconcile} className="flex-1 overflow-y-auto p-5 flex flex-col justify-between space-y-6">
         
-        {((transactions.length === 1 && (transactions[0] as any).aiReasoning) || (transactions.length === 1 && (transactions[0] as any).requiresHumanReview)) && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900 text-xs space-y-1 shadow-sm">
-            <div className="flex items-center gap-1.5 font-bold text-amber-800">
-              <Sparkles className="w-4 h-4 text-amber-600 animate-pulse" />
-              <span>Sugerencia del Agente Conciliador IA</span>
-              {(transactions[0] as any).aiConfidenceScore && (
-                <span className="ml-auto text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full font-extrabold">
-                  Confianza: {Math.round(((transactions[0] as any).aiConfidenceScore || 0) * 100)}%
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] leading-relaxed">
-              {(transactions[0] as any).aiReasoning || "El movimiento fue evaluado por la IA y requiere confirmación manual."}
-            </p>
-          </div>
-        )}
+        {/* Dynamic Contextual AI Suggestion Banner */}
+        {transactions.length === 1 && (() => {
+          const currentTx = transactions[0] as any;
+          const conceptLower = (currentTx.concept || "").toLowerCase();
+          const isTransferConcept = conceptLower.includes("traspas") || currentTx.aiSuggestedAction === "REVIEW_TRANSFER";
+          const exactTransferMatch = sortedTargetTransactions.find(t => t.isExactAmount);
+
+          if (reconcileMode === "transfer") {
+            if (exactTransferMatch) {
+              const targetAccName = bankAccounts.find(b => b.id === selectedTargetAccountId)?.name || "la cuenta destino";
+              return (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-emerald-950 text-xs space-y-1 shadow-sm animate-in fade-in">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <span>Sugerencia del Agente Conciliador IA</span>
+                    <span className="ml-auto text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full font-extrabold">
+                      Coincidencia 100%
+                    </span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-emerald-800">
+                    <strong>Traspaso propio identificado:</strong> Hemos encontrado el movimiento recíproco correspondiente en <strong>{targetAccName}</strong> por el monto exacto de ${absAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}. Se ha preseleccionado para su conciliación directa.
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-indigo-950 text-xs space-y-1 shadow-sm">
+                <div className="flex items-center gap-1.5 font-bold text-indigo-800">
+                  <ArrowRightLeft className="w-4 h-4 text-indigo-600" />
+                  <span>Conciliación de Traspaso Propio</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-indigo-700">
+                  Selecciona la cuenta bancaria de contraparte y el movimiento correspondiente para generar la póliza contable de traspaso entre cuentas.
+                </p>
+              </div>
+            );
+          }
+
+          // Si estamos en modo "match" o "direct" pero el movimiento es claramente un traspaso
+          if (isTransferConcept) {
+            return (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-indigo-950 text-xs space-y-1.5 shadow-sm animate-in fade-in">
+                <div className="flex items-center gap-1.5 font-bold text-indigo-800">
+                  <ArrowRightLeft className="w-4 h-4 text-indigo-600" />
+                  <span>Sugerencia del Agente Conciliador IA</span>
+                  <span className="ml-auto text-[10px] bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full font-extrabold">
+                    Traspaso Detectado
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-indigo-800">
+                  Este movimiento bancario corresponde a una transferencia o traspaso entre cuentas. Te sugerimos conciliarlo en la pestaña{" "}
+                  <button
+                    type="button"
+                    onClick={() => setReconcileMode("transfer")}
+                    className="underline font-black text-indigo-700 hover:text-indigo-900 cursor-pointer"
+                  >
+                    &quot;Traspaso Propio&quot;
+                  </button>{" "}
+                  para emparejarlo con su contraparte sin requerir factura de proveedor.
+                </p>
+              </div>
+            );
+          }
+
+          // Caso estándar: sugerencia de factura / revisión manual para egresos regulares
+          if (currentTx.aiReasoning || currentTx.requiresHumanReview) {
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900 text-xs space-y-1 shadow-sm">
+                <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                  <Sparkles className="w-4 h-4 text-amber-600 animate-pulse" />
+                  <span>Sugerencia del Agente Conciliador IA</span>
+                  {currentTx.aiConfidenceScore && (
+                    <span className="ml-auto text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full font-extrabold">
+                      Confianza: {Math.round((currentTx.aiConfidenceScore || 0) * 100)}%
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  {currentTx.aiReasoning || "El movimiento fue evaluado por la IA y requiere confirmación manual."}
+                </p>
+              </div>
+            );
+          }
+
+          return null;
+        })()}
 
         {reconcileMode === "match" ? (
           <div className="space-y-4">

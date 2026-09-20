@@ -11,6 +11,7 @@ import { BankImportModal } from "./components/BankImportModal";
 import { TransferModal } from "./components/TransferModal";
 import { AdjustmentModal } from "./components/AdjustmentModal";
 import { ReconcilePanel } from "./components/ReconcilePanel";
+import { SyncfyConnectModal } from "./components/SyncfyConnectModal";
 import { Input } from "@/components/ui/input";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 
@@ -25,6 +26,11 @@ interface BankAccount {
   isCredit?: boolean;
   Type?: number;
   TypeText?: string;
+  syncProvider?: string;
+  syncfyAccountId?: string;
+  syncfyCredentialId?: string;
+  syncfyAccountName?: string;
+  lastSync?: string;
 }
 
 function normalizeDateToISO(dateStr: string): string {
@@ -124,10 +130,37 @@ export default function BancosPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
+  const [isSyncfyModalOpen, setIsSyncfyModalOpen] = useState(false);
+  const [syncingSyncfy, setSyncingSyncfy] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"history" | "reconcile">("history");
   const [reconcileTypeFilter, setReconcileTypeFilter] = useState<"all" | "inflow" | "outflow">("all");
   const [selectedTxs, setSelectedTxs] = useState<BankTransaction[]>([]);
+
+  const handleQuickSyncfySync = async () => {
+    if (!selectedAccountId || !companyId) return;
+    setSyncingSyncfy(true);
+    try {
+      const res = await fetch("/api/syncfy/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId,
+          bankAccountId: selectedAccountId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Error al sincronizar con Syncfy");
+      }
+      alert(`Sincronización completada con éxito. Se importaron ${data.imported || 0} nuevos movimientos.`);
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Error al sincronizar movimientos.");
+    } finally {
+      setSyncingSyncfy(false);
+    }
+  };
 
   // Sync state from URL on mount
   useEffect(() => {
@@ -480,6 +513,24 @@ export default function BancosPage() {
         </div>
         
         <div className="flex items-center gap-2 flex-wrap">
+            <Button 
+                variant="outline" 
+                className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" 
+                onClick={() => setIsSyncfyModalOpen(true)}
+            >
+                <Landmark className="w-4 h-4 text-emerald-600" /> 
+                {selectedAccount?.syncfyAccountId ? "Gestionar Syncfy" : "Conectar Banco (Syncfy)"}
+            </Button>
+            {selectedAccount?.syncfyAccountId && (
+                <Button 
+                    variant="outline" 
+                    className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" 
+                    onClick={() => setIsSyncfyModalOpen(true)}
+                >
+                    <RefreshCw className="w-4 h-4 text-emerald-600" />
+                    Sincronizar Syncfy
+                </Button>
+            )}
             <Button variant="outline" className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setIsImportModalOpen(true)} disabled={!selectedAccountId}>
                 <UploadCloud className="w-4 h-4 text-indigo-600" /> Importar Estado de Cuenta (CSV/PDF)
             </Button>
@@ -513,6 +564,11 @@ export default function BancosPage() {
             {selectedAccount && isCreditAccount(selectedAccount) && (
               <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 border border-purple-200 shrink-0">
                 Tarjeta de Crédito
+              </span>
+            )}
+            {selectedAccount && selectedAccount.syncfyAccountId && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 shrink-0 flex items-center gap-1">
+                <Landmark className="w-3 h-3" /> Syncfy Activo
               </span>
             )}
           </div>
@@ -948,6 +1004,13 @@ export default function BancosPage() {
               onClose={() => setIsAdjustmentModalOpen(false)} 
           />
       )}
+
+      <SyncfyConnectModal 
+          isOpen={isSyncfyModalOpen}
+          onClose={() => setIsSyncfyModalOpen(false)}
+          selectedAccountId={selectedAccountId}
+          accounts={accounts}
+      />
     </div>
   );
 }

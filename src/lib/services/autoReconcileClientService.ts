@@ -406,6 +406,13 @@ export async function runClientAiReconciliation(
 
     const reconciledTransferTxIds = new Set<string>();
 
+    // Helper para extraer secuencias numéricas de folios o referencias SPEI / BNET (de 6 a 14 dígitos)
+    const extractNumericTokens = (text: string): string[] => {
+      if (!text) return [];
+      const matches = text.match(/\d{6,14}/g) || [];
+      return Array.from(new Set(matches.filter(m => !/^0+$/.test(m))));
+    };
+
     if (otherBankAccounts.length > 0 && allCurrentPendingTxs.length > 0) {
       control?.onProgress?.(0, allCurrentPendingTxs.length, "Buscando traspasos entre cuentas propias...");
 
@@ -439,6 +446,8 @@ export async function runClientAiReconciliation(
         const cDateStr = normalizeDateToISO(cTx.date || "");
         const cDate = new Date(cDateStr + "T00:00:00");
         const cConcept = (cTx.concept || "").toLowerCase();
+        const cRef = (cTx.reference || "").toLowerCase();
+        const cTokens = extractNumericTokens((cTx.concept || "") + " " + (cTx.reference || ""));
 
         // Buscar candidatos con signo opuesto y mismo importe en las demás cuentas
         const candidates: Array<{
@@ -446,6 +455,7 @@ export async function runClientAiReconciliation(
           diffDays: number;
           score: number;
           hasTransferKeyword: boolean;
+          hasExactRefMatch: boolean;
         }> = [];
 
         for (const item of otherPendingTxs) {
@@ -456,10 +466,24 @@ export async function runClientAiReconciliation(
           const oDateStr = normalizeDateToISO(item.tx.date || "");
           const oDate = new Date(oDateStr + "T00:00:00");
           const diffDays = Math.round(Math.abs((cDate.getTime() - oDate.getTime()) / (1000 * 60 * 60 * 24)));
-          if (isNaN(diffDays) || diffDays > 4) continue;
+          // Ventana de tolerancia extendida a 7 días para liquidaciones bancarias de fin de semana
+          if (isNaN(diffDays) || diffDays > 7) continue;
 
           const oConcept = (item.tx.concept || "").toLowerCase();
+          const oRef = (item.tx.reference || "").toLowerCase();
+          const oCombined = oConcept + " " + oRef;
+
+          // Cruce de folio o número de rastreo SPEI / BNET
+          let hasExactRefMatch = false;
+          for (const tok of cTokens) {
+            if (oCombined.includes(tok)) {
+              hasExactRefMatch = true;
+              break;
+            }
+          }
+
           let score = 50 - (diffDays * 5);
+          if (hasExactRefMatch) score += 50;
 
           const hasTransferKeyword = 
             cConcept.includes("traspas") || oConcept.includes("traspas") ||
@@ -477,14 +501,14 @@ export async function runClientAiReconciliation(
 
           if (hasTransferKeyword) score += 30;
 
-          candidates.push({ item, diffDays, score, hasTransferKeyword });
+          candidates.push({ item, diffDays, score, hasTransferKeyword, hasExactRefMatch });
         }
 
         if (candidates.length > 0) {
           candidates.sort((a, b) => b.score - a.score);
           const best = candidates[0];
 
-          if (best.hasTransferKeyword || (candidates.length === 1 && best.diffDays <= 2)) {
+          if (best.hasExactRefMatch || best.hasTransferKeyword || (candidates.length === 1 && best.diffDays <= 2)) {
             const targetItem = best.item;
             matchedTargetIds.add(targetItem.tx.id);
             reconciledTransferTxIds.add(cTx.id);
@@ -495,141 +519,145 @@ export async function runClientAiReconciliation(
               `Traspaso propio emparejado ($${cAbs.toFixed(2)}): ${currentBankAccount.name || currentBankAccount.Name || "Cuenta"} <-> ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "Cuenta"}`
             );
 
-            // Cuentas contables para ambas cuentas
-            const currentAccountingAccount = findBankAccountingAccount(currentBankAccount, allAccounts);
-            const currentBankAccountingId = currentAccountingAccount?.id;
-            const targetAccountingAccount = findBankAccountingAccount(targetItem.bankAccount, allAccounts);
-            const targetBankAccountingId = targetAccountingAccount?.id;
+            try {
+              // Cuentas contables para ambas cuentas
+              const currentAccountingAccount = findBankAccountingAccount(currentBankAccount, allAccounts);
+              const currentBankAccountingId = currentAccountingAccount?.id;
+              const targetAccountingAccount = findBankAccountingAccount(targetItem.bankAccount, allAccounts);
+              const targetBankAccountingId = targetAccountingAccount?.id;
 
-            // Actualizar transacción actual
-            await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", cTx.id), {
-              reconciled: true,
-              matchedAt: new Date().toISOString(),
-              reconcileType: "transfer",
-              matchedDocumentId: targetItem.tx.id,
-              matchedAccountId: targetItem.bankAccountId,
-              reconciledBy: "AI_AGENT (Determinista)",
-              aiMatchReason: `Traspaso propio emparejado con ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "otra cuenta bancaria"}`
-            });
-
-            // Actualizar transacción destino
-            await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId, "transactions", targetItem.tx.id), {
-              reconciled: true,
-              matchedAt: new Date().toISOString(),
-              reconcileType: "transfer",
-              matchedDocumentId: cTx.id,
-              matchedAccountId: bankAccountId,
-              reconciledBy: "AI_AGENT (Determinista)",
-              aiMatchReason: `Traspaso propio emparejado con ${currentBankAccount.name || currentBankAccount.Name || "otra cuenta bancaria"}`
-            });
-
-            const isCurrentOutflow = cTx.amount < 0;
-
-            if (isCurrentOutflow) {
-              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
-                balance: increment(-cAbs)
-              });
-              await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId), {
-                balance: increment(cAbs)
+              // Actualizar transacción actual
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", cTx.id), {
+                reconciled: true,
+                matchedAt: new Date().toISOString(),
+                reconcileType: "transfer",
+                matchedDocumentId: targetItem.tx.id,
+                matchedAccountId: targetItem.bankAccountId,
+                reconciledBy: "AI_AGENT (Determinista)",
+                aiMatchReason: `Traspaso propio emparejado con ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "otra cuenta bancaria"}`
               });
 
-              if (currentBankAccountingId) {
-                await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+              // Actualizar transacción destino
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId, "transactions", targetItem.tx.id), {
+                reconciled: true,
+                matchedAt: new Date().toISOString(),
+                reconcileType: "transfer",
+                matchedDocumentId: cTx.id,
+                matchedAccountId: bankAccountId,
+                reconciledBy: "AI_AGENT (Determinista)",
+                aiMatchReason: `Traspaso propio emparejado con ${currentBankAccount.name || currentBankAccount.Name || "otra cuenta bancaria"}`
+              });
+
+              const isCurrentOutflow = cTx.amount < 0;
+
+              if (isCurrentOutflow) {
+                await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
                   balance: increment(-cAbs)
                 });
-              }
-              if (targetBankAccountingId) {
-                await updateDoc(doc(db, "companies", companyId, "accounts", targetBankAccountingId), {
+                await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId), {
                   balance: increment(cAbs)
                 });
-              }
 
-              if (currentAccountingAccount && targetAccountingAccount) {
-                const entries = [
-                  {
-                    accountId: targetBankAccountingId,
-                    accountCode: targetAccountingAccount.code,
-                    accountName: targetAccountingAccount.name,
-                    debit: cAbs,
-                    credit: 0
-                  },
-                  {
-                    accountId: currentBankAccountingId,
-                    accountCode: currentAccountingAccount.code,
-                    accountName: currentAccountingAccount.name,
-                    debit: 0,
-                    credit: cAbs
-                  }
-                ];
+                if (currentBankAccountingId && !currentBankAccountingId.startsWith("acc-")) {
+                  await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+                    balance: increment(-cAbs)
+                  }).catch(() => {});
+                }
+                if (targetBankAccountingId && !targetBankAccountingId.startsWith("acc-")) {
+                  await updateDoc(doc(db, "companies", companyId, "accounts", targetBankAccountingId), {
+                    balance: increment(cAbs)
+                  }).catch(() => {});
+                }
 
-                await addDoc(collection(db, "companies", companyId, "journal_entries"), {
-                  type: "diario",
-                  date: cTx.date || new Date().toISOString().split("T")[0],
-                  description: `Traspaso propio: ${cTx.concept || "Salida"} -> ${targetItem.tx.concept || "Entrada"}`,
-                  referenceId: cTx.id,
-                  referenceType: "bank_transfer_reconciliation",
-                  createdAt: new Date().toISOString(),
-                  status: "activa",
-                  entries
-                });
-              }
-            } else {
-              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
-                balance: increment(cAbs)
-              });
-              await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId), {
-                balance: increment(-cAbs)
-              });
+                if (currentAccountingAccount && targetAccountingAccount) {
+                  const entries = [
+                    {
+                      accountId: targetBankAccountingId,
+                      accountCode: targetAccountingAccount.code,
+                      accountName: targetAccountingAccount.name,
+                      debit: cAbs,
+                      credit: 0
+                    },
+                    {
+                      accountId: currentBankAccountingId,
+                      accountCode: currentAccountingAccount.code,
+                      accountName: currentAccountingAccount.name,
+                      debit: 0,
+                      credit: cAbs
+                    }
+                  ];
 
-              if (currentBankAccountingId) {
-                await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+                  await addDoc(collection(db, "companies", companyId, "journal_entries"), {
+                    type: "diario",
+                    date: cTx.date || new Date().toISOString().split("T")[0],
+                    description: `Traspaso propio: ${cTx.concept || "Salida"} -> ${targetItem.tx.concept || "Entrada"}`,
+                    referenceId: cTx.id,
+                    referenceType: "bank_transfer_reconciliation",
+                    createdAt: new Date().toISOString(),
+                    status: "activa",
+                    entries
+                  }).catch(err => console.warn("Error creando póliza de traspaso:", err));
+                }
+              } else {
+                await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
                   balance: increment(cAbs)
                 });
-              }
-              if (targetBankAccountingId) {
-                await updateDoc(doc(db, "companies", companyId, "accounts", targetBankAccountingId), {
+                await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId), {
                   balance: increment(-cAbs)
                 });
+
+                if (currentBankAccountingId && !currentBankAccountingId.startsWith("acc-")) {
+                  await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+                    balance: increment(cAbs)
+                  }).catch(() => {});
+                }
+                if (targetBankAccountingId && !targetBankAccountingId.startsWith("acc-")) {
+                  await updateDoc(doc(db, "companies", companyId, "accounts", targetBankAccountingId), {
+                    balance: increment(-cAbs)
+                  }).catch(() => {});
+                }
+
+                if (currentAccountingAccount && targetAccountingAccount) {
+                  const entries = [
+                    {
+                      accountId: currentBankAccountingId,
+                      accountCode: currentAccountingAccount.code,
+                      accountName: currentAccountingAccount.name,
+                      debit: cAbs,
+                      credit: 0
+                    },
+                    {
+                      accountId: targetBankAccountingId,
+                      accountCode: targetAccountingAccount.code,
+                      accountName: targetAccountingAccount.name,
+                      debit: 0,
+                      credit: cAbs
+                    }
+                  ];
+
+                  await addDoc(collection(db, "companies", companyId, "journal_entries"), {
+                    type: "diario",
+                    date: cTx.date || new Date().toISOString().split("T")[0],
+                    description: `Traspaso propio: ${targetItem.tx.concept || "Salida"} -> ${cTx.concept || "Entrada"}`,
+                    referenceId: cTx.id,
+                    referenceType: "bank_transfer_reconciliation",
+                    createdAt: new Date().toISOString(),
+                    status: "activa",
+                    entries
+                  }).catch(err => console.warn("Error creando póliza de traspaso:", err));
+                }
               }
 
-              if (currentAccountingAccount && targetAccountingAccount) {
-                const entries = [
-                  {
-                    accountId: currentBankAccountingId,
-                    accountCode: currentAccountingAccount.code,
-                    accountName: currentAccountingAccount.name,
-                    debit: cAbs,
-                    credit: 0
-                  },
-                  {
-                    accountId: targetBankAccountingId,
-                    accountCode: targetAccountingAccount.code,
-                    accountName: targetAccountingAccount.name,
-                    debit: 0,
-                    credit: cAbs
-                  }
-                ];
-
-                await addDoc(collection(db, "companies", companyId, "journal_entries"), {
-                  type: "diario",
-                  date: cTx.date || new Date().toISOString().split("T")[0],
-                  description: `Traspaso propio: ${targetItem.tx.concept || "Salida"} -> ${cTx.concept || "Entrada"}`,
-                  referenceId: cTx.id,
-                  referenceType: "bank_transfer_reconciliation",
-                  createdAt: new Date().toISOString(),
-                  status: "activa",
-                  entries
-                });
-              }
+              processedCount++;
+              details.push({
+                txId: cTx.id,
+                action: "TRANSFER",
+                documentNumber: `TRASPASO-${targetItem.bankAccount.name || targetItem.bankAccount.Name || "BANCO"}`,
+                reasoning: `Conciliación determinista de traspaso propio ($0.00 IA): Monto $${cAbs.toFixed(2)} con cuenta ${targetItem.bankAccount.name || targetItem.bankAccount.Name}`
+              });
+            } catch (txErr) {
+              console.error(`Error procesando traspaso ${cTx.id}:`, txErr);
             }
-
-            processedCount++;
-            details.push({
-              txId: cTx.id,
-              action: "TRANSFER",
-              documentNumber: `TRASPASO-${targetItem.bankAccount.name || targetItem.bankAccount.Name || "BANCO"}`,
-              reasoning: `Conciliación determinista de traspaso propio ($0.00 IA): Monto $${cAbs.toFixed(2)} con cuenta ${targetItem.bankAccount.name || targetItem.bankAccount.Name}`
-            });
           }
         }
       }
@@ -713,6 +741,19 @@ export async function runClientAiReconciliation(
       // ─────────────────────────────────────────────────────────────
       // ETAPA 2: PRE-FILTRADO (CANDIDATE SLICING) Y LLAMADA OPTIMIZADA A IA
       // ─────────────────────────────────────────────────────────────
+      if (!evalData) {
+        // Si el concepto indica explícitamente un traspaso bancario propio y no se emparejó de forma automática
+        const isTransferConcept = conceptLower.includes("traspas") || conceptLower.includes("spei enviado") || conceptLower.includes("spei recib");
+        if (isTransferConcept) {
+          evalData = {
+            confidenceScore: 0.85,
+            recommendedAction: "REVIEW_TRANSFER",
+            matchedDocId: null,
+            reasoning: `El movimiento por $${txAbsAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN corresponde a un traspaso bancario propio hacia otra cuenta. No se detectó la contraparte automática en los extractos actuales; se recomienda conciliarlo en la pestaña 'Traspaso Propio' o verificar la cuenta destino.`
+          };
+        }
+      }
+
       if (!evalData) {
         // Filtrar candidatos cuya variación de monto sea menor al 15% o $100 MXN, o compartan coincidencia en concepto
         const slicedCandidates = candidates.filter(c => {

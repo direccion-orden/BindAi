@@ -20,6 +20,39 @@ export async function POST(req: Request) {
         const keyContent = `-----BEGIN ENCRYPTED PRIVATE KEY-----\n${keyBase64.match(/.{1,64}/g)?.join('\n')}\n-----END ENCRYPTED PRIVATE KEY-----\n`;
 
         const fiel = Fiel.create(cerContent, keyContent, password);
+
+        // Validar vigencia y tipo de e.firma (FIEL)
+        if (!fiel.isValid()) {
+            const cert = (fiel as any)._credential?.certificate?.();
+            const isFiel = cert?.satType?.()?.isFiel?.() ?? true;
+            const rfc = fiel.getRfc() || cert?.rfc?.() || "";
+            const legalName = cert?.legalName?.() || "";
+            const validTo = cert?.validTo?.();
+
+            if (!isFiel) {
+                return NextResponse.json({ 
+                    status: "rejected", 
+                    message: `El certificado (${rfc}) es un CSD y no una e.firma (FIEL).` 
+                });
+            }
+
+            const expDateStr = validTo 
+                ? new Date(validTo).toLocaleDateString("es-MX", { 
+                    day: "numeric", 
+                    month: "long", 
+                    year: "numeric", 
+                    hour: "2-digit", 
+                    minute: "2-digit",
+                    timeZone: "America/Mexico_City"
+                  }) 
+                : "";
+
+            return NextResponse.json({ 
+                status: "rejected", 
+                message: `La e.firma (FIEL) de ${legalName ? `${legalName} ` : ""}(${rfc}) se encuentra vencida${expDateStr ? ` desde el ${expDateStr} (hora CDMX)` : ""}. Por favor renueva tu e.firma ante el SAT.` 
+            });
+        }
+
         const webClient = new HttpsWebClient();
         const requestBuilder = new FielRequestBuilder(fiel);
         const service = new Service(requestBuilder, webClient);

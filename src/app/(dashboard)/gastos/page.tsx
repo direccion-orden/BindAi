@@ -310,6 +310,10 @@ export default function GastosPage() {
           const reason = verData.message ? `El SAT rechazó la solicitud: ${verData.message}` : "El SAT rechazó la solicitud.";
           setSyncStatus(`Error: ${reason}`);
           finished = true;
+        } else if (!verRes.ok) {
+          const errMsg = verData.error || verData.message || "Error al verificar estatus en el SAT.";
+          setSyncStatus(`Error: ${errMsg}`);
+          finished = true;
         } else {
           setSyncStatus(`El SAT sigue procesando... (Intento ${attempts}/12)`);
         }

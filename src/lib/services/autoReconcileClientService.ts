@@ -1,7 +1,56 @@
-import { doc, getDoc, getDocs, collection, setDoc, updateDoc, query, where } from "firebase/firestore";
+import { doc, getDoc, getDocs, collection, setDoc, updateDoc, addDoc, increment, query, where } from "firebase/firestore";
 import { Firestore } from "firebase/firestore";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { isCreditAccount } from "@/types/bank";
+
+export const findBankAccountingAccount = (physicalBankAccount: any, accountingAccountsAll: any[]) => {
+  if (!physicalBankAccount) return null;
+  const bankAccountingId = physicalBankAccount.accountId;
+  if (bankAccountingId && bankAccountingId !== "undefined") {
+    const acc = accountingAccountsAll.find(a => a.id === bankAccountingId);
+    if (acc) return acc;
+  }
+  
+  const isCredit = isCreditAccount(physicalBankAccount);
+
+  // Fallback: search by name
+  const bankName = (physicalBankAccount.Name || physicalBankAccount.name || "").toLowerCase().trim();
+  if (bankName) {
+    if (isCredit) {
+      let matchedAcc = accountingAccountsAll.find(a => 
+        (a.code?.startsWith("205") || a.code?.startsWith("201")) && 
+        a.name.toLowerCase().trim() === bankName
+      );
+      if (matchedAcc) return matchedAcc;
+
+      matchedAcc = accountingAccountsAll.find(a => 
+        (a.code?.startsWith("205") || a.code?.startsWith("201")) && 
+        (bankName.includes(a.name.toLowerCase().trim()) || a.name.toLowerCase().trim().includes(bankName))
+      );
+      if (matchedAcc) return matchedAcc;
+
+      matchedAcc = accountingAccountsAll.find(a => a.code?.startsWith("205"));
+      if (matchedAcc) return matchedAcc;
+    }
+
+    let matchedAcc = accountingAccountsAll.find(a => 
+      (a.code?.startsWith("102") || a.code?.startsWith("101")) && 
+      a.name.toLowerCase().trim() === bankName
+    );
+    if (matchedAcc) return matchedAcc;
+
+    matchedAcc = accountingAccountsAll.find(a => 
+      (a.code?.startsWith("102") || a.code?.startsWith("101")) && 
+      (bankName.includes(a.name.toLowerCase().trim()) || a.name.toLowerCase().trim().includes(bankName))
+    );
+    if (matchedAcc) return matchedAcc;
+  }
+
+  if (isCredit) {
+    return accountingAccountsAll.find(a => a.code?.startsWith("205")) || { id: "acc-205-01", code: "205.01", name: "Tarjetas de Crédito" };
+  }
+  return accountingAccountsAll.find(a => a.code?.startsWith("102")) || { id: "acc-102-01", code: "102.01", name: "Bancos" };
+};
 
 export interface ReconcileResult {
   success: boolean;
@@ -185,28 +234,23 @@ export async function runClientAiReconciliation(
       });
     }
 
-    // 3. Obtener Cuentas Contables, Cuenta Bancaria y Catálogo Oficial de Proveedores
+    // 3. Obtener Cuentas Contables, Cuentas Bancarias y Catálogo Oficial de Proveedores
     const accountsSnap = await getDocs(collection(db, "companies", companyId, "accounts"));
     const allAccounts = accountsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
 
-    const bankAccDoc = await getDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId));
-    const bankAccData = bankAccDoc.data() || {};
-    const isCredit = isCreditAccount(bankAccData);
+    const bankAccountsSnap = await getDocs(collection(db, "companies", companyId, "bankAccounts"));
+    const allBankAccounts = bankAccountsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+    const currentBankAccount = allBankAccounts.find(b => b.id === bankAccountId) || { id: bankAccountId };
+    const otherBankAccounts = allBankAccounts.filter(b => b.id !== bankAccountId);
+
+    const isCredit = isCreditAccount(currentBankAccount);
     const defaultPaymentMethod = isCredit ? "Tarjeta de Crédito" : "Transferencia";
 
-    let bankAccountInfo = allAccounts.find(a => a.id === bankAccData.accountId);
+    let bankAccountInfo = findBankAccountingAccount(currentBankAccount, allAccounts);
     if (!bankAccountInfo) {
-      if (isCredit) {
-        const bankNameLower = (bankAccData.Name || bankAccData.name || "").toLowerCase();
-        bankAccountInfo = allAccounts.find(a => 
-          (a.code?.startsWith("205") || a.code?.startsWith("201")) && 
-          (bankNameLower.includes((a.name || "").toLowerCase()) || (a.name || "").toLowerCase().includes("tarjeta") || (a.name || "").toLowerCase().includes("credito"))
-        ) || allAccounts.find(a => a.code?.startsWith("205")) 
-          || allAccounts.find(a => a.code?.startsWith("201")) 
-          || { id: "acc-205-01", code: "205.01", name: bankAccData.name || "Tarjetas de Crédito (Pasivo)" };
-      } else {
-        bankAccountInfo = allAccounts.find(a => a.code?.startsWith("102")) || { id: "acc-102-01", code: "102.01", name: bankAccData.name || "Banco" };
-      }
+      bankAccountInfo = isCredit
+        ? { id: "acc-205-01", code: "205.01", name: currentBankAccount.name || currentBankAccount.Name || "Tarjetas de Crédito (Pasivo)" }
+        : { id: "acc-102-01", code: "102.01", name: currentBankAccount.name || currentBankAccount.Name || "Banco" };
     }
 
     const vendorsSnap = await getDocs(collection(db, "companies", companyId, "vendors"));
@@ -343,21 +387,265 @@ export async function runClientAiReconciliation(
       };
     };
 
-    // 4. Obtener Movimientos Bancarios de Egreso No Conciliados
+    // 4. Conciliación Determinista de Traspasos Entre Cuentas Propias ($0.00 MXN IA)
     control?.onProgress?.(0, 0, "Cargando movimientos bancarios...");
+    const details: any[] = [];
+    let processedCount = 0;
+
     const txsSnap = await getDocs(collection(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions"));
-    let pendingTxs = txsSnap.docs
+    let allCurrentPendingTxs = txsSnap.docs
       .map(d => ({ id: d.id, ...d.data() } as any))
-      .filter(t => !t.reconciled && t.amount < 0);
+      .filter(t => !t.reconciled);
 
     if (dateRange?.startDate) {
-      pendingTxs = pendingTxs.filter(t => normalizeDateToISO(t.date || "") >= dateRange.startDate!);
+      allCurrentPendingTxs = allCurrentPendingTxs.filter(t => normalizeDateToISO(t.date || "") >= dateRange.startDate!);
     }
     if (dateRange?.endDate) {
-      pendingTxs = pendingTxs.filter(t => normalizeDateToISO(t.date || "") <= dateRange.endDate!);
+      allCurrentPendingTxs = allCurrentPendingTxs.filter(t => normalizeDateToISO(t.date || "") <= dateRange.endDate!);
     }
 
+    const reconciledTransferTxIds = new Set<string>();
+
+    if (otherBankAccounts.length > 0 && allCurrentPendingTxs.length > 0) {
+      control?.onProgress?.(0, allCurrentPendingTxs.length, "Buscando traspasos entre cuentas propias...");
+
+      // Cargar movimientos pendientes de las otras cuentas bancarias
+      const otherPendingTxs: Array<{ tx: any; bankAccountId: string; bankAccount: any }> = [];
+      for (const otherAcc of otherBankAccounts) {
+        const otherSnap = await getDocs(collection(db, "companies", companyId, "bankAccounts", otherAcc.id, "transactions"));
+        otherSnap.docs.forEach(d => {
+          const data = d.data();
+          if (!data.reconciled) {
+            otherPendingTxs.push({
+              tx: { id: d.id, ...data },
+              bankAccountId: otherAcc.id,
+              bankAccount: otherAcc
+            });
+          }
+        });
+      }
+
+      const matchedTargetIds = new Set<string>();
+
+      for (const cTx of allCurrentPendingTxs) {
+        if (control?.isCancelled()) break;
+        while (control?.isPaused()) {
+          if (control?.isCancelled()) break;
+          await sleep(500);
+        }
+
+        const cAbs = Math.abs(cTx.amount);
+        const cSign = Math.sign(cTx.amount);
+        const cDateStr = normalizeDateToISO(cTx.date || "");
+        const cDate = new Date(cDateStr + "T00:00:00");
+        const cConcept = (cTx.concept || "").toLowerCase();
+
+        // Buscar candidatos con signo opuesto y mismo importe en las demás cuentas
+        const candidates: Array<{
+          item: typeof otherPendingTxs[0];
+          diffDays: number;
+          score: number;
+          hasTransferKeyword: boolean;
+        }> = [];
+
+        for (const item of otherPendingTxs) {
+          if (matchedTargetIds.has(item.tx.id)) continue;
+          if (Math.sign(item.tx.amount) === cSign) continue;
+          if (Math.abs(Math.abs(item.tx.amount) - cAbs) >= 0.01) continue;
+
+          const oDateStr = normalizeDateToISO(item.tx.date || "");
+          const oDate = new Date(oDateStr + "T00:00:00");
+          const diffDays = Math.round(Math.abs((cDate.getTime() - oDate.getTime()) / (1000 * 60 * 60 * 24)));
+          if (isNaN(diffDays) || diffDays > 4) continue;
+
+          const oConcept = (item.tx.concept || "").toLowerCase();
+          let score = 50 - (diffDays * 5);
+
+          const hasTransferKeyword = 
+            cConcept.includes("traspas") || oConcept.includes("traspas") ||
+            cConcept.includes("pago servicio") || oConcept.includes("su pago") ||
+            cConcept.includes("tarjeta de credito") || oConcept.includes("tarjeta de credito") ||
+            cConcept.includes("bbva") || oConcept.includes("bbva") ||
+            cConcept.includes("banregio") || oConcept.includes("banregio") ||
+            cConcept.includes("santander") || oConcept.includes("santander") ||
+            cConcept.includes("bajio") || oConcept.includes("bajio") ||
+            cConcept.includes("inbursa") || oConcept.includes("inbursa") ||
+            cConcept.includes("banorte") || oConcept.includes("banorte") ||
+            cConcept.includes("citibanamex") || oConcept.includes("citibanamex") ||
+            cConcept.includes("dmg capital") || oConcept.includes("dmg capital") ||
+            cConcept.includes("humberto vargas") || oConcept.includes("humberto vargas");
+
+          if (hasTransferKeyword) score += 30;
+
+          candidates.push({ item, diffDays, score, hasTransferKeyword });
+        }
+
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => b.score - a.score);
+          const best = candidates[0];
+
+          if (best.hasTransferKeyword || (candidates.length === 1 && best.diffDays <= 2)) {
+            const targetItem = best.item;
+            matchedTargetIds.add(targetItem.tx.id);
+            reconciledTransferTxIds.add(cTx.id);
+
+            control?.onProgress?.(
+              processedCount + 1,
+              allCurrentPendingTxs.length,
+              `Traspaso propio emparejado ($${cAbs.toFixed(2)}): ${currentBankAccount.name || currentBankAccount.Name || "Cuenta"} <-> ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "Cuenta"}`
+            );
+
+            // Cuentas contables para ambas cuentas
+            const currentAccountingAccount = findBankAccountingAccount(currentBankAccount, allAccounts);
+            const currentBankAccountingId = currentAccountingAccount?.id;
+            const targetAccountingAccount = findBankAccountingAccount(targetItem.bankAccount, allAccounts);
+            const targetBankAccountingId = targetAccountingAccount?.id;
+
+            // Actualizar transacción actual
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", cTx.id), {
+              reconciled: true,
+              matchedAt: new Date().toISOString(),
+              reconcileType: "transfer",
+              matchedDocumentId: targetItem.tx.id,
+              matchedAccountId: targetItem.bankAccountId,
+              reconciledBy: "AI_AGENT (Determinista)",
+              aiMatchReason: `Traspaso propio emparejado con ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "otra cuenta bancaria"}`
+            });
+
+            // Actualizar transacción destino
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId, "transactions", targetItem.tx.id), {
+              reconciled: true,
+              matchedAt: new Date().toISOString(),
+              reconcileType: "transfer",
+              matchedDocumentId: cTx.id,
+              matchedAccountId: bankAccountId,
+              reconciledBy: "AI_AGENT (Determinista)",
+              aiMatchReason: `Traspaso propio emparejado con ${currentBankAccount.name || currentBankAccount.Name || "otra cuenta bancaria"}`
+            });
+
+            const isCurrentOutflow = cTx.amount < 0;
+
+            if (isCurrentOutflow) {
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
+                balance: increment(-cAbs)
+              });
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId), {
+                balance: increment(cAbs)
+              });
+
+              if (currentBankAccountingId) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+                  balance: increment(-cAbs)
+                });
+              }
+              if (targetBankAccountingId) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", targetBankAccountingId), {
+                  balance: increment(cAbs)
+                });
+              }
+
+              if (currentAccountingAccount && targetAccountingAccount) {
+                const entries = [
+                  {
+                    accountId: targetBankAccountingId,
+                    accountCode: targetAccountingAccount.code,
+                    accountName: targetAccountingAccount.name,
+                    debit: cAbs,
+                    credit: 0
+                  },
+                  {
+                    accountId: currentBankAccountingId,
+                    accountCode: currentAccountingAccount.code,
+                    accountName: currentAccountingAccount.name,
+                    debit: 0,
+                    credit: cAbs
+                  }
+                ];
+
+                await addDoc(collection(db, "companies", companyId, "journal_entries"), {
+                  type: "diario",
+                  date: cTx.date || new Date().toISOString().split("T")[0],
+                  description: `Traspaso propio: ${cTx.concept || "Salida"} -> ${targetItem.tx.concept || "Entrada"}`,
+                  referenceId: cTx.id,
+                  referenceType: "bank_transfer_reconciliation",
+                  createdAt: new Date().toISOString(),
+                  status: "activa",
+                  entries
+                });
+              }
+            } else {
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
+                balance: increment(cAbs)
+              });
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", targetItem.bankAccountId), {
+                balance: increment(-cAbs)
+              });
+
+              if (currentBankAccountingId) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+                  balance: increment(cAbs)
+                });
+              }
+              if (targetBankAccountingId) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", targetBankAccountingId), {
+                  balance: increment(-cAbs)
+                });
+              }
+
+              if (currentAccountingAccount && targetAccountingAccount) {
+                const entries = [
+                  {
+                    accountId: currentBankAccountingId,
+                    accountCode: currentAccountingAccount.code,
+                    accountName: currentAccountingAccount.name,
+                    debit: cAbs,
+                    credit: 0
+                  },
+                  {
+                    accountId: targetBankAccountingId,
+                    accountCode: targetAccountingAccount.code,
+                    accountName: targetAccountingAccount.name,
+                    debit: 0,
+                    credit: cAbs
+                  }
+                ];
+
+                await addDoc(collection(db, "companies", companyId, "journal_entries"), {
+                  type: "diario",
+                  date: cTx.date || new Date().toISOString().split("T")[0],
+                  description: `Traspaso propio: ${targetItem.tx.concept || "Salida"} -> ${cTx.concept || "Entrada"}`,
+                  referenceId: cTx.id,
+                  referenceType: "bank_transfer_reconciliation",
+                  createdAt: new Date().toISOString(),
+                  status: "activa",
+                  entries
+                });
+              }
+            }
+
+            processedCount++;
+            details.push({
+              txId: cTx.id,
+              action: "TRANSFER",
+              documentNumber: `TRASPASO-${targetItem.bankAccount.name || targetItem.bankAccount.Name || "BANCO"}`,
+              reasoning: `Conciliación determinista de traspaso propio ($0.00 IA): Monto $${cAbs.toFixed(2)} con cuenta ${targetItem.bankAccount.name || targetItem.bankAccount.Name}`
+            });
+          }
+        }
+      }
+    }
+
+    // 5. Filtrar Movimientos Bancarios de Egreso No Conciliados Restantes para Facturas / IA
+    let pendingTxs = allCurrentPendingTxs.filter(t => !reconciledTransferTxIds.has(t.id) && t.amount < 0);
+
     if (pendingTxs.length === 0) {
+      if (processedCount > 0) {
+        return {
+          success: true,
+          processedCount,
+          details
+        };
+      }
       return {
         success: true,
         processedCount: 0,
@@ -365,9 +653,6 @@ export async function runClientAiReconciliation(
         error: "No se encontraron movimientos bancarios de egreso pendientes de conciliar en la cuenta y rango de fechas seleccionados."
       };
     }
-
-    const details: any[] = [];
-    let processedCount = 0;
 
     for (let idx = 0; idx < pendingTxs.length; idx++) {
       // ─────────────────────────────────────────────────────────────
@@ -568,7 +853,7 @@ Formato JSON estricto:
 
           const resolved = resolveVendorAndConcept(
             tx.concept || "",
-            bankAccountInfo.name || bankAccData.name || "Banco",
+            bankAccountInfo.name || currentBankAccount.name || currentBankAccount.Name || "Banco",
             evalData.suggestedVendorName,
             evalData.suggestedConcept
           );

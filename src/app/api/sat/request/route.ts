@@ -24,6 +24,36 @@ export async function POST(req: Request) {
 
         const fiel = Fiel.create(cerContent, keyContent, password);
 
+        // Validar vigencia y tipo de e.firma (FIEL)
+        if (!fiel.isValid()) {
+            const cert = (fiel as any)._credential?.certificate?.();
+            const isFiel = cert?.satType?.()?.isFiel?.() ?? true;
+            const rfc = fiel.getRfc() || cert?.rfc?.() || "";
+            const legalName = cert?.legalName?.() || "";
+            const validTo = cert?.validTo?.();
+
+            if (!isFiel) {
+                return NextResponse.json({ 
+                    error: `El certificado proporcionado (${rfc}) es un CSD (Certificado de Sello Digital) y no una e.firma (FIEL). Para descargar facturas del SAT se requiere la e.firma.` 
+                }, { status: 400 });
+            }
+
+            const expDateStr = validTo 
+                ? new Date(validTo).toLocaleDateString("es-MX", { 
+                    day: "numeric", 
+                    month: "long", 
+                    year: "numeric", 
+                    hour: "2-digit", 
+                    minute: "2-digit",
+                    timeZone: "America/Mexico_City"
+                  }) 
+                : "fecha no disponible";
+
+            return NextResponse.json({ 
+                error: `La e.firma (FIEL) de ${legalName ? `${legalName} ` : ""}(${rfc}) se encuentra vencida desde el ${expDateStr} (hora CDMX). Por favor renueva tu e.firma ante el SAT y actualiza los archivos en Configuración.` 
+            }, { status: 400 });
+        }
+
         const webClient = new HttpsWebClient();
         const requestBuilder = new FielRequestBuilder(fiel);
         const service = new Service(requestBuilder, webClient);
@@ -56,7 +86,11 @@ export async function POST(req: Request) {
         const queryResult = await service.query(parameters);
         
         if (!queryResult.getStatus().isAccepted()) {
-            return NextResponse.json({ error: queryResult.getStatus().getMessage() }, { status: 400 });
+            const code = queryResult.getStatus().getCode();
+            const message = queryResult.getStatus().getMessage();
+            return NextResponse.json({ 
+                error: `El SAT no aceptó la solicitud (${code}: ${message}).` 
+            }, { status: 400 });
         }
 
         return NextResponse.json({ 

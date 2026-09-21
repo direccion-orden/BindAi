@@ -5,7 +5,7 @@ import { collection, query, onSnapshot, orderBy, doc, getDoc, getDocs, where, de
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2, Pause, Play, Square } from "lucide-react";
+import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2, Pause, Play, Square, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { BankImportModal } from "./components/BankImportModal";
 import { TransferModal } from "./components/TransferModal";
@@ -408,6 +408,79 @@ export default function BancosPage() {
     return filteredTransactions;
   }, [filteredTransactions, activeTab, reconcileTypeFilter]);
 
+  // History table sorting state
+  const [sortField, setSortField] = useState<string>("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(prev => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDirection(field === "concept" ? "asc" : "desc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3.5 h-3.5 text-purple-600 shrink-0 font-bold" />
+    ) : (
+      <ArrowDown className="w-3.5 h-3.5 text-purple-600 shrink-0 font-bold" />
+    );
+  };
+
+  const sortedHistoryTransactions = useMemo(() => {
+    if (activeTab !== "history") return displayedTransactions;
+    const items = [...displayedTransactions];
+    return items.sort((a, b) => {
+      if (sortField === "date") {
+        const dateA = normalizeDateToISO(a.date);
+        const dateB = normalizeDateToISO(b.date);
+        if (dateA !== dateB) {
+          return sortDirection === "asc" ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+        }
+        return sortDirection === "asc" ? (a.createdAt || 0) - (b.createdAt || 0) : (b.createdAt || 0) - (a.createdAt || 0);
+      }
+
+      if (sortField === "concept") {
+        const comp = (a.concept || "").localeCompare(b.concept || "", "es");
+        if (comp !== 0) {
+          return sortDirection === "asc" ? comp : -comp;
+        }
+        return (a.reference || "").localeCompare(b.reference || "", "es");
+      }
+
+      if (sortField === "charge") {
+        const aIsCharge = a.amount < 0;
+        const bIsCharge = b.amount < 0;
+        if (aIsCharge && !bIsCharge) return -1;
+        if (!aIsCharge && bIsCharge) return 1;
+        if (aIsCharge && bIsCharge) {
+          const valA = Math.abs(a.amount);
+          const valB = Math.abs(b.amount);
+          return sortDirection === "asc" ? valA - valB : valB - valA;
+        }
+        return normalizeDateToISO(b.date).localeCompare(normalizeDateToISO(a.date));
+      }
+
+      if (sortField === "deposit") {
+        const aIsDep = a.amount > 0;
+        const bIsDep = b.amount > 0;
+        if (aIsDep && !bIsDep) return -1;
+        if (!aIsDep && bIsDep) return 1;
+        if (aIsDep && bIsDep) {
+          return sortDirection === "asc" ? a.amount - b.amount : b.amount - a.amount;
+        }
+        return normalizeDateToISO(b.date).localeCompare(normalizeDateToISO(a.date));
+      }
+
+      return 0;
+    });
+  }, [displayedTransactions, activeTab, sortField, sortDirection]);
+
   const eligibleTransactions = useMemo(() => {
     if (displayedTransactions.length === 0) return [];
     const isSelectingCharges = selectedTxs.length > 0 ? selectedTxs[0].amount < 0 : null;
@@ -778,14 +851,46 @@ export default function BancosPage() {
                           <table className="w-full text-sm">
                               <thead className="bg-muted/50 sticky top-0 z-10 backdrop-blur-sm">
                                   <tr>
-                                      <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Fecha</th>
-                                      <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Concepto / Referencia</th>
-                                      <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Cargo (-)</th>
-                                      <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Abono (+)</th>
+                                      <th 
+                                          className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted/80 hover:text-foreground transition-colors group"
+                                          onClick={() => handleSort("date")}
+                                      >
+                                          <div className="flex items-center gap-1.5">
+                                              <span>Fecha</span>
+                                              {renderSortIcon("date")}
+                                          </div>
+                                      </th>
+                                      <th 
+                                          className="px-4 py-3 text-left font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted/80 hover:text-foreground transition-colors group"
+                                          onClick={() => handleSort("concept")}
+                                      >
+                                          <div className="flex items-center gap-1.5">
+                                              <span>Concepto / Referencia</span>
+                                              {renderSortIcon("concept")}
+                                          </div>
+                                      </th>
+                                      <th 
+                                          className="px-4 py-3 text-right font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted/80 hover:text-foreground transition-colors group"
+                                          onClick={() => handleSort("charge")}
+                                      >
+                                          <div className="flex items-center justify-end gap-1.5">
+                                              <span>Cargo (-)</span>
+                                              {renderSortIcon("charge")}
+                                          </div>
+                                      </th>
+                                      <th 
+                                          className="px-4 py-3 text-right font-semibold text-muted-foreground cursor-pointer select-none hover:bg-muted/80 hover:text-foreground transition-colors group"
+                                          onClick={() => handleSort("deposit")}
+                                      >
+                                          <div className="flex items-center justify-end gap-1.5">
+                                              <span>Abono (+)</span>
+                                              {renderSortIcon("deposit")}
+                                          </div>
+                                      </th>
                                   </tr>
                               </thead>
                               <tbody className="divide-y">
-                                  {displayedTransactions.map((tx) => (
+                                  {sortedHistoryTransactions.map((tx) => (
                                       <tr key={tx.id} className="hover:bg-muted/30 transition-colors">
                                           <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{tx.date}</td>
                                           <td className="px-4 py-3">

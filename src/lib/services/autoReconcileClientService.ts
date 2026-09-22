@@ -379,10 +379,10 @@ export async function runClientAiReconciliation(
         }
       }
 
-      // 5. REGLA ESTRICTA: No inventar proveedores al aire.
+      // 5. Si no coincide con un proveedor oficial registrado, conservar el nombre sugerido para el gasto provisional
       return {
         vendorId: "",
-        vendorName: "Proveedor Pendiente de Asignar",
+        vendorName: aiVendorName || "Proveedor Pendiente de Asignar",
         vendorRfc: "",
         concept: aiConcept || rawConcept
       };
@@ -417,14 +417,21 @@ export async function runClientAiReconciliation(
     if (otherBankAccounts.length > 0 && allCurrentPendingTxs.length > 0) {
       control?.onProgress?.(0, allCurrentPendingTxs.length, "Buscando traspasos entre cuentas propias...");
 
-      // Cargar movimientos pendientes de las otras cuentas bancarias
+      // Cargar movimientos pendientes y ya conciliados de las otras cuentas bancarias
       const otherPendingTxs: Array<{ tx: any; bankAccountId: string; bankAccount: any }> = [];
+      const otherReconciledTxs: Array<{ tx: any; bankAccountId: string; bankAccount: any }> = [];
       for (const otherAcc of otherBankAccounts) {
         const otherSnap = await getDocs(collection(db, "companies", companyId, "bankAccounts", otherAcc.id, "transactions"));
         otherSnap.docs.forEach(d => {
           const data = d.data();
           if (!data.reconciled) {
             otherPendingTxs.push({
+              tx: { id: d.id, ...data },
+              bankAccountId: otherAcc.id,
+              bankAccount: otherAcc
+            });
+          } else {
+            otherReconciledTxs.push({
               tx: { id: d.id, ...data },
               bankAccountId: otherAcc.id,
               bankAccount: otherAcc
@@ -449,6 +456,7 @@ export async function runClientAiReconciliation(
         const cConcept = (cTx.concept || "").toLowerCase();
         const cRef = (cTx.reference || "").toLowerCase();
         const cTokens = extractNumericTokens((cTx.concept || "") + " " + (cTx.reference || ""));
+        const isCurrentCredit = isCreditAccount(currentBankAccount);
 
         // Buscar candidatos con signo opuesto y mismo importe en las demás cuentas
         const candidates: Array<{
@@ -463,6 +471,11 @@ export async function runClientAiReconciliation(
           if (matchedTargetIds.has(item.tx.id)) continue;
           if (Math.sign(item.tx.amount) === cSign) continue;
           if (Math.abs(Math.abs(item.tx.amount) - cAbs) >= 0.01) continue;
+
+          const isOtherCredit = isCreditAccount(item.bankAccount);
+          const isCreditCardPayment = 
+            (isCurrentCredit && !isOtherCredit && cTx.amount > 0 && item.tx.amount < 0) ||
+            (!isCurrentCredit && isOtherCredit && cTx.amount < 0 && item.tx.amount > 0);
 
           const oDateStr = normalizeDateToISO(item.tx.date || "");
           const oDate = new Date(oDateStr + "T00:00:00");
@@ -486,10 +499,37 @@ export async function runClientAiReconciliation(
           let score = 50 - (diffDays * 5);
           if (hasExactRefMatch) score += 50;
 
+          const isCardPaymentTerm = (concept: string) => {
+            return (
+              concept.includes("tarjeta") ||
+              concept.includes("tc") ||
+              concept.includes("tdc") ||
+              concept.includes("su pago") ||
+              concept.includes("pago recibido") ||
+              concept.includes("abono") ||
+              concept.includes("pago bnet") ||
+              concept.includes("pago spei") ||
+              concept.includes("pago interbancario") ||
+              concept.includes("pago electronico") ||
+              concept.includes("pago movil") ||
+              concept.includes("pago en sucursal") ||
+              concept.includes("liquidacion") ||
+              concept.includes("pago servicio") ||
+              concept.includes("pago de servicio") ||
+              concept.includes("pago cuenta terceros") ||
+              concept.includes("traspas") ||
+              concept.includes("transferencia")
+            );
+          };
+
           const hasTransferKeyword = 
             cConcept.includes("traspas") || oConcept.includes("traspas") ||
             cConcept.includes("pago servicio") || oConcept.includes("su pago") ||
-            cConcept.includes("tarjeta de credito") || oConcept.includes("tarjeta de credito") ||
+            cConcept.includes("tarjeta") || oConcept.includes("tarjeta") ||
+            cConcept.includes("tc") || oConcept.includes("tc") ||
+            cConcept.includes("tdc") || oConcept.includes("tdc") ||
+            cConcept.includes("abono") || oConcept.includes("abono") ||
+            cConcept.includes("pago recibido") || oConcept.includes("pago recibido") ||
             cConcept.includes("bbva") || oConcept.includes("bbva") ||
             cConcept.includes("banregio") || oConcept.includes("banregio") ||
             cConcept.includes("santander") || oConcept.includes("santander") ||
@@ -502,14 +542,21 @@ export async function runClientAiReconciliation(
 
           if (hasTransferKeyword) score += 30;
 
-          candidates.push({ item, diffDays, score, hasTransferKeyword, hasExactRefMatch });
+          if (isCreditCardPayment) {
+            score += 35; // Alta confianza natural por ser relación Cuenta Bancaria <-> Tarjeta de Crédito con montos invertidos
+            if (isCardPaymentTerm(cConcept) || isCardPaymentTerm(oConcept)) {
+              score += 25;
+            }
+          }
+
+          candidates.push({ item, diffDays, score, hasTransferKeyword: hasTransferKeyword || isCreditCardPayment, hasExactRefMatch });
         }
 
         if (candidates.length > 0) {
           candidates.sort((a, b) => b.score - a.score);
           const best = candidates[0];
 
-          if (best.hasExactRefMatch || best.hasTransferKeyword || (candidates.length === 1 && best.diffDays <= 2)) {
+          if (best.hasExactRefMatch || best.hasTransferKeyword || (candidates.length === 1 && best.diffDays <= 4)) {
             const targetItem = best.item;
             matchedTargetIds.add(targetItem.tx.id);
             reconciledTransferTxIds.add(cTx.id);
@@ -661,6 +708,342 @@ export async function runClientAiReconciliation(
             }
           }
         }
+
+        // Si es abono de tarjeta de crédito y no encontró contraparte pendiente, buscar en movimientos ya conciliados de las otras cuentas
+        if (!reconciledTransferTxIds.has(cTx.id) && isCurrentCredit && cTx.amount > 0) {
+          const pastCandidates: Array<{
+            item: typeof otherReconciledTxs[0];
+            diffDays: number;
+          }> = [];
+
+          for (const item of otherReconciledTxs) {
+            if (item.tx.amount >= 0) continue; // Debe ser cargo/egreso en la cuenta de cheques
+            if (Math.abs(Math.abs(item.tx.amount) - cAbs) >= 0.01) continue;
+
+            const oDateStr = normalizeDateToISO(item.tx.date || "");
+            const oDate = new Date(oDateStr + "T00:00:00");
+            const diffDays = Math.round(Math.abs((cDate.getTime() - oDate.getTime()) / (1000 * 60 * 60 * 24)));
+            if (isNaN(diffDays) || diffDays > 7) continue;
+
+            const oConcept = (item.tx.concept || "").toLowerCase();
+            const isCardPayment = 
+              oConcept.includes("tarjeta") || 
+              oConcept.includes("tc") || 
+              oConcept.includes("tdc") || 
+              oConcept.includes("pago") || 
+              oConcept.includes("traspas") ||
+              item.tx.reconcileType === "transfer" ||
+              item.tx.matchedAccountId === bankAccountId;
+
+            if (isCardPayment || (diffDays <= 3)) {
+              pastCandidates.push({ item, diffDays });
+            }
+          }
+
+          if (pastCandidates.length > 0) {
+            pastCandidates.sort((a, b) => a.diffDays - b.diffDays);
+            const targetItem = pastCandidates[0].item;
+            reconciledTransferTxIds.add(cTx.id);
+
+            control?.onProgress?.(
+              processedCount + 1,
+              allCurrentPendingTxs.length,
+              `Abono de tarjeta vinculado con cargo bancario ($${cAbs.toFixed(2)}): ${targetItem.bankAccount.name || "Cuenta Bancaria"}`
+            );
+
+            try {
+              // Actualizar transacción actual de tarjeta
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", cTx.id), {
+                reconciled: true,
+                matchedAt: new Date().toISOString(),
+                reconcileType: "transfer",
+                matchedDocumentId: targetItem.tx.id,
+                matchedAccountId: targetItem.bankAccountId,
+                reconciledBy: "AI_AGENT (Determinista)",
+                aiMatchReason: `Abono de tarjeta emparejado con movimiento en ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "cuenta bancaria"}`
+              });
+
+              // Actualizar saldo de la tarjeta de crédito (disminuye deuda)
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
+                balance: increment(cAbs)
+              });
+
+              const currentAccountingAccount = findBankAccountingAccount(currentBankAccount, allAccounts);
+              const currentBankAccountingId = currentAccountingAccount?.id;
+              const targetAccountingAccount = findBankAccountingAccount(targetItem.bankAccount, allAccounts);
+              const targetBankAccountingId = targetAccountingAccount?.id;
+
+              if (currentBankAccountingId && !currentBankAccountingId.startsWith("acc-")) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+                  balance: increment(cAbs)
+                }).catch(() => {});
+              }
+
+              if (currentAccountingAccount && targetAccountingAccount) {
+                const entries = [
+                  {
+                    accountId: currentBankAccountingId,
+                    accountCode: currentAccountingAccount.code,
+                    accountName: currentAccountingAccount.name,
+                    debit: cAbs,
+                    credit: 0
+                  },
+                  {
+                    accountId: targetBankAccountingId,
+                    accountCode: targetAccountingAccount.code,
+                    accountName: targetAccountingAccount.name,
+                    debit: 0,
+                    credit: cAbs
+                  }
+                ];
+
+                await addDoc(collection(db, "companies", companyId, "journal_entries"), {
+                  type: "diario",
+                  date: cTx.date || new Date().toISOString().split("T")[0],
+                  description: `Abono a Tarjeta: ${targetItem.tx.concept || "Cargo banco"} -> ${cTx.concept || "Abono tarjeta"}`,
+                  referenceId: cTx.id,
+                  referenceType: "bank_transfer_reconciliation",
+                  createdAt: new Date().toISOString(),
+                  status: "activa",
+                  entries
+                }).catch(err => console.warn("Error creando póliza de abono:", err));
+              }
+
+              processedCount++;
+              details.push({
+                txId: cTx.id,
+                action: "TRANSFER",
+                documentNumber: `ABONO-TC-${targetItem.bankAccount.name || "BANCO"}`,
+                reasoning: `Abono de tarjeta emparejado con movimiento de salida de ${targetItem.bankAccount.name || "cuenta bancaria"} ($${cAbs.toFixed(2)})`
+              });
+            } catch (txErr) {
+              console.error(`Error procesando abono contra movimiento previo ${cTx.id}:`, txErr);
+            }
+          }
+        }
+      }
+    }
+
+    // 4.5. Conciliación Autónoma de Abonos / Pagos Directos a Tarjeta de Crédito Restantes
+    if (isCredit) {
+      const remainingCardInflows = allCurrentPendingTxs.filter(t => !reconciledTransferTxIds.has(t.id) && t.amount > 0);
+      for (const inTx of remainingCardInflows) {
+        if (control?.isCancelled()) break;
+        const inAbs = Math.abs(inTx.amount);
+        const inConcept = (inTx.concept || "").toLowerCase().trim();
+
+        const isPaymentConcept = 
+          inConcept.includes("su pago") ||
+          inConcept.includes("pago recibido") ||
+          inConcept.includes("pago tarjeta") ||
+          inConcept.includes("pago de tarjeta") ||
+          inConcept.includes("pago a tarjeta") ||
+          inConcept.includes("pago tc") ||
+          inConcept.includes("pago tdc") ||
+          inConcept.includes("pago bnet") ||
+          inConcept.includes("pago spei") ||
+          inConcept.includes("pago interbancario") ||
+          inConcept.includes("pago electronico") ||
+          inConcept.includes("pago movil") ||
+          inConcept.includes("pago en sucursal") ||
+          inConcept.includes("abono") ||
+          inConcept.includes("liquidacion") ||
+          inConcept.includes("deposito") ||
+          inConcept.includes("traspaso") ||
+          inConcept.includes("transferencia") ||
+          inConcept.includes("banca");
+
+        if (isPaymentConcept) {
+          reconciledTransferTxIds.add(inTx.id);
+
+          control?.onProgress?.(
+            processedCount + 1,
+            allCurrentPendingTxs.length,
+            `Conciliando pago a tarjeta de crédito ($${inAbs.toFixed(2)}): "${inTx.concept}"`
+          );
+
+          try {
+            // Buscar si el concepto menciona un banco específico o asociar a cuenta bancaria principal
+            const matchedBank = otherBankAccounts.find(b => {
+              const bName = (b.name || b.Name || "").toLowerCase();
+              return bName && inConcept.includes(bName);
+            }) || otherBankAccounts[0];
+
+            const currentAccountingAccount = findBankAccountingAccount(currentBankAccount, allAccounts);
+            const currentBankAccountingId = currentAccountingAccount?.id;
+            const targetAccountingAccount = matchedBank ? findBankAccountingAccount(matchedBank, allAccounts) : null;
+            const targetBankAccountingId = targetAccountingAccount?.id;
+
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", inTx.id), {
+              reconciled: true,
+              matchedAt: new Date().toISOString(),
+              reconcileType: "transfer",
+              reconciledBy: "AI_AGENT (Pago Tarjeta)",
+              aiMatchReason: `Abono / Pago a Tarjeta de Crédito registrado ($${inAbs.toFixed(2)} MXN)`
+            });
+
+            // Disminuye deuda en la tarjeta
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
+              balance: increment(inAbs)
+            });
+
+            if (currentBankAccountingId && !currentBankAccountingId.startsWith("acc-")) {
+              await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+                balance: increment(inAbs)
+              }).catch(() => {});
+            }
+
+            // Crear póliza contable de amortización de pasivo
+            if (currentAccountingAccount) {
+              const creditAccId = targetBankAccountingId || "acc-102-01";
+              const creditAccCode = targetAccountingAccount?.code || "102.01";
+              const creditAccName = targetAccountingAccount?.name || "Bancos";
+
+              const entries = [
+                {
+                  accountId: currentBankAccountingId,
+                  accountCode: currentAccountingAccount.code,
+                  accountName: currentAccountingAccount.name,
+                  debit: inAbs,
+                  credit: 0
+                },
+                {
+                  accountId: creditAccId,
+                  accountCode: creditAccCode,
+                  accountName: creditAccName,
+                  debit: 0,
+                  credit: inAbs
+                }
+              ];
+
+              await addDoc(collection(db, "companies", companyId, "journal_entries"), {
+                type: "diario",
+                date: inTx.date || new Date().toISOString().split("T")[0],
+                description: `Pago a Tarjeta de Crédito: ${inTx.concept || "Abono"}`,
+                referenceId: inTx.id,
+                referenceType: "credit_card_payment",
+                createdAt: new Date().toISOString(),
+                status: "activa",
+                entries
+              }).catch(err => console.warn("Error creando póliza de pago a tarjeta:", err));
+            }
+
+            processedCount++;
+            details.push({
+              txId: inTx.id,
+              action: "TRANSFER",
+              documentNumber: `PAGO-TC-${inTx.id.substring(0, 6)}`,
+              reasoning: `Pago a Tarjeta de Crédito conciliado ($${inAbs.toFixed(2)}): ${inTx.concept}`
+            });
+          } catch (err) {
+            console.error(`Error procesando abono autónomo a tarjeta ${inTx.id}:`, err);
+          }
+        } else {
+          // 4.6. Conciliación Autónoma de Devoluciones / Reembolsos / Ajustes en Tarjeta de Crédito
+          const isRefundConcept = 
+            inConcept.includes("devolucion") ||
+            inConcept.includes("devolución") ||
+            inConcept.includes("reembolso") ||
+            inConcept.includes("refund") ||
+            inConcept.includes("bonificacion") ||
+            inConcept.includes("bonificación") ||
+            inConcept.includes("cargo por devolucion") ||
+            inConcept.includes("cargo por devolución") ||
+            inConcept.includes("ajuste a favor") ||
+            inConcept.includes("acreditacion") ||
+            inConcept.includes("cancelacion") ||
+            inConcept.includes("cancelación");
+
+          if (isRefundConcept || inAbs > 0) {
+            reconciledTransferTxIds.add(inTx.id);
+
+            control?.onProgress?.(
+              processedCount + 1,
+              allCurrentPendingTxs.length,
+              `Conciliando devolución / reembolso en tarjeta de crédito ($${inAbs.toFixed(2)}): "${inTx.concept}"`
+            );
+
+            try {
+              const currentAccountingAccount = findBankAccountingAccount(currentBankAccount, allAccounts);
+              const currentBankAccountingId = currentAccountingAccount?.id;
+
+              // Buscar cuenta de devoluciones sobre compras (503) o gastos generales (601)
+              const refundAccountingAccount = 
+                allAccounts.find(a => a.code?.startsWith("503")) ||
+                allAccounts.find(a => a.code?.startsWith("601")) ||
+                null;
+              const refundAccId = refundAccountingAccount?.id || "acc-503-01";
+              const refundAccCode = refundAccountingAccount?.code || "503.01";
+              const refundAccName = refundAccountingAccount?.name || "Devoluciones sobre compras";
+
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", inTx.id), {
+                reconciled: true,
+                matchedAt: new Date().toISOString(),
+                reconcileType: "refund",
+                reconciledBy: "AI_AGENT (Devolución Tarjeta)",
+                aiMatchReason: `Devolución / Reembolso acreditado en Tarjeta de Crédito ($${inAbs.toFixed(2)} MXN): ${inTx.concept || "Devolución"}`
+              });
+
+              // Incrementa saldo en la tarjeta (disminuye deuda en tarjeta de crédito)
+              await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId), {
+                balance: increment(inAbs)
+              });
+
+              if (currentBankAccountingId && !currentBankAccountingId.startsWith("acc-")) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", currentBankAccountingId), {
+                  balance: increment(inAbs)
+                }).catch(() => {});
+              }
+
+              if (refundAccId && !refundAccId.startsWith("acc-")) {
+                await updateDoc(doc(db, "companies", companyId, "accounts", refundAccId), {
+                  balance: increment(inAbs)
+                }).catch(() => {});
+              }
+
+              // Crear póliza contable de devolución: Cargo a Pasivo Tarjeta (205.01) y Abono a Devoluciones (503.01 / 601.01)
+              if (currentAccountingAccount) {
+                const entries = [
+                  {
+                    accountId: currentBankAccountingId,
+                    accountCode: currentAccountingAccount.code,
+                    accountName: currentAccountingAccount.name,
+                    debit: inAbs,
+                    credit: 0
+                  },
+                  {
+                    accountId: refundAccId,
+                    accountCode: refundAccCode,
+                    accountName: refundAccName,
+                    debit: 0,
+                    credit: inAbs
+                  }
+                ];
+
+                await addDoc(collection(db, "companies", companyId, "journal_entries"), {
+                  type: "diario",
+                  date: inTx.date || new Date().toISOString().split("T")[0],
+                  description: `Devolución / Reembolso en Tarjeta de Crédito: ${inTx.concept || "Devolución"}`,
+                  referenceId: inTx.id,
+                  referenceType: "credit_card_refund",
+                  createdAt: new Date().toISOString(),
+                  status: "activa",
+                  entries
+                }).catch(err => console.warn("Error creando póliza de devolución en tarjeta:", err));
+              }
+
+              processedCount++;
+              details.push({
+                txId: inTx.id,
+                action: "REFUND",
+                documentNumber: `DEV-TC-${inTx.id.substring(0, 6)}`,
+                reasoning: `Devolución / Reembolso conciliado en tarjeta de crédito ($${inAbs.toFixed(2)}): ${inTx.concept}`
+              });
+            } catch (err) {
+              console.error(`Error procesando devolución autónoma a tarjeta ${inTx.id}:`, err);
+            }
+          }
+        }
       }
     }
 
@@ -679,7 +1062,9 @@ export async function runClientAiReconciliation(
         success: true,
         processedCount: 0,
         details: [],
-        error: "No se encontraron movimientos bancarios de egreso pendientes de conciliar en la cuenta y rango de fechas seleccionados."
+        error: isCredit 
+          ? "No se encontraron movimientos pendientes de conciliar en la tarjeta de crédito y rango de fechas seleccionados."
+          : "No se encontraron movimientos bancarios de egreso pendientes de conciliar en la cuenta y rango de fechas seleccionados."
       };
     }
 
@@ -743,25 +1128,52 @@ export async function runClientAiReconciliation(
       // ETAPA 2: PRE-FILTRADO (CANDIDATE SLICING) Y LLAMADA OPTIMIZADA A IA
       // ─────────────────────────────────────────────────────────────
       if (!evalData) {
-        // Si el concepto indica explícitamente un traspaso bancario propio y no se emparejó de forma automática
-        const isTransferConcept = conceptLower.includes("traspas") || conceptLower.includes("spei enviado") || conceptLower.includes("spei recib");
+        // Si el concepto indica explícitamente un traspaso bancario propio o pago a tarjeta de crédito
+        const isTransferConcept = 
+          conceptLower.includes("traspas") || 
+          conceptLower.includes("spei enviado") || 
+          conceptLower.includes("spei recib") ||
+          conceptLower.includes("pago tarjeta") ||
+          conceptLower.includes("pago de tarjeta") ||
+          conceptLower.includes("pago a tarjeta") ||
+          conceptLower.includes("pago tc") ||
+          conceptLower.includes("pago tdc") ||
+          conceptLower.includes("tarjeta de credito");
+
         if (isTransferConcept) {
           evalData = {
-            confidenceScore: 0.85,
+            confidenceScore: 0.90,
             recommendedAction: "REVIEW_TRANSFER",
             matchedDocId: null,
-            reasoning: `El movimiento por $${txAbsAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN corresponde a un traspaso bancario propio hacia otra cuenta. No se detectó la contraparte automática en los extractos actuales; se recomienda conciliarlo en la pestaña 'Traspaso Propio' o verificar la cuenta destino.`
+            reasoning: `El movimiento por $${txAbsAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN corresponde a un pago a tarjeta de crédito o traspaso bancario propio. Se recomienda verificar la cuenta de tarjeta de crédito destino para conciliarlo y amortizar el pasivo contable.`
           };
         }
       }
 
       if (!evalData) {
-        // Filtrar candidatos cuya variación de monto sea menor al 15% o $100 MXN, o compartan coincidencia en concepto
+        // Filtrar candidatos cuya variación de monto sea menor al 15% o $100 MXN, o compartan coincidencia en concepto con fecha cercana
         const slicedCandidates = candidates.filter(c => {
           const diff = Math.abs((c.total || 0) - txAbsAmount);
           const percentDiff = diff / Math.max(txAbsAmount, 1);
-          const vendorName = (c.emitterName || c.vendorName || "").toLowerCase();
-          return percentDiff <= 0.15 || diff <= 100 || (vendorName && conceptLower.includes(vendorName));
+          const vendorName = (c.emitterName || c.vendorName || "").toLowerCase().trim();
+
+          // Candidato por cercanía de monto
+          if (percentDiff <= 0.15 || diff <= 100) {
+            return true;
+          }
+
+          // Candidato por coincidencia de proveedor: solo si la fecha está dentro de +/- 15 días
+          if (vendorName && vendorName.length >= 4 && conceptLower.includes(vendorName)) {
+            if (c.date && txDate) {
+              const d1 = new Date(c.date.slice(0, 10)).getTime();
+              const d2 = new Date(txDate.slice(0, 10)).getTime();
+              const dayDiff = Math.abs((d1 - d2) / (1000 * 60 * 60 * 24));
+              if (!isNaN(dayDiff) && dayDiff > 15) return false;
+            }
+            return true;
+          }
+
+          return false;
         }).slice(0, 8); // Máximo 8 candidatos en el prompt
 
         if (idx > 0) await sleep(500);
@@ -779,10 +1191,20 @@ MOVIMIENTO BANCARIO:
 CANDIDATOS CERCANOS FILTRADOS:
 ${JSON.stringify(slicedCandidates, null, 2)}
 
-REGLAS:
-1. Si un candidato coincide en monto y concepto/proveedor, asigna confidenceScore >= 0.90 y recommendedAction = "MATCH_INVOICE".
-2. Si NO hay candidata pero es un gasto operativo claro (Uber, Oxxo, CFE, Gasolina, Renta, Caseta, Comisiones bancarias, etc.), asigna confidenceScore >= 0.90 y recommendedAction = "CREATE_PROVISIONAL_EXPENSE". Determina la cuenta contable (ej. "601.01" Gastos Generales). Extrae el nombre limpio del comercio o entidad (suggestedVendorName) y un concepto descriptivo claro (suggestedConcept).
-3. Si hay ambigüedad o montos discordantes, asigna confidenceScore < 0.90 y recommendedAction = "REVIEW_REQUIRED".
+REGLAS DE CONCILIACIÓN:
+1. MATCH_INVOICE: Si un candidato coincide en monto con el movimiento bancario (mismo monto exacto o variación de centavos justificada), mismo proveedor y fecha cercana, asigna confidenceScore >= 0.90 y recommendedAction = "MATCH_INVOICE" indicando el matchedDocId.
+2. PROVEEDORES RECURRENTES Y COMPRAS INDEPENDIENTES: En comercios recurrentes (ej. Amazon, Costco, Mercado Pago, Uber, Oxxo, Telcel, Bed Bath, etc.), es habitual realizar múltiples compras en diferentes fechas y por distintos importes. Si los candidatos en la lista son de fechas o importes claramente diferentes a este movimiento, representan OTRAS compras y NO corresponden a este consumo. En tal situación, procede con la REGLA 3.
+3. CREATE_PROVISIONAL_EXPENSE: Si NO existe una factura exacta en los candidatos para este movimiento específico, pero el concepto corresponde a un gasto comercial, compra con tarjeta o servicio operativo identificable (ej. Costco, Amazon, Bed Bath, Uber, Oxxo, Telcel, restaurantes, papelerías, gasolina, casetas, comisiones, etc.):
+   - recommendedAction = "CREATE_PROVISIONAL_EXPENSE"
+   - confidenceScore = 0.95
+   - suggestedAccountCode = cuenta contable de gastos (ej. "601.01" Gastos Generales)
+   - suggestedAccountName = "Gastos Generales"
+   - suggestedVendorName = Nombre limpio del comercio o proveedor (ej. "Costco", "Amazon", "Bed Bath", "Uber", "Oxxo")
+   - suggestedConcept = Descripción clara del consumo (ej. "Compra en Costco", "Compra en Amazon")
+4. REVIEW_REQUIRED: Asigna recommendedAction = "REVIEW_REQUIRED" (confidenceScore < 0.90) ÚNICAMENTE si:
+   - Hay una factura con el MISMO proveedor y misma fecha pero con discrepancia en el monto que genera duda legítima (ej. pago parcial vs factura pendiente).
+   - O el concepto bancario es completamente indescifrable o ambiguo (ej. cadenas aleatorias sin nombre de comercio ni banco).
+   - NUNCA uses "REVIEW_REQUIRED" simplemente porque "no se encontró la factura en el sistema" o "falta el XML". Para consumos operativos o compras sin XML registrado, la regla contable obligatoria es SIEMPRE crear el gasto provisional ("CREATE_PROVISIONAL_EXPENSE").
 
 Formato JSON estricto:
 {
@@ -791,8 +1213,8 @@ Formato JSON estricto:
   "matchedDocId": ID de la factura (o null),
   "suggestedAccountCode": "601.01",
   "suggestedAccountName": "Gastos Generales",
-  "suggestedVendorName": "Nombre limpio del comercio/proveedor (ej. Telcel, Oxxo Gas, Amazon, BBVA)",
-  "suggestedConcept": "Descripción clara del gasto (ej. Pago de telefonía móvil, Combustible en estación de servicio)",
+  "suggestedVendorName": "Nombre limpio del comercio/proveedor",
+  "suggestedConcept": "Descripción clara del gasto",
   "reasoning": "Explicación clara en español."
 }
 `;

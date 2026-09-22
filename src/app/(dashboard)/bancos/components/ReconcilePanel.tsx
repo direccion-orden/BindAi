@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft, ChevronDown } from "lucide-react";
 import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
+import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
 
 interface ReconcilePanelProps {
   transactions: BankTransaction[];
@@ -741,7 +742,7 @@ export function ReconcilePanel({
           const totalAmt = selectedDoc.docTotal || selectedDoc.total || 0;
           const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
 
-          let mappedItems = [];
+          let mappedItems: any[] = [];
           if (selectedDoc.items && selectedDoc.items.length > 0) {
             mappedItems = selectedDoc.items.map((item: any) => ({
               ...item,
@@ -749,7 +750,28 @@ export function ReconcilePanel({
               locationId: selectedLocationId,
               costCenterId: selectedCostCenterId || null
             }));
-          } else {
+          } else if (selectedDoc.xmlBase64) {
+            const parsed = parseCfdiItems(selectedDoc.xmlBase64);
+            if (parsed.length > 0) {
+              mappedItems = parsed.map((item) => ({
+                productId: null,
+                variantId: null,
+                productName: item.productName || "Partida SAT",
+                variantTitle: item.variantTitle || "",
+                quantity: item.quantity || 1,
+                unitCost: item.unitCost || 0,
+                amount: item.amount || ((item.quantity || 1) * (item.unitCost || 0)),
+                lineKey: "",
+                costCenterId: selectedCostCenterId || null,
+                accountId: selectedExpenseOrIncomeAccountId,
+                locationId: selectedLocationId,
+                claveProdServ: item.claveProdServ || "",
+                unit: item.unidad || item.claveUnidad || "PZA"
+              }));
+            }
+          }
+
+          if (mappedItems.length === 0) {
             mappedItems = [
               {
                 productId: null,
@@ -758,6 +780,7 @@ export function ReconcilePanel({
                 variantTitle: "",
                 quantity: 1,
                 unitCost: totalAmt,
+                amount: totalAmt,
                 lineKey: "",
                 costCenterId: selectedCostCenterId || null,
                 accountId: selectedExpenseOrIncomeAccountId,
@@ -785,6 +808,7 @@ export function ReconcilePanel({
             status: status,
             items: mappedItems,
             satInvoiceId: selectedDoc.id,
+            xmlBase64: selectedDoc.xmlBase64 || null,
             createdAt: new Date().toISOString(),
             createdBy: user?.email || "Sistema (Conciliación)",
             _type: "gasto_manual"
@@ -938,6 +962,7 @@ export function ReconcilePanel({
 
           if (selectedDoc._type === "gasto") {
             updates.expenseId = targetDocId;
+            updates.linkedExpenseId = targetDocId;
           }
         }
 

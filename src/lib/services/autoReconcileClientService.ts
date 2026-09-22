@@ -2,6 +2,7 @@ import { doc, getDoc, getDocs, collection, setDoc, updateDoc, addDoc, increment,
 import { Firestore } from "firebase/firestore";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { isCreditAccount } from "@/types/bank";
+import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
 
 export const findBankAccountingAccount = (physicalBankAccount: any, accountingAccountsAll: any[]) => {
   if (!physicalBankAccount) return null;
@@ -810,6 +811,46 @@ Formato JSON estricto:
           const docNumber = matchedCand?.invoiceNumber || matchedCand?.uuid || "GAS-000100";
 
           if (matchedCand?._type === "gasto") {
+            let parsedItems: any[] = [];
+            if (matchedCand.items && matchedCand.items.length > 0) {
+              parsedItems = matchedCand.items;
+            } else if (matchedCand.xmlBase64) {
+              const rawItems = parseCfdiItems(matchedCand.xmlBase64);
+              parsedItems = rawItems.map((item) => ({
+                productId: null,
+                variantId: null,
+                productName: item.productName || "Partida SAT",
+                variantTitle: item.variantTitle || "",
+                quantity: item.quantity || 1,
+                unitCost: item.unitCost || 0,
+                amount: item.amount || ((item.quantity || 1) * (item.unitCost || 0)),
+                lineKey: "",
+                costCenterId: null,
+                accountId: null,
+                locationId: null,
+                claveProdServ: item.claveProdServ || "",
+                unit: item.unidad || item.claveUnidad || "PZA"
+              }));
+            }
+
+            if (parsedItems.length === 0) {
+              parsedItems = [
+                {
+                  productId: null,
+                  variantId: null,
+                  productName: matchedCand.concept || `Gasto desde XML ${docNumber}`,
+                  variantTitle: "",
+                  quantity: 1,
+                  unitCost: matchedCand.total || txAbsAmount,
+                  amount: matchedCand.total || txAbsAmount,
+                  lineKey: "",
+                  costCenterId: null,
+                  accountId: null,
+                  locationId: null
+                }
+              ];
+            }
+
             // Crear gasto oficial en "expenses"
             await setDoc(doc(db, "companies", companyId, "expenses", targetExpenseId), {
               id: targetExpenseId,
@@ -823,7 +864,9 @@ Formato JSON estricto:
               vatRate: 0.16,
               paidAmount: txAbsAmount,
               status: "paid",
+              items: parsedItems,
               satInvoiceId: evalData.matchedDocId,
+              xmlBase64: matchedCand.xmlBase64 || null,
               isProvisional: false,
               isPendingFiscalInvoice: false,
               createdAt: new Date().toISOString(),
@@ -836,6 +879,7 @@ Formato JSON estricto:
               paidAmount: matchedCand.total || txAbsAmount,
               reconciled: true,
               reconciledAt: new Date().toISOString(),
+              expenseId: targetExpenseId,
               linkedExpenseId: targetExpenseId
             });
           }

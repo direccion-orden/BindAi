@@ -1,16 +1,349 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, getDoc } from "firebase/firestore";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { collection, query, onSnapshot, orderBy, doc, updateDoc, getDoc, writeBatch, getDocs, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X, ShieldCheck, CheckSquare, Square } from "lucide-react";
+import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X, ShieldCheck, CheckSquare, Square, Receipt, Layers, Package, RefreshCw, Sparkles } from "lucide-react";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 import { FormalizeProvisionalModal } from "./components/FormalizeProvisionalModal";
+import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
 import Link from "next/link";
+
+interface ExpenseItemPreview {
+  descripcion: string;
+  cantidad: number;
+  unidad: string;
+  valorUnitario: number;
+  importe: number;
+}
+
+function ExpenseFolioWithPreview({
+  exp,
+  rawDocNum,
+  displayDocNum,
+  formatMoney,
+  companyId
+}: {
+  exp: any;
+  rawDocNum: string;
+  displayDocNum: string;
+  formatMoney: (val: number) => string;
+  companyId?: string | null;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [asyncItems, setAsyncItems] = useState<ExpenseItemPreview[] | null>(null);
+  const [loadingAsync, setLoadingAsync] = useState(false);
+  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setIsOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setIsOpen(false);
+    }, 120);
+  };
+
+  const isProv = Boolean(
+    exp.isProvisional || 
+    exp.isPendingFiscalInvoice || 
+    (exp.documentNumber && exp.documentNumber.startsWith("PROV-"))
+  );
+
+  // Determinar si tiene un identificador o enlace real con una factura fiscal SAT
+  const hasPotentialSatLink = Boolean(
+    exp.satInvoiceId ||
+    exp.uuid ||
+    exp.xmlBase64 ||
+    (!isProv && exp.documentNumber && /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}/.test(exp.documentNumber)) ||
+    (!isProv && exp.concept && /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}/.test(exp.concept))
+  );
+
+  // Base synchronous items extraction
+  const syncItems: ExpenseItemPreview[] = React.useMemo(() => {
+    // 1. Si es un gasto provisional sin vínculo SAT, sus partidas son inmediatamente las de exp.items o su concepto bancario
+    if (isProv && !hasPotentialSatLink) {
+      if (Array.isArray(exp.items) && exp.items.length > 0) {
+        return exp.items.map((it: any) => ({
+          descripcion: it.productName || it.descripcion || it.concept || exp.concept || "Gasto Provisional",
+          cantidad: Number(it.quantity || it.cantidad || 1),
+          unidad: it.unidad || it.claveUnidad || "SERV",
+          valorUnitario: Number(it.unitCost || it.valorUnitario || it.amount || exp.amount || 0),
+          importe: Number(it.amount || it.importe || (Number(it.quantity || 1) * Number(it.unitCost || exp.amount || 0)))
+        }));
+      }
+      return [{
+        descripcion: exp.concept || "Gasto Provisional",
+        cantidad: 1,
+        unidad: "SERV",
+        valorUnitario: Number(exp.amount || 0),
+        importe: Number(exp.amount || 0)
+      }];
+    }
+
+    // 2. Si el gasto ya tiene partidas detalladas
+    if (Array.isArray(exp.items) && exp.items.length > 0) {
+      // Si solo tiene 1 partida sintética creada con la descripción general (ej. "Gasto desde XML ..."),
+      // solo considerarla sintética si el gasto TIENE vínculo a factura SAT
+      const isSyntheticSingleItem = hasPotentialSatLink && exp.items.length === 1 && (
+        (exp.items[0].productName && (
+          exp.items[0].productName.startsWith("Gasto desde XML") ||
+          exp.items[0].productName.startsWith("Gasto SAT:") ||
+          exp.items[0].productName === exp.concept
+        ))
+      );
+
+      if (!isSyntheticSingleItem) {
+        return exp.items.map((it: any) => ({
+          descripcion: it.productName || it.descripcion || it.concept || "Concepto",
+          cantidad: Number(it.quantity || it.cantidad || 1),
+          unidad: it.unidad || it.claveUnidad || "PZA",
+          valorUnitario: Number(it.unitCost || it.valorUnitario || it.amount || 0),
+          importe: Number(it.amount || it.importe || (Number(it.quantity || 1) * Number(it.unitCost || 0)))
+        }));
+      }
+    }
+
+    // 3. Si el gasto tiene XML base64
+    if (exp.xmlBase64) {
+      try {
+        const parsed = parseCfdiItems(exp.xmlBase64);
+        if (parsed.length > 0) {
+          return parsed.map(it => ({
+            descripcion: it.productName || "Concepto SAT",
+            cantidad: it.quantity || 1,
+            unidad: it.unidad || "PZA",
+            valorUnitario: it.unitCost || 0,
+            importe: it.amount || 0
+          }));
+        }
+      } catch (e) {
+        console.warn("Could not parse XML for expense preview:", e);
+      }
+    }
+
+    return [];
+  }, [exp, isProv, hasPotentialSatLink]);
+
+  // Si no tiene partidas ni XML local, pero tiene vínculo SAT y el usuario abre el popup, buscar en expenses_inbox
+  useEffect(() => {
+    if (!isOpen || syncItems.length > 0 || asyncItems !== null || !companyId || !hasPotentialSatLink) {
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingAsync(true);
+
+    const fetchInboxItems = async () => {
+      try {
+        // Temporizador de 2.5s para no quedarse nunca congelado ante demoras de red
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Timeout al consultar CFDI SAT")), 2500)
+        );
+
+        const queryPromise = (async () => {
+          let satInvoiceDoc: any = null;
+          
+          // 1. Extraer posibles UUIDs de satInvoiceId, uuid, documentNumber o concept
+          const potentialUuids: string[] = [];
+          if (exp.satInvoiceId) potentialUuids.push(exp.satInvoiceId);
+          if (exp.uuid) potentialUuids.push(exp.uuid);
+          if (exp.documentNumber) {
+            const match = exp.documentNumber.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+            if (match) potentialUuids.push(match[0]);
+          }
+          if (exp.concept) {
+            const match = exp.concept.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+            if (match) potentialUuids.push(match[0]);
+          }
+          if (Array.isArray(exp.items) && exp.items[0]?.productName) {
+            const match = exp.items[0].productName.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+            if (match) potentialUuids.push(match[0]);
+          }
+
+          // Buscar por ID directo considerando mayúsculas y minúsculas
+          for (const candidateId of potentialUuids) {
+            const variations = [candidateId, candidateId.toLowerCase(), candidateId.toUpperCase()];
+            for (const testId of variations) {
+              const snap = await getDoc(doc(db, "companies", companyId, "expenses_inbox", testId));
+              if (snap.exists()) {
+                satInvoiceDoc = snap.data();
+                break;
+              }
+            }
+            if (satInvoiceDoc) break;
+          }
+
+          // Si no se encontró por ID directo y no es provisional, buscar por folio
+          if (!satInvoiceDoc && !isProv) {
+            const docNumClean = (exp.documentNumber || "").trim();
+            if (docNumClean) {
+              const inboxCol = collection(db, "companies", companyId, "expenses_inbox");
+              const qFolio = query(inboxCol, where("folio", "==", docNumClean), limit(1));
+              const snapFolio = await getDocs(qFolio);
+              if (!snapFolio.empty) {
+                satInvoiceDoc = snapFolio.docs[0].data();
+              }
+            }
+          }
+
+          if (satInvoiceDoc && satInvoiceDoc.xmlBase64) {
+            const parsed = parseCfdiItems(satInvoiceDoc.xmlBase64);
+            if (parsed.length > 0) {
+              return parsed.map(it => ({
+                descripcion: it.productName || "Concepto SAT",
+                cantidad: it.quantity || 1,
+                unidad: it.unidad || "PZA",
+                valorUnitario: it.unitCost || 0,
+                importe: it.amount || 0
+              }));
+            }
+          }
+
+          return [];
+        })();
+
+        const result = await Promise.race([queryPromise, timeoutPromise]) as ExpenseItemPreview[];
+        if (isMounted) {
+          setAsyncItems(result || []);
+        }
+      } catch (err) {
+        console.warn("Could not fetch remote SAT invoice items:", err);
+        if (isMounted) {
+          setAsyncItems([]);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingAsync(false);
+        }
+      }
+    };
+
+    fetchInboxItems();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, syncItems.length, asyncItems, exp, companyId, hasPotentialSatLink, isProv]);
+
+  const items: ExpenseItemPreview[] = useMemo(() => {
+    if (syncItems.length > 0) return syncItems;
+    if (asyncItems && asyncItems.length > 0) return asyncItems;
+    return [
+      {
+        descripcion: exp.concept || (isProv ? "Gasto Provisional" : "Gasto general / concepto único"),
+        cantidad: 1,
+        unidad: "SERV",
+        valorUnitario: Number(exp.amount || 0),
+        importe: Number(exp.amount || 0)
+      }
+    ];
+  }, [syncItems, asyncItems, exp, isProv]);
+
+  return (
+    <div 
+      className="relative inline-block"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <span
+        className="cursor-pointer font-bold text-slate-700 hover:text-indigo-600 hover:underline decoration-indigo-300 underline-offset-2 transition-colors flex items-center gap-1"
+        title="Pasa el cursor para previsualizar partidas"
+      >
+        <Receipt className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <span>{displayDocNum}</span>
+      </span>
+
+      {/* Pop-up flotante con las partidas */}
+      {isOpen && (
+        <div 
+          className="absolute left-0 top-full mt-2 w-80 sm:w-96 max-w-[90vw] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-3.5 text-left animate-in fade-in zoom-in-95 duration-150"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          {/* Header del pop-up */}
+          <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="p-1 rounded bg-indigo-50 text-indigo-600">
+                  <Package className="w-3.5 h-3.5" />
+                </span>
+                <span className="font-extrabold text-xs text-slate-900 truncate" title={rawDocNum}>
+                  {rawDocNum}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5" title={exp.vendorName}>
+                {exp.vendorName || "Proveedor no especificado"}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Total</span>
+              <span className="font-black text-xs text-indigo-700">
+                {formatMoney(exp.amount || 0)}
+              </span>
+            </div>
+          </div>
+
+          {/* Lista de Partidas */}
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+              Partidas del Gasto ({items.length}):
+            </span>
+            {loadingAsync ? (
+              <div className="p-4 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                <span>Extrayendo partidas del CFDI SAT...</span>
+              </div>
+            ) : (
+              items.map((item, idx) => (
+                <div 
+                  key={idx} 
+                  className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-xs hover:bg-slate-100/70 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-slate-800 text-[11px] leading-snug line-clamp-2">
+                      {item.descripcion}
+                    </p>
+                    <span className="font-black text-slate-900 shrink-0 text-[11px]">
+                      {formatMoney(item.importe)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1 pt-1 border-t border-slate-200/50">
+                    <span>
+                      Cantidad: <strong className="text-slate-700">{item.cantidad} {item.unidad}</strong>
+                    </span>
+                    {item.cantidad > 1 && (
+                      <span>
+                        P.U.: <strong className="text-slate-700">{formatMoney(item.valorUnitario)}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Footer del Pop-up */}
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+            <span>
+              {exp.isProvisional ? "Gasto Provisional" : exp.isNonDeductible ? "No Deducible" : "Gasto Formal"}
+            </span>
+            {exp.date && (
+              <span>Fecha: {exp.date.split("T")[0]}</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function GastosManualesPage() {
   const { companyId, user } = useAuth();
@@ -37,6 +370,143 @@ export default function GastosManualesPage() {
   // Sorting state
   const [sortField, setSortField] = useState<string>("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  // Retroactive items sync state
+  const [syncingItems, setSyncingItems] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  const handleSyncRetroactiveItems = async () => {
+    if (!companyId) return;
+    setSyncingItems(true);
+    setSyncStatus("Iniciando análisis retroactivo de partidas con facturas SAT...");
+
+    try {
+      // 1. Obtener todas las facturas de expenses_inbox con XML
+      const inboxSnap = await getDocs(collection(db, "companies", companyId, "expenses_inbox"));
+      const satMapById = new Map<string, any>();
+      const satMapByFolio = new Map<string, any>();
+      const satMapByAmount = new Map<number, any[]>();
+
+      inboxSnap.forEach(d => {
+        const data = { id: d.id, ...d.data() } as any;
+        if (data.xmlBase64) {
+          satMapById.set(d.id, data);
+          if (data.uuid) satMapById.set(data.uuid, data);
+          
+          const cleanFolio = (data.folio || data.invoiceNumber || "").trim().toLowerCase();
+          if (cleanFolio) {
+            satMapByFolio.set(cleanFolio, data);
+          }
+
+          const total = Number(data.total || data.amount || 0);
+          if (total > 0) {
+            const list = satMapByAmount.get(total) || [];
+            list.push(data);
+            satMapByAmount.set(total, list);
+          }
+        }
+      });
+
+      // 2. Identificar gastos que no tengan partidas o tengan solo 1 concepto genérico
+      let updatedCount = 0;
+      let batch = writeBatch(db);
+      let batchOperations = 0;
+
+      for (const exp of expenses) {
+        // Si ya tiene un arreglo de items detallado con más de 1 partida o con código SAT, saltar
+        const hasDetailedItems = Array.isArray(exp.items) && exp.items.length > 1;
+        if (hasDetailedItems) continue;
+
+        // Buscar factura candidata
+        let satCandidate: any = null;
+
+        // Búsqueda por ID directo
+        if (exp.satInvoiceId && satMapById.has(exp.satInvoiceId)) {
+          satCandidate = satMapById.get(exp.satInvoiceId);
+        } else if (exp.uuid && satMapById.has(exp.uuid)) {
+          satCandidate = satMapById.get(exp.uuid);
+        }
+
+        // Búsqueda por Folio
+        if (!satCandidate && exp.documentNumber) {
+          const docClean = exp.documentNumber.replace(/^PROV-/, "").trim().toLowerCase();
+          if (docClean && satMapByFolio.has(docClean)) {
+            satCandidate = satMapByFolio.get(docClean);
+          }
+        }
+
+        // Búsqueda por Monto exacto y Proveedor
+        if (!satCandidate && exp.amount) {
+          const candidates = satMapByAmount.get(Number(exp.amount)) || [];
+          if (candidates.length === 1) {
+            satCandidate = candidates[0];
+          } else if (candidates.length > 1) {
+            const expVendor = (exp.vendorName || exp.concept || "").toLowerCase();
+            satCandidate = candidates.find(c => {
+              const emisor = (c.emisorName || c.vendorName || "").toLowerCase();
+              return emisor && expVendor && (emisor.includes(expVendor) || expVendor.includes(emisor));
+            });
+          }
+        }
+
+        if (satCandidate && satCandidate.xmlBase64) {
+          const parsed = parseCfdiItems(satCandidate.xmlBase64);
+          if (parsed && parsed.length > 0) {
+            const normalizedItems = parsed.map(p => ({
+              lineKey: p.lineKey,
+              productId: p.productId || "custom",
+              variantId: p.variantId || p.lineKey,
+              productName: p.productName || "Concepto SAT",
+              variantTitle: p.variantTitle || "",
+              quantity: p.quantity || 1,
+              unitCost: p.unitCost || 0,
+              amount: p.amount || ((p.quantity || 1) * (p.unitCost || 0)),
+              claveProdServ: p.claveProdServ || "",
+              claveUnidad: p.claveUnidad || "",
+              unidad: p.unidad || "PZA",
+              accountId: exp.accountId || "",
+              costCenterId: exp.costCenterId || "",
+              locationId: exp.locationId || ""
+            }));
+
+            const expRef = doc(db, "companies", companyId, "expenses", exp.id);
+            batch.update(expRef, {
+              items: normalizedItems,
+              xmlBase64: satCandidate.xmlBase64,
+              satInvoiceId: satCandidate.id || satCandidate.uuid,
+              uuid: satCandidate.uuid || exp.uuid || ""
+            });
+
+            updatedCount++;
+            batchOperations++;
+
+            if (batchOperations >= 350) {
+              await batch.commit();
+              batch = writeBatch(db);
+              batchOperations = 0;
+            }
+          }
+        }
+      }
+
+      if (batchOperations > 0) {
+        await batch.commit();
+      }
+
+      if (updatedCount > 0) {
+        setSyncStatus(`¡Ajuste retroactivo completado! Se actualizaron ${updatedCount} gastos con sus partidas desglosadas.`);
+      } else {
+        setSyncStatus("Todos los gastos ya cuentan con sus partidas o no se encontraron facturas SAT pendientes de asociar.");
+      }
+      setTimeout(() => setSyncStatus(null), 7000);
+    } catch (err: any) {
+      console.error("Error en sincronización retroactiva:", err);
+      setSyncStatus(`Error: ${err.message || "No se pudo completar la sincronización retroactiva."}`);
+      setTimeout(() => setSyncStatus(null), 7000);
+    } finally {
+      setSyncingItems(false);
+    }
+  };
 
   const handleDateFilterChange = (option: string) => {
     setDateFilterOption(option);
@@ -287,13 +757,50 @@ export default function GastosManualesPage() {
           <p className="text-muted-foreground mt-1">Registra y administra todos los gastos operativos manuales de la empresa.</p>
         </div>
 
-        <Link href="/compras/gastos/nuevo" target="_blank">
-          <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
-            <PlusCircle className="w-4 h-4" />
-            Registrar Gasto
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={syncingItems}
+            onClick={handleSyncRetroactiveItems}
+            className="gap-2 border-indigo-200 text-indigo-700 bg-indigo-50/60 hover:bg-indigo-100 hover:text-indigo-800 font-semibold shadow-sm"
+            title="Asocia y desglosa automáticamente las partidas de la factura SAT para todos los gastos históricos que aún no las tienen"
+          >
+            {syncingItems ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                <span>Sincronizando partidas...</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4 text-indigo-600" />
+                <span>Sincronizar Partidas SAT</span>
+              </>
+            )}
           </Button>
-        </Link>
+
+          <Link href="/compras/gastos/nuevo" target="_blank">
+            <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
+              <PlusCircle className="w-4 h-4" />
+              Registrar Gasto
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {/* Sync Status Banner */}
+      {syncStatus && (
+        <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border border-indigo-500/40 text-white text-xs px-4 py-3 rounded-xl flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2 gap-3">
+          <div className="flex items-center gap-2.5 font-medium truncate">
+            {syncingItems ? (
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+            )}
+            <span className="truncate">{syncStatus}</span>
+          </div>
+        </div>
+      )}
 
       {/* Summary Metrics Banner */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -407,7 +914,7 @@ export default function GastosManualesPage() {
         </div>
       </div>
 
-      {/* Batch Action Banner for Provisional Expenses */}
+      {/* Batch Action Banner for Expenses */}
       {selectedExpenseIds.length > 0 && (
         <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white px-5 py-3 rounded-xl shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
@@ -416,7 +923,7 @@ export default function GastosManualesPage() {
             </div>
             <div>
               <p className="text-sm font-bold">
-                {selectedExpenseIds.length} {selectedExpenseIds.length === 1 ? "gasto provisional seleccionado" : "gastos provisionales seleccionados"}
+                {selectedExpenseIds.length} {selectedExpenseIds.length === 1 ? "gasto seleccionado" : "gastos seleccionados"} para clasificar/formalizar
               </p>
               <p className="text-xs text-slate-300">
                 Suma total: {formatMoney(
@@ -424,6 +931,11 @@ export default function GastosManualesPage() {
                     .filter(e => selectedExpenseIds.includes(e.id))
                     .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
                 )}
+                {(() => {
+                  const selExpenses = expenses.filter(e => selectedExpenseIds.includes(e.id));
+                  const provCount = selExpenses.filter(e => e.isProvisional || e.isPendingFiscalInvoice || (e.documentNumber && e.documentNumber.startsWith("PROV-"))).length;
+                  return provCount > 0 ? ` • ${provCount} provisional(es)` : "";
+                })()}
               </p>
             </div>
           </div>
@@ -446,7 +958,7 @@ export default function GastosManualesPage() {
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-8 px-4 gap-2 shadow-sm"
             >
               <ShieldCheck className="w-4 h-4" />
-              Formalizar Seleccionados (Lote)
+              Formalizar / Clasificar en Lote
             </Button>
           </div>
         </div>
@@ -460,22 +972,22 @@ export default function GastosManualesPage() {
               <tr>
                 <th className="px-3 py-3 w-10 text-center">
                   {(() => {
-                    const visibleProvs = sortedExpenses.filter(e => e.isProvisional || e.isPendingFiscalInvoice || (e.documentNumber && e.documentNumber.startsWith("PROV-")));
-                    const allSelected = visibleProvs.length > 0 && visibleProvs.every(e => selectedExpenseIds.includes(e.id));
-                    if (visibleProvs.length === 0) return null;
+                    const selectableExpenses = sortedExpenses.filter(e => e.status !== "cancelado");
+                    const allSelected = selectableExpenses.length > 0 && selectableExpenses.every(e => selectedExpenseIds.includes(e.id));
+                    if (selectableExpenses.length === 0) return null;
                     return (
                       <button
                         type="button"
                         onClick={() => {
                           if (allSelected) {
-                            setSelectedExpenseIds(prev => prev.filter(id => !visibleProvs.some(v => v.id === id)));
+                            setSelectedExpenseIds(prev => prev.filter(id => !selectableExpenses.some(v => v.id === id)));
                           } else {
-                            const newIds = Array.from(new Set([...selectedExpenseIds, ...visibleProvs.map(v => v.id)]));
+                            const newIds = Array.from(new Set([...selectedExpenseIds, ...selectableExpenses.map(v => v.id)]));
                             setSelectedExpenseIds(newIds);
                           }
                         }}
                         className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
-                        title={allSelected ? "Deseleccionar todos los provisionales" : "Seleccionar todos los provisionales visibles"}
+                        title={allSelected ? "Deseleccionar todos los visibles" : "Seleccionar todos los visibles"}
                       >
                         {allSelected ? (
                           <CheckSquare className="w-4 h-4 text-indigo-600" />
@@ -486,32 +998,29 @@ export default function GastosManualesPage() {
                     );
                   })()}
                 </th>
-                <th className="px-4 py-3 w-24 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
+                <th className="px-3 py-3 w-28 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
                   <div className="flex items-center">Fecha {renderSortIcon("date")}</div>
                 </th>
-                <th className="px-4 py-3 w-28 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
+                <th className="px-3 py-3 w-32 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
                   <div className="flex items-center">Folio {renderSortIcon("documentNumber")}</div>
                 </th>
-                <th className="px-4 py-3 max-w-[150px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
+                <th className="px-3 py-3 min-w-[140px] max-w-[200px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
                   <div className="flex items-center">Proveedor {renderSortIcon("vendorName")}</div>
                 </th>
-                <th className="px-4 py-3 max-w-[180px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("concept")}>
-                  <div className="flex items-center">Concepto {renderSortIcon("concept")}</div>
-                </th>
-                <th className="px-4 py-3 w-32">Sucursal</th>
-                <th className="px-4 py-3 w-28">Estatus</th>
-                <th className="px-4 py-3 w-28 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
+                <th className="px-3 py-3 w-28">Sucursal</th>
+                <th className="px-3 py-3 w-24 text-center">Estatus</th>
+                <th className="px-3 py-3 w-28 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
                   <div className="flex items-center justify-end">Monto {renderSortIcon("amount")}</div>
                 </th>
-                <th className="px-4 py-3 w-28 text-right">Pagado</th>
-                <th className="px-4 py-3 w-28 text-right">Pendiente</th>
-                <th className="px-4 py-3 w-28 text-center">Acciones</th>
+                <th className="px-3 py-3 w-24 text-right">Pagado</th>
+                <th className="px-3 py-3 w-24 text-right">Pendiente</th>
+                <th className="px-3 py-3 w-40 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {sortedExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                     No se encontraron gastos operativos registrados.
                   </td>
                 </tr>
@@ -520,10 +1029,15 @@ export default function GastosManualesPage() {
                   const isProv = exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"));
                   const isSelected = selectedExpenseIds.includes(exp.id);
 
+                  // Extract date only (YYYY-MM-DD)
+                  const displayDate = exp.date ? exp.date.split("T")[0] : "-";
+                  const rawDocNum = exp.documentNumber || "-";
+                  const displayDocNum = rawDocNum.length > 15 ? `${rawDocNum.substring(0, 15)}...` : rawDocNum;
+
                   return (
                      <tr key={exp.id} className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
                        <td className="px-3 py-3 text-center">
-                         {isProv ? (
+                         {exp.status !== "cancelado" ? (
                            <button
                              type="button"
                              onClick={() => {
@@ -534,6 +1048,7 @@ export default function GastosManualesPage() {
                                }
                              }}
                              className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                             title={isSelected ? "Deseleccionar gasto" : "Seleccionar gasto"}
                            >
                              {isSelected ? (
                                <CheckSquare className="w-4 h-4 text-indigo-600" />
@@ -543,22 +1058,25 @@ export default function GastosManualesPage() {
                            </button>
                          ) : null}
                        </td>
-                       <td className="px-4 py-3 whitespace-nowrap">
-                         {exp.date}
+                       <td className="px-3 py-3 whitespace-nowrap text-slate-600 text-xs font-medium">
+                         {displayDate}
                        </td>
-                       <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-700">
-                         {exp.documentNumber || "-"}
-                       </td>
-                       <td className="px-4 py-3 font-medium text-slate-900 max-w-[150px] truncate" title={exp.vendorName}>
+                        <td className="px-3 py-3 whitespace-nowrap font-medium text-slate-700 text-xs">
+                          <ExpenseFolioWithPreview 
+                            exp={exp}
+                            rawDocNum={rawDocNum}
+                            displayDocNum={displayDocNum}
+                            formatMoney={formatMoney}
+                            companyId={companyId}
+                          />
+                        </td>
+                       <td className="px-3 py-3 font-medium text-slate-900 max-w-[200px] truncate text-xs" title={exp.vendorName}>
                          {exp.vendorName}
                        </td>
-                       <td className="px-4 py-3 text-slate-700 max-w-[180px] truncate" title={exp.concept}>
-                         {exp.concept}
-                       </td>
-                       <td className="px-4 py-3 text-slate-500 font-medium">
+                       <td className="px-3 py-3 text-slate-500 font-medium text-xs truncate max-w-[120px]" title={exp.locationName}>
                          {exp.locationName || "-"}
                        </td>
-                       <td className="px-4 py-3">
+                       <td className="px-3 py-3 text-center">
                          {exp.isNonDeductible ? (
                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-300">
                              No Deducible
@@ -585,17 +1103,17 @@ export default function GastosManualesPage() {
                            </span>
                          )}
                        </td>
-                       <td className="px-4 py-3 text-right font-bold text-slate-900">
+                       <td className="px-3 py-3 text-right font-bold text-slate-900 text-xs">
                          {formatMoney(exp.amount)}
                        </td>
-                       <td className="px-4 py-3 text-right text-emerald-600 font-semibold">
+                       <td className="px-3 py-3 text-right text-emerald-600 font-semibold text-xs">
                          {formatMoney(exp.paidAmount || 0)}
                        </td>
-                       <td className={`px-4 py-3 text-right font-bold ${getPendingBalance(exp) > 0.01 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
+                       <td className={`px-3 py-3 text-right font-bold text-xs ${getPendingBalance(exp) > 0.01 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
                          {formatMoney(getPendingBalance(exp))}
                        </td>
-                       <td className="px-4 py-3 text-center">
-                         <div className="flex items-center justify-center gap-1.5">
+                       <td className="px-3 py-3 text-center">
+                         <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                            {isProv && (
                              <Button
                                variant="outline"
@@ -604,7 +1122,7 @@ export default function GastosManualesPage() {
                                  setFormalizeTargetExpenses([exp]);
                                  setIsFormalizeModalOpen(true);
                                }}
-                               className="h-8 px-2.5 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 text-[11px] font-bold gap-1 shrink-0"
+                               className="h-8 px-2 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 text-[11px] font-bold gap-1 shrink-0"
                                title="Formalizar gasto (vincular CFDI fiscal o declarar no deducible)"
                              >
                                <ShieldCheck className="w-3.5 h-3.5" />

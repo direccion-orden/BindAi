@@ -118,19 +118,31 @@ export default function GastosPage() {
     );
   };
   const filteredInvoices = invoices.filter(inv => {
+    // Exclude reconciled, paid or already converted to expenses
+    const isPaidOrReconciled = 
+      (inv.paidAmount || 0) >= (inv.total || 0) - 0.01 ||
+      inv.status === "paid" ||
+      inv.status === "processed" ||
+      inv.status === "received" ||
+      inv.status === "reconciled" ||
+      Boolean(inv.expenseId) ||
+      Boolean(inv.linkedExpenseId);
+
+    if (isPaidOrReconciled) {
+      return false;
+    }
+
     const matchesSearch = 
       (inv.emisorName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (inv.emisorRfc || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (inv.uuid || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (inv.folio || "").toLowerCase().includes(searchTerm.toLowerCase());
       
-    const isPaid = (inv.paidAmount || 0) >= (inv.total || 0) - 0.01;
-    const isProcessed = inv.status === "processed" || inv.status === "received" || isPaid;
     let matchesStatus = true;
-    if (statusFilter === "pendientes") {
-      matchesStatus = !isProcessed;
-    } else if (statusFilter === "pagados") {
-      matchesStatus = isProcessed;
+    if (statusFilter === "sin_pago") {
+      matchesStatus = !inv.paidAmount || inv.paidAmount <= 0.01;
+    } else if (statusFilter === "pago_parcial") {
+      matchesStatus = (inv.paidAmount || 0) > 0.01;
     }
     
     // Date range filter
@@ -484,9 +496,9 @@ export default function GastosPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
             <Receipt className="w-8 h-8 text-primary" />
-            Gastos Recibidos
+            Gastos Recibidos (SAT)
           </h1>
-          <p className="text-muted-foreground mt-1">Bandeja de entrada de facturas recibidas (XMLs del SAT)</p>
+          <p className="text-muted-foreground mt-1">Bandeja de facturas pendientes de conciliar o registrar como gasto</p>
         </div>
         <div className="flex flex-col gap-2.5 bg-muted/30 p-2.5 rounded-lg border w-full md:w-auto">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -624,16 +636,16 @@ export default function GastosPage() {
               </div>
               
               {/* Estado */}
-              <div className="flex flex-col gap-1 w-full sm:w-40">
+              <div className="flex flex-col gap-1 w-full sm:w-44">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado</span>
                 <select
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
                   className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none font-medium"
                 >
-                  <option value="todos">Todos</option>
-                  <option value="pendientes">Pendientes</option>
-                  <option value="pagados">Pagados / Registrados</option>
+                  <option value="todos">Todos los pendientes</option>
+                  <option value="sin_pago">Sin pagos previos</option>
+                  <option value="pago_parcial">Con pago parcial</option>
                 </select>
               </div>
 
@@ -684,7 +696,7 @@ export default function GastosPage() {
             {/* Contador de facturas */}
             <div className="shrink-0 flex items-center md:pb-1">
               <span className="text-xs font-semibold text-slate-500 bg-white border px-3 py-1.5 rounded-full shadow-sm">
-                {filteredInvoices.length} facturas
+                {filteredInvoices.length} {filteredInvoices.length === 1 ? "factura pendiente" : "facturas pendientes"}
               </span>
             </div>
           </div>
@@ -693,14 +705,14 @@ export default function GastosPage() {
               {invoices.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground opacity-60">
                       <FileText className="w-12 h-12 mb-3 opacity-20" />
-                      <p>No hay facturas pendientes.</p>
+                      <p>No hay facturas pendientes por conciliar o registrar.</p>
                       <p className="text-sm">Haz clic en Sincronizar con SAT para descargar tus gastos recientes.</p>
                   </div>
               ) : filteredInvoices.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-[300px] text-center text-muted-foreground opacity-60">
                       <Search className="w-12 h-12 mb-3 opacity-20" />
-                      <p className="font-bold text-slate-800">No se encontraron facturas</p>
-                      <p className="text-sm">Intenta buscando con otro término o cambiando el filtro de estado.</p>
+                      <p className="font-bold text-slate-800">No hay facturas pendientes</p>
+                      <p className="text-sm">Todas las facturas han sido conciliadas o registradas en "Crear Gastos".</p>
                   </div>
               ) : (
                   <table className="w-full text-sm">

@@ -13,6 +13,7 @@ import { getLocalDateString } from "@/lib/utils";
 import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Building2, BookOpen, User, Save, Upload, Receipt, X, AlertCircle, Sparkles, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
+import { parseCfdiItems, parseCfdiSummary } from "@/lib/cfdi/parseInvoiceItems";
 
 interface OrderItem {
   lineKey?: string;
@@ -93,6 +94,7 @@ function NuevoGastoForm() {
 
   const [xmlFileName, setXmlFileName] = useState("");
   const [linkedSatInvoiceId, setLinkedSatInvoiceId] = useState("");
+  const [linkedSatXmlBase64, setLinkedSatXmlBase64] = useState<string | null>(null);
   const [linkedInvoiceHasXml, setLinkedInvoiceHasXml] = useState<boolean | null>(null);
   const [satSearchQuery, setSatSearchQuery] = useState("");
   const [showSatDropdown, setShowSatDropdown] = useState(false);
@@ -612,9 +614,18 @@ function NuevoGastoForm() {
     setXmlFileName(file.name);
     try {
       const xmlText = await file.text();
-      const parsed = parseCFDIXml(xmlText);
-      if (parsed) {
-        applyParsedData(parsed);
+      const summary = parseCfdiSummary(xmlText);
+      const parsedItems = parseCfdiItems(xmlText);
+      if (summary && parsedItems.length > 0) {
+        try {
+          setLinkedSatXmlBase64(btoa(unescape(encodeURIComponent(xmlText))));
+        } catch {}
+        applyParsedData({
+          date: summary.date,
+          emisorName: summary.emisorName,
+          emisorRfc: summary.emisorRfc,
+          items: parsedItems
+        });
         setLinkedInvoiceHasXml(true);
       } else {
         alert("El archivo XML no tiene un formato CFDI 3.3/4.0 válido o carece de UUID.");
@@ -657,18 +668,23 @@ function NuevoGastoForm() {
       }
     }
 
-    // 2. If we found or have xmlBase64, parse and apply the items
     if (xmlBase64) {
+      setLinkedSatXmlBase64(xmlBase64);
       try {
-        const xmlText = decodeBase64Utf8(xmlBase64);
-        const parsed = parseCFDIXml(xmlText);
-        if (parsed) {
-          applyParsedData(parsed);
+        const summary = parseCfdiSummary(xmlBase64);
+        const parsedItems = parseCfdiItems(xmlBase64);
+        if (summary && parsedItems.length > 0) {
+          applyParsedData({
+            date: summary.date || (invoice.date ? invoice.date.split("T")[0] : ""),
+            emisorName: summary.emisorName || invoice.emisorName,
+            emisorRfc: summary.emisorRfc || invoice.emisorRfc,
+            items: parsedItems
+          });
           setLinkedInvoiceHasXml(true);
           return;
         }
       } catch (err) {
-        console.error("Error parsing CFDI XML:", err);
+        console.error("Error parsing CFDI XML in handleSelectSatInvoice:", err);
       }
     }
 
@@ -683,7 +699,7 @@ function NuevoGastoForm() {
         lineKey,
         productId: "custom",
         variantId: lineKey,
-        productName: `Gasto SAT: ${invoice.emisorName} (${invoice.uuid.substring(0,8)})`,
+        productName: `Gasto SAT: ${invoice.emisorName} (${(invoice.uuid || invoice.id || "").substring(0,8)})`,
         variantTitle: "SAT-XML",
         quantity: 1,
         unitCost: invoice.total / 1.16, // Subtotal estimativo
@@ -696,6 +712,7 @@ function NuevoGastoForm() {
 
   const handleClearSatInvoice = () => {
     setLinkedSatInvoiceId("");
+    setLinkedSatXmlBase64(null);
     setSatSearchQuery("");
     setShowSatDropdown(true);
     setLinkedInvoiceHasXml(null);
@@ -707,14 +724,17 @@ function NuevoGastoForm() {
 
     const loadInitialSatInvoice = async () => {
       try {
-        const docRef = doc(db, "companies", companyId, "expenses_inbox", satId);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const invData = { id: snap.id, ...snap.data() } as SatInvoice;
-          await handleSelectSatInvoice(invData);
-        } else {
-          console.error("SAT Invoice not found:", satId);
+        const idToCheck = [satId, satId.toLowerCase(), satId.toUpperCase()];
+        for (const testId of idToCheck) {
+          const docRef = doc(db, "companies", companyId, "expenses_inbox", testId);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            const invData = { id: snap.id, ...snap.data() } as SatInvoice;
+            await handleSelectSatInvoice(invData);
+            return;
+          }
         }
+        console.error("SAT Invoice not found:", satId);
       } catch (err) {
         console.error("Error loading initial SAT invoice:", err);
       }
@@ -902,6 +922,7 @@ function NuevoGastoForm() {
         paidAmount: finalPaidImmediately ? totalCost : 0,
         status: finalPaidImmediately ? "paid" : "pending",
         satInvoiceId: linkedSatInvoiceId || null,
+        xmlBase64: linkedSatXmlBase64 || null,
         isRecurring,
         recurrenceFrequency: isRecurring ? recurrenceFrequency : null,
         recurrenceEndDate: isRecurring ? recurrenceEndDate : null,
@@ -950,7 +971,8 @@ function NuevoGastoForm() {
               await updateDoc(satRef, {
                 status: finalPaidImmediately ? "paid" : "processed",
                 paidAmount: finalPaidImmediately ? totalCost : 0,
-                expenseId: expenseId // Link back to the expense document
+                expenseId: expenseId,
+                linkedExpenseId: expenseId
               });
             }
           } catch (e) {

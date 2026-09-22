@@ -141,6 +141,8 @@ export function FormalizeProvisionalModal({
   const [vendorName, setVendorName] = useState("");
   const [concept, setConcept] = useState("");
   const [reviewNotes, setReviewNotes] = useState("");
+  const [markAsNonDeductibleBatch, setMarkAsNonDeductibleBatch] = useState(false);
+  const [showExpensesList, setShowExpensesList] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -212,6 +214,12 @@ export function FormalizeProvisionalModal({
       setSelectedInboxId("");
       setInboxSearch("");
 
+      // If all selected expenses in batch are provisional, default markAsNonDeductibleBatch to true
+      const hasAnyProvisional = expenses.some(e => 
+        e.isProvisional || e.isPendingFiscalInvoice || (e.documentNumber && e.documentNumber.startsWith("PROV-"))
+      );
+      setMarkAsNonDeductibleBatch(hasAnyProvisional);
+
       if (isSingle && singleExpense) {
         setLocationId(singleExpense.locationId || "");
         setCostCenterId(singleExpense.costCenterId || "");
@@ -227,15 +235,25 @@ export function FormalizeProvisionalModal({
         setConcept(singleExpense.concept || "");
         setReviewNotes(singleExpense.reviewNotes || "");
       } else {
-        setLocationId("");
-        setCostCenterId("");
-        setAccountId("");
+        // Find if common location, costCenter or account across selected expenses
+        const firstLoc = expenses[0]?.locationId;
+        const allSameLoc = expenses.every(e => e.locationId === firstLoc);
+        setLocationId(allSameLoc && firstLoc ? firstLoc : "");
+
+        const firstCC = expenses[0]?.costCenterId;
+        const allSameCC = expenses.every(e => e.costCenterId === firstCC);
+        setCostCenterId(allSameCC && firstCC ? firstCC : "");
+
+        const firstAcc = expenses[0]?.accountId;
+        const allSameAcc = expenses.every(e => e.accountId === firstAcc);
+        setAccountId(allSameAcc && firstAcc ? firstAcc : "");
+
         setVendorName("");
         setConcept("");
         setReviewNotes("");
       }
     }
-  }, [isOpen, isSingle, singleExpense, accounts]);
+  }, [isOpen, isSingle, singleExpense, expenses, accounts]);
 
   // Selectable items
   const locationItems = useMemo(() => {
@@ -298,24 +316,26 @@ export function FormalizeProvisionalModal({
 
         return (b.date || "").localeCompare(a.date || "");
       });
-  }, [inboxInvoices, singleExpense, isSingle, inboxSearch]);
+  }, [inboxInvoices, inboxSearch, isSingle, singleExpense]);
 
   const selectedInvoice = useMemo(() => {
+    if (!selectedInboxId) return null;
     return inboxInvoices.find(inv => (inv.id || inv.uuid) === selectedInboxId) || null;
   }, [inboxInvoices, selectedInboxId]);
 
-  // Manejador de subida directa de XML
+  // Handler para subir XML directamente en la modal
   const handleXmlFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !companyId) return;
+    if (!file) return;
 
     setUploadingXml(true);
     setErrorMessage("");
     setUploadSuccessMessage("");
 
     try {
-      const text = await file.text();
-      const parsed = parseXmlInvoice(text);
+      const xmlText = await file.text();
+      const parsed = parseXmlInvoice(xmlText);
+
       if (!parsed || !parsed.uuid) {
         throw new Error("El archivo no es un CFDI XML válido del SAT o carece de Timbre Fiscal.");
       }
@@ -342,7 +362,7 @@ export function FormalizeProvisionalModal({
     if (!companyId) return;
 
     // Validaciones según modo
-    if (activeTab === "nondeductible") {
+    if (activeTab === "nondeductible" || !isSingle) {
       if (!locationId) {
         setErrorMessage("Por favor selecciona una Sucursal.");
         return;
@@ -480,16 +500,13 @@ export function FormalizeProvisionalModal({
 
       } else {
         // ─────────────────────────────────────────────────────────────
-        // FORMALIZACIÓN COMO GASTO NO DEDUCIBLE (FLUJO ANTERIOR)
+        // FORMALIZACIÓN Y CLASIFICACIÓN EN LOTE (O NO DEDUCIBLE INDIVIDUAL)
         // ─────────────────────────────────────────────────────────────
         for (const exp of expenses) {
           const expRef = doc(db, "companies", companyId, "expenses", exp.id);
+          const isProv = exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"));
           
           const updatePayload: any = {
-            isProvisional: false,
-            isPendingFiscalInvoice: false,
-            isNonDeductible: true,
-            status: exp.status || "paid",
             locationId: locationId,
             locationName: selectedLoc?.name || selectedLoc?.Name || "",
             costCenterId: costCenterId || "",
@@ -497,14 +514,32 @@ export function FormalizeProvisionalModal({
             accountId: accountId,
             accountCode: selectedAcc?.code || "",
             accountName: selectedAcc?.name || "",
-            reviewedBy: userEmail || "Revisión Manual",
-            reviewedAt: now,
-            reviewNotes: reviewNotes || "Formalizado como gasto no deducible oficial"
+            reviewedBy: userEmail || "Formalización / Clasificación en Lote",
+            reviewedAt: now
           };
 
           if (isSingle) {
+            updatePayload.isProvisional = false;
+            updatePayload.isPendingFiscalInvoice = false;
+            updatePayload.isNonDeductible = true;
+            updatePayload.status = exp.status || "paid";
+            updatePayload.reviewNotes = reviewNotes || "Formalizado como gasto no deducible oficial";
             if (vendorName.trim()) updatePayload.vendorName = vendorName.trim();
             if (concept.trim()) updatePayload.concept = concept.trim();
+          } else {
+            // Bulk mode
+            if (reviewNotes.trim()) {
+              updatePayload.reviewNotes = reviewNotes.trim();
+            }
+            if (markAsNonDeductibleBatch) {
+              updatePayload.isNonDeductible = true;
+              updatePayload.isProvisional = false;
+              updatePayload.isPendingFiscalInvoice = false;
+            } else if (isProv) {
+              // If not strictly marked as non-deductible, but was provisional, regularize it
+              updatePayload.isProvisional = false;
+              updatePayload.isPendingFiscalInvoice = false;
+            }
           }
 
           batch.update(expRef, updatePayload);
@@ -522,7 +557,7 @@ export function FormalizeProvisionalModal({
               let changed = false;
 
               entries.forEach(entry => {
-                if (entry.debit > 0 && entry.accountCode?.startsWith("601")) {
+                if (entry.debit > 0 && (entry.accountCode?.startsWith("601") || entry.accountCode?.startsWith("50") || entry.accountCode?.startsWith("60"))) {
                   entry.accountCode = selectedAcc?.code || entry.accountCode;
                   entry.accountName = selectedAcc?.name || entry.accountName;
                   changed = true;
@@ -533,7 +568,9 @@ export function FormalizeProvisionalModal({
                 batch.update(jDoc.ref, { 
                   entries,
                   updatedAt: now,
-                  concept: `Gasto Oficial No Deducible: ${isSingle && vendorName ? vendorName : (exp.vendorName || exp.concept || '')}`
+                  concept: isSingle 
+                    ? `Gasto Oficial No Deducible: ${vendorName || exp.vendorName || exp.concept || ''}`
+                    : `Gasto Clasificado: ${exp.vendorName || exp.concept || ''}`
                 });
               }
             });
@@ -563,16 +600,16 @@ export function FormalizeProvisionalModal({
         <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 flex items-center justify-between border-b border-indigo-500/30 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-indigo-600/30 rounded-xl border border-indigo-400/40 text-indigo-300">
-              {activeTab === "fiscal" ? <FileCheck className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
+              {activeTab === "fiscal" && isSingle ? <FileCheck className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
             </div>
             <div>
               <h2 className="text-lg font-black tracking-tight flex items-center gap-2">
-                {isSingle ? "Formalizar Gasto Provisional" : `Formalización Masiva de Gastos (${expenses.length})`}
+                {isSingle ? "Formalizar Gasto Provisional" : `Formalización y Clasificación en Lote (${expenses.length} gastos)`}
               </h2>
               <p className="text-xs text-slate-300 mt-0.5">
                 {isSingle 
                   ? `Vincula una factura fiscal CFDI o clasifícalo como no deducible para oficializar ${singleExpense?.documentNumber || 'el gasto'}.`
-                  : `Asigna sucursal, centro de costos y cuenta a ${expenses.length} gastos provisionales seleccionados.`}
+                  : `Establece la Sucursal, Centro de Costos y Cuenta Contable una sola vez para aplicarlos a los ${expenses.length} gastos seleccionados.`}
               </p>
             </div>
           </div>
@@ -626,7 +663,7 @@ export function FormalizeProvisionalModal({
           <div className="bg-slate-50 border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                {isSingle ? "Gasto Provisional a Formalizar" : "Resumen del Lote"}
+                {isSingle ? "Gasto a Formalizar / Clasificar" : "Resumen del Lote"}
               </span>
               {isSingle && singleExpense ? (
                 <>
@@ -636,9 +673,21 @@ export function FormalizeProvisionalModal({
                   <p className="text-xs text-muted-foreground mt-0.5">{singleExpense.concept}</p>
                 </>
               ) : (
-                <p className="text-sm font-black text-slate-800 mt-0.5">
-                  {expenses.length} gastos provisionales seleccionados
-                </p>
+                <div>
+                  <p className="text-sm font-black text-slate-800 mt-0.5 flex items-center gap-2">
+                    <span>{expenses.length} gastos seleccionados</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowExpensesList(!showExpensesList)}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline ml-1"
+                    >
+                      {showExpensesList ? "Ocultar detalle" : "Ver detalle"}
+                    </button>
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Se actualizarán simultáneamente con la misma sucursal, centro de costos y cuenta contable.
+                  </p>
+                </div>
               )}
             </div>
             <div className="text-right sm:border-l sm:pl-4 shrink-0">
@@ -646,6 +695,33 @@ export function FormalizeProvisionalModal({
               <p className="text-xl font-black text-indigo-700">{formatMoney(totalAmount)}</p>
             </div>
           </div>
+
+          {/* Desplegable de gastos incluidos en el lote */}
+          {!isSingle && showExpensesList && (
+            <div className="bg-white border rounded-xl p-3 max-h-44 overflow-y-auto space-y-1.5 shadow-inner custom-scrollbar animate-in fade-in">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
+                Detalle de Gastos a Modificar:
+              </span>
+              {expenses.map((e, idx) => {
+                const isProv = e.isProvisional || e.isPendingFiscalInvoice || (e.documentNumber && e.documentNumber.startsWith("PROV-"));
+                return (
+                  <div key={e.id || idx} className="text-xs flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <div className="min-w-0 pr-2">
+                      <span className="font-bold text-slate-800">{e.documentNumber || "Sin Folio"}</span>
+                      <span className="text-slate-400 mx-1.5">&bull;</span>
+                      <span className="text-slate-600 truncate">{e.vendorName || "Proveedor"}</span>
+                      {isProv && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800">
+                          Provisional
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-slate-900 shrink-0">{formatMoney(Number(e.amount) || 0)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {errorMessage && (
             <div className="p-3 bg-red-50 text-red-700 text-xs rounded-lg border border-red-200 flex items-center gap-2 font-medium animate-in fade-in">
@@ -966,10 +1042,31 @@ export function FormalizeProvisionalModal({
                   <Input
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
-                    placeholder="Motivo de no deducibilidad o aclaración contable..."
+                    placeholder="Motivo de clasificación o justificación contable..."
                     className="h-9 text-xs"
                   />
                 </div>
+
+                {/* Opción en lote para marcar explícitamente como No Deducibles */}
+                {!isSingle && (
+                  <div className="p-3 bg-slate-50 border rounded-lg flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        Marcar como "Oficial No Deducible"
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Activa esta opción si estos gastos no tendrán factura fiscal (CFDI) y deben ser cerrados como no deducibles.
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="mark-nondeductible-batch"
+                      checked={markAsNonDeductibleBatch}
+                      onChange={(e) => setMarkAsNonDeductibleBatch(e.target.checked)}
+                      className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -999,10 +1096,15 @@ export function FormalizeProvisionalModal({
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
                   <span>Guardando...</span>
                 </>
-              ) : activeTab === "fiscal" ? (
+              ) : activeTab === "fiscal" && isSingle ? (
                 <>
                   <FileCheck className="w-4 h-4" />
                   <span>Vincular CFDI y Formalizar</span>
+                </>
+              ) : !isSingle ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Aplicar a los {expenses.length} Gastos Seleccionados</span>
                 </>
               ) : (
                 <>

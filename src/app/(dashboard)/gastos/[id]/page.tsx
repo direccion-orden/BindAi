@@ -152,6 +152,18 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
           setIsManual(manual);
           const invData = snap.data();
 
+          let xmlBase64 = invData.xmlBase64 || null;
+          if (!xmlBase64 && invData.satInvoiceId) {
+            try {
+              const inboxSnap = await getDoc(doc(db, "companies", companyId, "expenses_inbox", invData.satInvoiceId));
+              if (inboxSnap.exists() && inboxSnap.data()?.xmlBase64) {
+                xmlBase64 = inboxSnap.data().xmlBase64;
+              }
+            } catch (e) {
+              console.warn("Could not fetch fallback xmlBase64 from inbox:", e);
+            }
+          }
+
           const normalizedInvoice = {
             id: snap.id,
             emisorName: invData.emisorName || invData.vendorName || "Proveedor",
@@ -162,7 +174,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
             paidAmount: invData.paidAmount || 0,
             status: invData.status || "pending",
             invoiceNumber: invData.invoiceNumber || invData.documentNumber || "",
-            xmlBase64: invData.xmlBase64 || null,
+            xmlBase64: xmlBase64,
             accountId: invData.accountId || "",
             costCenterId: invData.costCenterId || "",
             locationId: invData.locationId || "",

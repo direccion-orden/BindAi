@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Loader2, Landmark, CheckCircle, X, DollarSign, BookOpen, AlertCircle } from "lucide-react";
 import { BankTransaction } from "@/types/bank";
+import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
 
 interface QuickReconcileModalProps {
   transaction: BankTransaction;
@@ -133,7 +134,7 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
             const totalAmt = selectedDoc.total || 0;
             const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
 
-            let mappedItems = [];
+            let mappedItems: any[] = [];
             if (selectedDoc.items && selectedDoc.items.length > 0) {
               mappedItems = selectedDoc.items.map((item: any) => ({
                 ...item,
@@ -141,7 +142,28 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
                 locationId: selectedDoc.locationId || null,
                 costCenterId: selectedDoc.costCenterId || null
               }));
-            } else {
+            } else if (selectedDoc.xmlBase64) {
+              const parsed = parseCfdiItems(selectedDoc.xmlBase64);
+              if (parsed.length > 0) {
+                mappedItems = parsed.map((item) => ({
+                  productId: null,
+                  variantId: null,
+                  productName: item.productName || "Partida SAT",
+                  variantTitle: item.variantTitle || "",
+                  quantity: item.quantity || 1,
+                  unitCost: item.unitCost || 0,
+                  amount: item.amount || ((item.quantity || 1) * (item.unitCost || 0)),
+                  lineKey: "",
+                  costCenterId: selectedDoc.costCenterId || null,
+                  accountId: selectedDoc.accountId || null,
+                  locationId: selectedDoc.locationId || null,
+                  claveProdServ: item.claveProdServ || "",
+                  unit: item.unidad || item.claveUnidad || "PZA"
+                }));
+              }
+            }
+
+            if (mappedItems.length === 0) {
               mappedItems = [
                 {
                   productId: null,
@@ -150,6 +172,7 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
                   variantTitle: "",
                   quantity: 1,
                   unitCost: totalAmt,
+                  amount: totalAmt,
                   lineKey: "",
                   costCenterId: selectedDoc.costCenterId || null,
                   accountId: selectedDoc.accountId || null,
@@ -177,6 +200,7 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
               status: status,
               items: mappedItems,
               satInvoiceId: selectedDoc.id,
+              xmlBase64: selectedDoc.xmlBase64 || null,
               createdAt: new Date().toISOString(),
               createdBy: user?.email || "Sistema (Conciliación Rápida)",
               _type: "gasto_manual"
@@ -216,6 +240,7 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
           }
           if (!isManual) {
             updates.expenseId = targetDocId;
+            updates.linkedExpenseId = targetDocId;
           }
           await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
         } else {

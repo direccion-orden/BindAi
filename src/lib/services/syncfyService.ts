@@ -230,4 +230,87 @@ export class SyncfyService {
   public static async getSites(token: string, filter?: any): Promise<any[]> {
     return await this.request('/catalogues/organizations/sites', 'GET', { token }, filter || {});
   }
+
+  /**
+   * Obtiene documentos fiscales (facturas emitidas o recibidas del SAT)
+   */
+  public static async getDocuments(
+    token: string,
+    options: {
+      type?: 'received' | 'issued';
+      id_credential?: string;
+      dt_document_from?: string;
+      dt_document_to?: string;
+      limit?: number;
+      skip?: number;
+    } = {}
+  ): Promise<any[]> {
+    const payload: any = {
+      limit: options.limit || 500,
+      skip: options.skip || 0,
+    };
+    if (options.type) payload.type = options.type;
+    if (options.id_credential) payload.id_credential = options.id_credential;
+    if (options.dt_document_from) payload.dt_document_from = options.dt_document_from;
+    if (options.dt_document_to) payload.dt_document_to = options.dt_document_to;
+
+    const docs = await this.request<any[]>('/documents', 'GET', { token }, payload);
+    return Array.isArray(docs) ? docs : [];
+  }
+
+  /**
+   * Obtiene el detalle de un documento fiscal
+   */
+  public static async getDocument(token: string, idDocument: string): Promise<any> {
+    return await this.request(`/documents/${idDocument}`, 'GET', { token });
+  }
+
+  /**
+   * Obtiene la lista de archivos adjuntos (XML / PDF)
+   */
+  public static async getAttachments(
+    token: string,
+    options: { id_document?: string; id_transaction?: string; limit?: number; skip?: number } = {}
+  ): Promise<any[]> {
+    const payload: any = {
+      limit: options.limit || 500,
+      skip: options.skip || 0,
+    };
+    if (options.id_document) payload.id_document = options.id_document;
+    if (options.id_transaction) payload.id_transaction = options.id_transaction;
+
+    const attachments = await this.request<any[]>('/attachments', 'GET', { token }, payload);
+    return Array.isArray(attachments) ? attachments : [];
+  }
+
+  /**
+   * Descarga el contenido binario o de texto de un archivo adjunto (XML o PDF)
+   */
+  public static async getAttachmentContent(token: string, idAttachment: string): Promise<string> {
+    const url = `${SYNCFY_BASE_URL}/attachments/${idAttachment}`;
+    const headers: Record<string, string> = {
+      'Cache-Control': 'no-cache',
+      'Authorization': `TOKEN token=${token}`,
+      'X-Client-Identifier': 'BindAi-ERP',
+    };
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      throw new Error(`Error descargando adjunto ${idAttachment} (${res.status})`);
+    }
+    return await res.text();
+  }
+
+  /**
+   * Obtiene los metadatos enriquecidos de un adjunto CFDI
+   */
+  public static async getAttachmentExtra(token: string, idAttachment: string): Promise<any> {
+    return await this.request(`/attachments/${idAttachment}/extra`, 'GET', { token });
+  }
+
+  /**
+   * Dispara una sincronización bajo demanda de una credencial (ej. SAT o Banco)
+   */
+  public static async syncCredential(token: string, idCredential: string): Promise<any> {
+    return await this.request(`/credentials/${idCredential}/sync`, 'POST', { token });
+  }
 }

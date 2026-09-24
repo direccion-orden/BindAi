@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { SyncfyService } from '@/lib/services/syncfyService';
+import { performSatSync } from '@/app/api/syncfy/sat/sync/route';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Webhook listener para recibir notificaciones automáticas de Syncfy
+ * Soporta tanto movimientos bancarios como facturas fiscales del SAT.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -32,8 +34,9 @@ export async function POST(request: NextRequest) {
 
     const companyDoc = companiesSnap.docs[0];
     const companyId = companyDoc.id;
+    const companyData = companyDoc.data() || {};
 
-    // 2. Si se especifica la cuenta bancaria, sincronizar directamente
+    // 2. Si se especifica cuenta bancaria, sincronizar movimientos bancarios
     if (id_account) {
       const bankAccountsSnap = await companyDoc.ref
         .collection('bankAccounts')
@@ -65,22 +68,22 @@ export async function POST(request: NextRequest) {
         let imported = 0;
         const batch = adminDb.batch();
 
-function parseTransactionDate(rawDate: any, fallbackStr: string): string {
-  if (!rawDate) return fallbackStr;
-  if (typeof rawDate === 'string') {
-    if (rawDate.includes('T')) return rawDate.split('T')[0];
-    if (rawDate.includes(' ')) return rawDate.split(' ')[0];
-    return rawDate;
-  }
-  if (typeof rawDate === 'number') {
-    const ms = rawDate < 10000000000 ? rawDate * 1000 : rawDate;
-    return new Date(ms).toISOString().split('T')[0];
-  }
-  if (rawDate instanceof Date) {
-    return rawDate.toISOString().split('T')[0];
-  }
-  return String(rawDate).split(' ')[0] || fallbackStr;
-}
+        function parseTransactionDate(rawDate: any, fallbackStr: string): string {
+          if (!rawDate) return fallbackStr;
+          if (typeof rawDate === 'string') {
+            if (rawDate.includes('T')) return rawDate.split('T')[0];
+            if (rawDate.includes(' ')) return rawDate.split(' ')[0];
+            return rawDate;
+          }
+          if (typeof rawDate === 'number') {
+            const ms = rawDate < 10000000000 ? rawDate * 1000 : rawDate;
+            return new Date(ms).toISOString().split('T')[0];
+          }
+          if (rawDate instanceof Date) {
+            return rawDate.toISOString().split('T')[0];
+          }
+          return String(rawDate).split(' ')[0] || fallbackStr;
+        }
 
         for (const tx of txs) {
           if (!tx.id_transaction || existingIds.has(tx.id_transaction)) continue;
@@ -111,6 +114,23 @@ function parseTransactionDate(rawDate: any, fallbackStr: string): string {
         });
 
         console.log(`[Syncfy Webhook] Sincronizados ${imported} movimientos para cuenta ${bankAccountId}`);
+      }
+    }
+
+    // 3. Si el webhook corresponde a documentos del SAT o a la credencial SAT vinculada
+    const isSatCredential = id_credential && companyData.syncfySatCredentialId === id_credential;
+    const isDocEvent = typeof event === 'string' && (event.includes('document') || event.includes('attachment'));
+
+    if (isSatCredential || isDocEvent) {
+      console.log(`[Syncfy Webhook] Procesando sincronización de facturas SAT para empresa ${companyId}...`);
+      try {
+        const satResult = await performSatSync(companyId, {
+          idCredential: id_credential || companyData.syncfySatCredentialId,
+          type: 'received',
+        });
+        console.log(`[Syncfy Webhook] SAT Sync completado:`, satResult);
+      } catch (satErr: any) {
+        console.error(`[Syncfy Webhook] Error sincronizando facturas SAT:`, satErr.message);
       }
     }
 

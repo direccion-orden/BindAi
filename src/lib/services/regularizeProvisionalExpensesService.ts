@@ -46,7 +46,7 @@ export async function runClientRegularizationAgent(
     control?.onProgress?.(0, 0, "Obteniendo configuración y credenciales de IA...");
 
     // 1. Obtener API Key de Gemini
-    let apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "AIzaSyC1KUnaf7hCLDCRhUHJuTBW3SvKaLcU5cg";
+    let apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
     const companyDoc = await getDoc(doc(db, "companies", companyId));
     if (companyDoc.exists() && companyDoc.data()?.geminiApiKey) {
       apiKey = companyDoc.data().geminiApiKey;
@@ -65,7 +65,7 @@ export async function runClientRegularizationAgent(
     const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
     const generateWithFallback = async (promptText: string) => {
-      const modelNames = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+      const modelNames = ["gemini-flash-latest", "gemini-3.6-flash"];
       let lastError: any = null;
 
       for (const modelName of modelNames) {

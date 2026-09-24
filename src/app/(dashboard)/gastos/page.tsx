@@ -11,6 +11,7 @@ import Link from "next/link";
 
 import { SatRequestsModal } from "@/components/features/sat/SatRequestsModal";
 import { UploadSatFilesModal } from "@/components/features/sat/UploadSatFilesModal";
+import { SyncfySatModal } from "@/components/features/sat/SyncfySatModal";
 import { runClientRegularizationAgent } from "@/lib/services/regularizeProvisionalExpensesService";
 
 const decodeBase64Utf8 = (str: string) => {
@@ -172,6 +173,7 @@ export default function GastosPage() {
   });
   const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isSyncfyModalOpen, setIsSyncfyModalOpen] = useState(false);
 
   const defaultStartDate = new Date();
   defaultStartDate.setDate(1);
@@ -502,35 +504,34 @@ export default function GastosPage() {
         </div>
         <div className="flex flex-col gap-2.5 bg-muted/30 p-2.5 rounded-lg border w-full md:w-auto">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="flex items-center gap-2 px-2">
-                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Buscar a partir de:</span>
-                <Input 
-                  type="date" 
-                  value={startDate} 
-                  onChange={(e) => setStartDate(e.target.value)} 
-                  className="w-[140px] h-9 text-sm bg-background"
-                  disabled={syncing || !fielConfigured}
-                />
-            </div>
-            
-            <div className="flex items-center gap-2 sm:border-l sm:pl-4">
-              {!fielConfigured ? (
-                <Button variant="destructive" className="gap-2 cursor-not-allowed h-9 w-full" disabled>
-                  <AlertCircle className="w-4 h-4" /> FIEL No Configurada
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" onClick={() => setIsRequestsModalOpen(true)} className="gap-2 h-9">
-                    <RefreshCw className="w-4 h-4" />
-                    Revisar Pendientes
-                  </Button>
-                  <Button onClick={handleSyncSAT} disabled={syncing} className="gap-2 h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
-                    <CloudDownload className="w-4 h-4" />
-                    Sincronizar con SAT
-                  </Button>
-                </>
-              )}
-            </div>
+            <Button
+              onClick={() => setIsSyncfyModalOpen(true)}
+              className="gap-2 h-9 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold shadow-md"
+            >
+              <CloudDownload className="w-4 h-4" />
+              Sincronizar SAT con Syncfy
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => setIsUploadModalOpen(true)}
+              className="gap-2 h-9 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
+            >
+              <FileText className="w-4 h-4" />
+              Carga Manual (XML)
+            </Button>
+
+            {fielConfigured && (
+              <Button
+                variant="ghost"
+                onClick={() => setIsRequestsModalOpen(true)}
+                className="gap-1.5 h-9 text-xs text-muted-foreground hover:text-foreground"
+                title="Historial de solicitudes SOAP anteriores"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Historial SOAP
+              </Button>
+            )}
           </div>
           <div className="flex flex-col sm:flex-row items-center justify-end gap-2 border-t pt-2">
             <Button
@@ -550,12 +551,6 @@ export default function GastosPage() {
                 </>
               )}
             </Button>
-            {fielConfigured && (
-              <Button onClick={() => setIsUploadModalOpen(true)} className="gap-2 h-9 bg-slate-800 hover:bg-slate-900 text-white font-semibold shadow-sm w-full sm:w-auto">
-                <FileText className="w-4 h-4" />
-                Carga Manual
-              </Button>
-            )}
           </div>
         </div>
       </div>
@@ -862,6 +857,12 @@ export default function GastosPage() {
       <UploadSatFilesModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
+        companyId={companyId || ""}
+      />
+
+      <SyncfySatModal
+        isOpen={isSyncfyModalOpen}
+        onClose={() => setIsSyncfyModalOpen(false)}
         companyId={companyId || ""}
       />
 

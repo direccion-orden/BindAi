@@ -4,9 +4,10 @@ import React, { useState, useEffect } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Save, Building2, ShieldCheck, Mail, MapPin, KeyRound, UploadCloud, CheckCircle2, MessageCircle, Server, Sparkles } from "lucide-react";
+import { Loader2, Save, Building2, ShieldCheck, Mail, MapPin, KeyRound, UploadCloud, CheckCircle2, MessageCircle, Server, Sparkles, CloudDownload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SyncfySatModal } from "@/components/features/sat/SyncfySatModal";
 
 export default function CompanyProfilePage() {
   const { companyId } = useAuth();
@@ -14,6 +15,9 @@ export default function CompanyProfilePage() {
   const [saving, setSaving] = useState(false);
   const [fielSaving, setFielSaving] = useState(false);
   const [fielStatus, setFielStatus] = useState<"none" | "configured">("none");
+  const [syncfySatLinked, setSyncfySatLinked] = useState(false);
+  const [syncfySatRfc, setSyncfySatRfc] = useState("");
+  const [isSyncfyModalOpen, setIsSyncfyModalOpen] = useState(false);
   const [companyCode, setCompanyCode] = useState<number | null>(null);
   
   const [fielData, setFielData] = useState({
@@ -66,6 +70,12 @@ export default function CompanyProfilePage() {
           smtpPass: data.smtpPass || "",
           geminiApiKey: data.geminiApiKey || ""
         });
+
+        // Check if Syncfy SAT is connected
+        if (data.syncfySatCredentialId) {
+          setSyncfySatLinked(true);
+          setSyncfySatRfc(data.syncfySatRfc || data.rfc || "");
+        }
       }
 
       // Check if FIEL exists
@@ -442,12 +452,74 @@ export default function CompanyProfilePage() {
         </div>
       </form>
 
+      {/* Syncfy SAT Direct Connection */}
+      <div className="bg-card border rounded-xl p-6 shadow-sm space-y-4 mt-8">
+        <div className="flex items-center justify-between border-b pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-600/10 text-indigo-600 rounded-lg">
+              <CloudDownload className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-base flex items-center gap-2">
+                Conexión Fiscal SAT vía Syncfy
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                  Recomendado (CIEC)
+                </span>
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Descarga automatizada de facturas (gastos y compras) usando tu RFC y contraseña CIEC.
+              </p>
+            </div>
+          </div>
+          {syncfySatLinked ? (
+            <span className="flex items-center text-xs font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 px-2.5 py-1 rounded-full">
+              <CheckCircle2 className="w-4 h-4 mr-1 text-emerald-600" /> SAT Vinculado
+            </span>
+          ) : (
+            <span className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full">
+              No configurado
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
+          <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1">
+            {syncfySatLinked ? (
+              <p>
+                Tu cuenta está conectada con el portal del SAT para el RFC <strong className="font-mono">{syncfySatRfc}</strong>. Las facturas recibidas pueden sincronizarse en cualquier momento desde el módulo de Gastos o en segundo plano.
+              </p>
+            ) : (
+              <p>
+                Conecta tu cuenta del SAT en segundos a través de la pasarela segura de Syncfy sin tener que subir archivos .key ni lidiar con vencimientos de certificados SOAP.
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            onClick={() => setIsSyncfyModalOpen(true)}
+            className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shrink-0"
+          >
+            <CloudDownload className="w-4 h-4" />
+            {syncfySatLinked ? "Administrar / Sincronizar SAT" : "Conectar SAT con Syncfy"}
+          </Button>
+        </div>
+      </div>
+
+      <SyncfySatModal
+        isOpen={isSyncfyModalOpen}
+        onClose={() => setIsSyncfyModalOpen(false)}
+        companyId={companyId || ""}
+        onSyncComplete={() => {
+          setSyncfySatLinked(true);
+        }}
+      />
+
       {/* SAT FIEL Config */}
       <div className="bg-card border rounded-xl p-6 shadow-sm space-y-4 mt-8">
         <div className="flex items-center justify-between border-b pb-3">
           <h3 className="font-semibold flex items-center gap-2">
             <KeyRound className="w-5 h-5 text-purple-600" />
-            Credenciales SAT (e.Firma)
+            Credenciales SAT (e.Firma Legacy)
           </h3>
           {fielStatus === "configured" && (
             <span className="flex items-center text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full">

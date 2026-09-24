@@ -22,6 +22,8 @@ export interface CfdiSummary {
   date: string;
   emisorRfc: string;
   emisorName: string;
+  receptorRfc?: string;
+  receptorName?: string;
   folio: string;
   serie: string;
   items: CfdiParsedItem[];
@@ -149,6 +151,18 @@ export function parseCfdiSummary(xmlOrBase64: string): CfdiSummary | null {
     if (nombreM) emisorName = unescapeXml(nombreM[1]);
   }
 
+  // Receptor
+  let receptorRfc = "";
+  let receptorName = "";
+  const receptorMatch = cleanXml.match(/<(?:\w+:)?Receptor\b([^>]+?)\/?>/i);
+  if (receptorMatch) {
+    const attrs = receptorMatch[1];
+    const rfcM = attrs.match(/\bRfc="([^"]+)"/i);
+    const nombreM = attrs.match(/\bNombre="([^"]+)"/i);
+    if (rfcM) receptorRfc = unescapeXml(rfcM[1]);
+    if (nombreM) receptorName = unescapeXml(nombreM[1]);
+  }
+
   const items = parseCfdiItems(cleanXml);
 
   return {
@@ -158,6 +172,8 @@ export function parseCfdiSummary(xmlOrBase64: string): CfdiSummary | null {
     date,
     emisorRfc,
     emisorName,
+    receptorRfc,
+    receptorName,
     folio,
     serie,
     items

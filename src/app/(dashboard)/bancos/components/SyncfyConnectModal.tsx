@@ -249,7 +249,7 @@ export function SyncfyConnectModal({
         country: "MX",
       };
       if (syncMode === "refresh_existing" && activeCredId) {
-        entrypointConfig.id_credential = activeCredId;
+        entrypointConfig.updateCredential = String(activeCredId);
       }
 
       const widget = new (window as any).SyncfyWidget({

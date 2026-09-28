@@ -251,7 +251,7 @@ export function SyncfySatModal({
         site: "56cf5728784806f72b8b456f", // Site oficial del SAT (CIEC) en Syncfy
       };
       if (credentialId) {
-        entrypointConfig.id_credential = credentialId;
+        entrypointConfig.updateCredential = String(credentialId);
       }
 
       const widget = new (window as any).SyncfyWidget({

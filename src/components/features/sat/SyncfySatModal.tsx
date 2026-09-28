@@ -29,6 +29,47 @@ interface SyncfySatModalProps {
   onSyncComplete?: (result: { imported: number; updated: number; totalFetched: number }) => void;
 }
 
+async function safeFetchJson(
+  url: string,
+  init?: RequestInit
+): Promise<{ ok: boolean; status: number; data: any; errorMessage?: string }> {
+  try {
+    const res = await fetch(url, init);
+    const contentType = res.headers.get("content-type") || "";
+    let data: any = null;
+
+    if (contentType.includes("application/json")) {
+      try {
+        data = await res.json();
+      } catch (err) {
+        console.warn("Could not parse JSON response:", err);
+      }
+    }
+
+    if (!res.ok) {
+      if (data && typeof data === "object") {
+        const errorMsg = data.error || data.message || `Error del servidor (${res.status})`;
+        return { ok: false, status: res.status, data, errorMessage: errorMsg };
+      }
+      const rawText = await res.text().catch(() => "");
+      const cleanText = rawText.replace(/<[^>]*>?/gm, "").trim();
+      const errorMsg = cleanText
+        ? `Error del servidor (${res.status}): ${cleanText.substring(0, 160)}`
+        : `Error del servidor (${res.status}): ${res.statusText || "Error en la petición"}`;
+      return { ok: false, status: res.status, data: null, errorMessage: errorMsg };
+    }
+
+    return { ok: true, status: res.status, data: data ?? {} };
+  } catch (networkErr: any) {
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      errorMessage: networkErr.message || "Error de red o conexión al servidor.",
+    };
+  }
+}
+
 export function SyncfySatModal({
   isOpen,
   onClose,
@@ -129,7 +170,7 @@ export function SyncfySatModal({
 
     try {
       // 1. Obtain ephemeral session token
-      const sessionRes = await fetch("/api/syncfy/session", {
+      const { ok, data: sessionData, errorMessage } = await safeFetchJson("/api/syncfy/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -138,9 +179,8 @@ export function SyncfySatModal({
         }),
       });
 
-      const sessionData = await sessionRes.json();
-      if (!sessionRes.ok || !sessionData.token) {
-        throw new Error(sessionData.error || "No se pudo obtener la sesión de Syncfy.");
+      if (!ok || !sessionData?.token) {
+        throw new Error(errorMessage || sessionData?.error || "No se pudo obtener la sesión de Syncfy.");
       }
 
       const token = sessionData.token;
@@ -206,15 +246,20 @@ export function SyncfySatModal({
 
       container.innerHTML = "";
 
+      const entrypointConfig: any = {
+        country: "MX",
+        site: "56cf5728784806f72b8b456f", // Site oficial del SAT (CIEC) en Syncfy
+      };
+      if (credentialId) {
+        entrypointConfig.id_credential = credentialId;
+      }
+
       const widget = new (window as any).SyncfyWidget({
         token,
         element: "#syncfy-sat-widget-container",
         config: {
           locale: "es",
-          entrypoint: {
-            country: "MX",
-            site: "56cf5728784806f72b8b456f", // Site oficial del SAT (CIEC) en Syncfy
-          },
+          entrypoint: entrypointConfig,
           navigation: {
             displayPrivacyScreen: false,
             displayBusinessSites: true,
@@ -229,28 +274,29 @@ export function SyncfySatModal({
 
       widget.on("success", async (credential: any) => {
         console.log("[Syncfy SAT Widget] Conexión SAT exitosa:", credential);
-        const newCredId = credential?.id_credential;
-        const newRfc = credential?.username || companyData?.rfc || "";
+        const newCredId = credential?.id_credential || credentialId;
+        const newRfc = credential?.username || companyData?.rfc || satRfc || "";
 
         try {
-          // Link in backend
-          await fetch("/api/syncfy/sat/link", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              companyId,
-              syncfyCredentialId: newCredId,
-              rfc: newRfc,
-            }),
-          });
+          if (newCredId) {
+            await safeFetchJson("/api/syncfy/sat/link", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                companyId,
+                syncfyCredentialId: newCredId,
+                rfc: newRfc,
+              }),
+            });
 
-          setIsLinked(true);
-          setSatRfc(newRfc);
-          setCredentialId(newCredId);
+            setIsLinked(true);
+            setSatRfc(newRfc);
+            setCredentialId(newCredId);
+          }
           setWidgetOpen(false);
 
-          // Auto-trigger initial sync
-          handleTriggerSync(newCredId);
+          // Auto-trigger sync with the newly authenticated credential
+          await handleTriggerSync(newCredId);
         } catch (e: any) {
           console.error("[Syncfy SAT] Error vinculando credencial:", e);
         }
@@ -280,7 +326,7 @@ export function SyncfySatModal({
     setSyncSuccess(null);
 
     try {
-      const res = await fetch("/api/syncfy/sat/sync", {
+      const { ok, data, errorMessage } = await safeFetchJson("/api/syncfy/sat/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -292,9 +338,8 @@ export function SyncfySatModal({
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Error al sincronizar facturas con el SAT.");
+      if (!ok) {
+        throw new Error(errorMessage || data?.error || "Error al sincronizar facturas con el SAT.");
       }
 
       setSyncSuccess(data);
@@ -303,11 +348,12 @@ export function SyncfySatModal({
       }
     } catch (err: any) {
       console.error("[Syncfy SAT] Error sincronizando:", err);
-      setSyncError(err.message || "Error de conexión durante la sincronización.");
+      setSyncError(err.message || "Error al sincronizar con el SAT.");
     } finally {
       setSyncing(false);
     }
   };
+
 
   // Unlink SAT credential
   const handleUnlink = async () => {
@@ -316,7 +362,7 @@ export function SyncfySatModal({
     }
 
     try {
-      await fetch("/api/syncfy/sat/link", {
+      await safeFetchJson("/api/syncfy/sat/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -618,27 +664,41 @@ export function SyncfySatModal({
               )}
 
               {/* Action Button */}
-              <div className="pt-2">
+              <div className="pt-2 space-y-2">
                 <Button
-                  onClick={() => handleTriggerSync()}
-                  disabled={syncing}
+                  onClick={handleLaunchWidget}
+                  disabled={syncing || widgetLoading}
                   size="lg"
                   className="w-full gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-11 rounded-xl shadow-lg shadow-indigo-600/20"
                 >
-                  {syncing ? (
+                  {widgetLoading || syncing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Consultando Syncfy y extrayendo CFDIs del SAT...</span>
+                      <span>Conectando con el SAT en vivo...</span>
                     </>
                   ) : (
                     <>
                       <CloudDownload className="w-4 h-4" />
-                      <span>Sincronizar Facturas SAT ({dateFrom || "Inicio"} al {dateTo || "Hoy"})</span>
+                      <span>Conectar al SAT y Sincronizar ({dateFrom || "Inicio"} al {dateTo || "Hoy"})</span>
                     </>
                   )}
                 </Button>
+
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleTriggerSync()}
+                    disabled={syncing || widgetLoading}
+                    className="text-xs text-muted-foreground hover:text-slate-800 dark:hover:text-slate-200"
+                  >
+                    Consultar sin reconectar (solo facturas ya extraídas en caché)
+                  </Button>
+                </div>
+
                 {companyData?.lastSatSync && (
-                  <p className="text-[11px] text-slate-400 text-center mt-2">
+                  <p className="text-[11px] text-slate-400 text-center mt-1">
                     Última sincronización: {new Date(companyData.lastSatSync).toLocaleString()}
                   </p>
                 )}

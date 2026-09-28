@@ -13,6 +13,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Falta companyId' }, { status: 400 });
     }
 
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: 'Servicio de base de datos (Firebase Admin) no está disponible en el servidor.' },
+        { status: 503 }
+      );
+    }
+
+    try {
+      SyncfyService.getApiKey();
+    } catch (e: any) {
+      return NextResponse.json(
+        { error: 'SYNCFY_API_KEY no está configurada en las variables de entorno del servidor.', missingApiKey: true },
+        { status: 500 }
+      );
+    }
+
     let sessionToken = token;
 
     // Si no enviaron el token, generamos uno usando el syncfyUserId de la empresa

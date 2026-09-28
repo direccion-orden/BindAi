@@ -33,6 +33,47 @@ interface SyncfyConnectModalProps {
   onSyncComplete?: () => void;
 }
 
+async function safeFetchJson(
+  url: string,
+  init?: RequestInit
+): Promise<{ ok: boolean; status: number; data: any; errorMessage?: string }> {
+  try {
+    const res = await fetch(url, init);
+    const contentType = res.headers.get("content-type") || "";
+    let data: any = null;
+
+    if (contentType.includes("application/json")) {
+      try {
+        data = await res.json();
+      } catch (err) {
+        console.warn("Could not parse JSON response:", err);
+      }
+    }
+
+    if (!res.ok) {
+      if (data && typeof data === "object") {
+        const errorMsg = data.error || data.message || `Error del servidor (${res.status})`;
+        return { ok: false, status: res.status, data, errorMessage: errorMsg };
+      }
+      const rawText = await res.text().catch(() => "");
+      const cleanText = rawText.replace(/<[^>]*>?/gm, "").trim();
+      const errorMsg = cleanText
+        ? `Error del servidor (${res.status}): ${cleanText.substring(0, 160)}`
+        : `Error del servidor (${res.status}): ${res.statusText || "Error en la petición"}`;
+      return { ok: false, status: res.status, data: null, errorMessage: errorMsg };
+    }
+
+    return { ok: true, status: res.status, data: data ?? {} };
+  } catch (networkErr: any) {
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      errorMessage: networkErr.message || "Error de red o conexión al servidor.",
+    };
+  }
+}
+
 export function SyncfyConnectModal({
   isOpen,
   onClose,
@@ -50,6 +91,7 @@ export function SyncfyConnectModal({
   };
 
   const [step, setStep] = useState<"init" | "widget" | "direct_sync" | "map_accounts" | "syncing" | "success">("init");
+  const [syncMode, setSyncMode] = useState<"link_new" | "refresh_existing">("link_new");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [missingApiKey, setMissingApiKey] = useState(false);
@@ -93,8 +135,10 @@ export function SyncfyConnectModal({
       // Si la cuenta ya está vinculada, ofrecemos la opción directa de sincronizar por rango
       if (isAlreadyLinked) {
         setStep("direct_sync");
+        setSyncMode("refresh_existing");
       } else {
         setStep("init");
+        setSyncMode("link_new");
         initSyncfySession();
       }
     } else {
@@ -114,19 +158,17 @@ export function SyncfyConnectModal({
     setErrorMessage(null);
 
     try {
-      const res = await fetch("/api/syncfy/session", {
+      const { ok, data, errorMessage } = await safeFetchJson("/api/syncfy/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companyId }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (data.missingApiKey) {
+      if (!ok) {
+        if (data?.missingApiKey) {
           setMissingApiKey(true);
         }
-        throw new Error(data.error || "No se pudo iniciar la sesión con Syncfy");
+        throw new Error(errorMessage || "No se pudo iniciar la sesión con Syncfy");
       }
 
       setSessionToken(data.token);
@@ -202,16 +244,22 @@ export function SyncfyConnectModal({
 
       container.innerHTML = "";
 
+      const activeCredId = currentAccount?.syncfyCredentialId || credentialId;
+      const entrypointConfig: any = {
+        country: "MX",
+      };
+      if (syncMode === "refresh_existing" && activeCredId) {
+        entrypointConfig.id_credential = activeCredId;
+      }
+
       const widget = new (window as any).SyncfyWidget({
         token,
         element: "#syncfy-widget-container",
         config: {
           locale: "es",
-          entrypoint: {
-            country: "MX",
-          },
+          entrypoint: entrypointConfig,
           navigation: {
-            displayPrivacyScreen: false, // Inicia directamente en el catálogo de bancos
+            displayPrivacyScreen: false, // Inicia directamente en el catálogo o banco
             displayBusinessSites: true,
             displayPersonalSites: true,
             saveCredential: true,
@@ -225,9 +273,16 @@ export function SyncfyConnectModal({
       // Event Listeners
       widget.on("success", async (credential: any) => {
         console.log("[Syncfy Widget] Success:", credential);
-        const credId = credential?.id_credential;
+        const credId = credential?.id_credential || activeCredId;
         if (credId) setCredentialId(credId);
-        await fetchDiscoveredAccounts(token, credId);
+
+        if (syncMode === "refresh_existing") {
+          // Ya es una cuenta vinculada: Proceder de inmediato a sincronizar los movimientos con el token recién validado
+          await executeSyncTransactions(credId);
+        } else {
+          // Primera vinculación: Descubrir subcuentas y mapear
+          await fetchDiscoveredAccounts(token, credId);
+        }
       });
 
       widget.on("error", (cred: any, jobErr: any) => {
@@ -248,15 +303,17 @@ export function SyncfyConnectModal({
   const fetchDiscoveredAccounts = async (token: string, credId?: string) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/syncfy/accounts", {
+      const { ok, data, errorMessage } = await safeFetchJson("/api/syncfy/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companyId, token, idCredential: credId }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "No se pudieron obtener las cuentas de Syncfy");
+      if (!ok) {
+        if (data?.missingApiKey) {
+          setMissingApiKey(true);
+        }
+        throw new Error(errorMessage || "No se pudieron obtener las cuentas de Syncfy");
       }
 
       const accs = data.accounts || [];
@@ -282,34 +339,37 @@ export function SyncfyConnectModal({
   };
 
   // Sincronización directa para cuenta ya vinculada
-  const handleDirectSync = async () => {
+  const executeSyncTransactions = async (credId?: string) => {
     if (!targetLocalAccountId) return;
     setLoading(true);
     setStep("syncing");
     setErrorMessage(null);
 
     try {
-      const syncRes = await fetch("/api/syncfy/sync", {
+      const effectiveCredId = credId || currentAccount?.syncfyCredentialId || credentialId;
+      const { ok, data, errorMessage } = await safeFetchJson("/api/syncfy/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           companyId,
           bankAccountId: targetLocalAccountId,
           syncfyAccountId: currentAccount?.syncfyAccountId,
-          syncfyCredentialId: currentAccount?.syncfyCredentialId,
+          syncfyCredentialId: effectiveCredId,
           dateFrom,
           dateTo,
         }),
       });
 
-      const syncData = await syncRes.json();
-      if (!syncRes.ok) {
-        throw new Error(syncData.error || "Error al sincronizar movimientos");
+      if (!ok) {
+        if (data?.missingApiKey) {
+          setMissingApiKey(true);
+        }
+        throw new Error(errorMessage || "Error al sincronizar movimientos");
       }
 
       setSyncResults({
-        imported: syncData.imported || 0,
-        totalFetched: syncData.totalFetched || 0,
+        imported: data.imported || 0,
+        totalFetched: data.totalFetched || 0,
       });
 
       setStep("success");
@@ -328,6 +388,13 @@ export function SyncfyConnectModal({
     }
   };
 
+  // Iniciar flujo de sincronización con token
+  const handleStartSyncWithToken = async () => {
+    setSyncMode("refresh_existing");
+    setStep("init");
+    await initSyncfySession();
+  };
+
   // Sincronización al vincular por primera vez
   const handleLinkAndSync = async () => {
     if (!targetLocalAccountId || !selectedSyncfyAccountId) {
@@ -343,7 +410,7 @@ export function SyncfyConnectModal({
       const chosenSyncfyAcc = discoveredAccounts.find((a) => a.id_account === selectedSyncfyAccountId);
 
       // 1. Vincular
-      const linkRes = await fetch("/api/syncfy/link", {
+      const linkResult = await safeFetchJson("/api/syncfy/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -355,13 +422,12 @@ export function SyncfyConnectModal({
         }),
       });
 
-      if (!linkRes.ok) {
-        const linkData = await linkRes.json();
-        throw new Error(linkData.error || "Error al asociar cuenta bancaria");
+      if (!linkResult.ok) {
+        throw new Error(linkResult.errorMessage || "Error al asociar cuenta bancaria");
       }
 
       // 2. Sincronizar transacciones con rango de fechas definido por el usuario
-      const syncRes = await fetch("/api/syncfy/sync", {
+      const syncResult = await safeFetchJson("/api/syncfy/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -374,14 +440,16 @@ export function SyncfyConnectModal({
         }),
       });
 
-      const syncData = await syncRes.json();
-      if (!syncRes.ok) {
-        throw new Error(syncData.error || "Error al sincronizar movimientos");
+      if (!syncResult.ok) {
+        if (syncResult.data?.missingApiKey) {
+          setMissingApiKey(true);
+        }
+        throw new Error(syncResult.errorMessage || "Error al sincronizar movimientos");
       }
 
       setSyncResults({
-        imported: syncData.imported || 0,
-        totalFetched: syncData.totalFetched || 0,
+        imported: syncResult.data.imported || 0,
+        totalFetched: syncResult.data.totalFetched || 0,
       });
 
       setStep("success");
@@ -504,6 +572,7 @@ export function SyncfyConnectModal({
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    setSyncMode("link_new");
                     setStep("init");
                     initSyncfySession();
                   }}
@@ -582,29 +651,55 @@ export function SyncfyConnectModal({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={onClose}>
-                  Cerrar
-                </Button>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
                 <Button
-                  onClick={handleDirectSync}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => executeSyncTransactions()}
                   disabled={loading || !dateFrom || !dateTo}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-6"
+                  className="text-xs text-muted-foreground hover:text-slate-800 dark:hover:text-slate-200"
                 >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Sincronizar Movimientos del Período
+                  Consultar sin token (solo movimientos ya extraídos)
                 </Button>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                  <Button variant="outline" onClick={onClose}>
+                    Cerrar
+                  </Button>
+                  <Button
+                    onClick={handleStartSyncWithToken}
+                    disabled={loading || !dateFrom || !dateTo}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-6 shadow-md"
+                  >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    Sincronizar Movimientos del Período
+                  </Button>
+                </div>
               </div>
             </div>
           )}
 
           {/* Step: Syncfy Embedded Widget Container (Centrado y Responsivo) */}
           <div className={step === "widget" ? "space-y-3 flex-1 flex flex-col items-center justify-center w-full" : "hidden"}>
-            <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border text-xs text-muted-foreground flex items-center justify-between w-full max-w-4xl">
-              <span>Selecciona tu institución financiera e ingresa tus credenciales bancarias en el widget seguro.</span>
-              <span className="font-semibold text-emerald-600 flex items-center gap-1 shrink-0">
-                <ShieldCheck className="w-3.5 h-3.5" /> Cifrado bancario de 256 bits
-              </span>
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 w-full max-w-4xl shadow-sm">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  {syncMode === "refresh_existing"
+                    ? "Ingresa tus claves y confirma tu Token Móvil / OTP para que el banco libere los movimientos más recientes."
+                    : "Selecciona tu institución financiera e ingresa tus credenciales en el widget seguro."}
+                </span>
+              </div>
+              {isAlreadyLinked && (
+                <button
+                  type="button"
+                  onClick={() => setStep("direct_sync")}
+                  className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:underline shrink-0"
+                >
+                  Volver al selector
+                </button>
+              )}
             </div>
             <div className="w-full flex justify-center items-center">
               <div
@@ -815,17 +910,31 @@ export function SyncfyConnectModal({
               </div>
 
               {syncResults && (
-                <div className="grid grid-cols-2 gap-4 max-w-md w-full my-3">
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900 border rounded-xl">
-                    <p className="text-2xl font-black text-emerald-600">{syncResults.imported}</p>
-                    <p className="text-xs font-semibold text-slate-500 uppercase mt-1">Nuevos Movimientos</p>
+                <div className="space-y-3 max-w-md w-full my-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-900 border rounded-xl">
+                      <p className="text-2xl font-black text-emerald-600">{syncResults.imported}</p>
+                      <p className="text-xs font-semibold text-slate-500 uppercase mt-1">Nuevos Movimientos</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-900 border rounded-xl">
+                      <p className="text-2xl font-black text-slate-700 dark:text-slate-300">
+                        {syncResults.totalFetched}
+                      </p>
+                      <p className="text-xs font-semibold text-slate-500 uppercase mt-1">Leídos del Banco</p>
+                    </div>
                   </div>
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900 border rounded-xl">
-                    <p className="text-2xl font-black text-slate-700 dark:text-slate-300">
-                      {syncResults.totalFetched}
-                    </p>
-                    <p className="text-xs font-semibold text-slate-500 uppercase mt-1">Leídos del Banco</p>
-                  </div>
+
+                  {syncResults.imported === 0 && syncResults.totalFetched > 0 && (
+                    <div className="p-3 bg-slate-50 dark:bg-slate-900/80 border rounded-xl text-xs text-muted-foreground text-left">
+                      <p className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        Cuenta al día
+                      </p>
+                      <p>
+                        Todos los {syncResults.totalFetched} movimientos leídos ya se encontraban previamente registrados en el ERP.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

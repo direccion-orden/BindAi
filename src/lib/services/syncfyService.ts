@@ -50,19 +50,23 @@ export class SyncfyService {
     let key = process.env.SYNCFY_API_KEY;
     if (!key) {
       try {
-        const envPath = path.resolve(process.cwd(), '.env.local');
-        if (fs.existsSync(envPath)) {
-          const envContent = fs.readFileSync(envPath, 'utf8');
-          for (const line of envContent.split('\n')) {
-            const trimmed = line.trim();
-            if (trimmed.startsWith('SYNCFY_API_KEY=')) {
-              key = trimmed.substring('SYNCFY_API_KEY='.length).trim().replace(/^["']|["']$/g, '');
-              if (key) {
-                process.env.SYNCFY_API_KEY = key;
-                break;
+        const candidateFiles = ['.env.local', '.env.production', '.env'];
+        for (const file of candidateFiles) {
+          const envPath = path.resolve(process.cwd(), file);
+          if (fs.existsSync(envPath)) {
+            const envContent = fs.readFileSync(envPath, 'utf8');
+            for (const line of envContent.split('\n')) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('SYNCFY_API_KEY=')) {
+                key = trimmed.substring('SYNCFY_API_KEY='.length).trim().replace(/^["']|["']$/g, '');
+                if (key) {
+                  process.env.SYNCFY_API_KEY = key;
+                  break;
+                }
               }
             }
           }
+          if (key) break;
         }
       } catch (e) {}
     }

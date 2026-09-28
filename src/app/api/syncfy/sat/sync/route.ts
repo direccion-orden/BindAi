@@ -40,6 +40,16 @@ export async function performSatSync(companyId: string, options: SatSyncOptions 
     throw new Error('Falta companyId para realizar sincronización SAT.');
   }
 
+  if (!adminDb) {
+    throw new Error('Servicio de base de datos (Firebase Admin) no está disponible en el servidor.');
+  }
+
+  try {
+    SyncfyService.getApiKey();
+  } catch (e: any) {
+    throw new Error('SYNCFY_API_KEY no está configurada en las variables de entorno del servidor.');
+  }
+
   const companyRef = adminDb.collection('companies').doc(companyId);
   const companySnap = await companyRef.get();
 
@@ -87,14 +97,6 @@ export async function performSatSync(companyId: string, options: SatSyncOptions 
     }
   }
 
-  // 4. Intentar refrescar la credencial si está disponible
-  if (satCredentialId) {
-    try {
-      await SyncfyService.syncCredential(token, satCredentialId).catch(() => {});
-    } catch (err: any) {
-      // Aviso no crítico
-    }
-  }
 
   // 5. Consultar transacciones de facturas SAT en Syncfy
   const txQuery: any = {

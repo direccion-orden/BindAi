@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     // 4. Ingestar transacciones evitando duplicados
     const txsColRef = accountDocRef.collection('transactions');
-    const existingTxsSnap = await txsColRef.get();
+    const existingTxsSnap = await txsColRef.select().get();
     const existingIds = new Set(existingTxsSnap.docs.map((d) => d.id));
 
     let importedCount = 0;
@@ -168,7 +168,7 @@ function parseTransactionDate(rawDate: any, fallbackStr: string): string {
 
     // Actualizar saldo acumulado si se importaron transacciones
     if (importedCount > 0) {
-      const allTxsSnap = await txsColRef.get();
+      const allTxsSnap = await txsColRef.select('amount').get();
       const totalTxsAmount = allTxsSnap.docs.reduce((sum, d) => sum + (Number(d.data().amount) || 0), 0);
       const initBal = Number(accountData.initialBalance || 0);
       updatePayload.balance = initBal + totalTxsAmount;

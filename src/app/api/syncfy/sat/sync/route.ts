@@ -103,8 +103,12 @@ export async function performSatSync(companyId: string, options: SatSyncOptions 
     limit: 500,
   };
   if (satCredentialId) txQuery.id_credential = satCredentialId;
-  if (dateFrom) txQuery.dt_transaction_from = dateFrom;
-  if (dateTo) txQuery.dt_transaction_to = dateTo;
+  if (dateFrom) {
+    txQuery.dt_transaction_from = dateFrom.includes(' ') ? dateFrom : `${dateFrom} 00:00:00`;
+  }
+  if (dateTo) {
+    txQuery.dt_transaction_to = dateTo.includes(' ') ? dateTo : `${dateTo} 23:59:59`;
+  }
 
   console.log('[Syncfy SAT Sync] Consultando transacciones SAT con opciones:', txQuery);
   let rawTransactions = await SyncfyService.getTransactions(token, txQuery);

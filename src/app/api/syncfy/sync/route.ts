@@ -81,12 +81,15 @@ export async function POST(request: NextRequest) {
     const fromStr = dateFrom || defaultPastDate.toISOString().split('T')[0];
     const toStr = dateTo || todayStr;
 
+    const formattedFromStr = fromStr.includes(' ') ? fromStr : `${fromStr} 00:00:00`;
+    const formattedToStr = toStr.includes(' ') ? toStr : `${toStr} 23:59:59`;
+
     // 3. Descargar transacciones de Syncfy
     const transactions = await SyncfyService.getTransactions(token, {
       id_account: targetSyncAccountId,
       id_credential: targetCredentialId,
-      dt_transaction_from: fromStr,
-      dt_transaction_to: toStr,
+      dt_transaction_from: formattedFromStr,
+      dt_transaction_to: formattedToStr,
       limit: 1000,
     });
 

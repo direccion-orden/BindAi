@@ -5,13 +5,14 @@ import { collection, query, onSnapshot, orderBy, doc, getDoc, getDocs, where, de
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2, Pause, Play, Square, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2, Pause, Play, Square, ArrowUpDown, ArrowUp, ArrowDown, Pencil } from "lucide-react";
 import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { BankImportModal } from "./components/BankImportModal";
 import { TransferModal } from "./components/TransferModal";
 import { AdjustmentModal } from "./components/AdjustmentModal";
 import { ReconcilePanel } from "./components/ReconcilePanel";
 import { SyncfyConnectModal } from "./components/SyncfyConnectModal";
+import { EditReconciliationModal } from "./components/EditReconciliationModal";
 import { Input } from "@/components/ui/input";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 
@@ -135,7 +136,10 @@ export default function BancosPage() {
 
   const [activeTab, setActiveTab] = useState<"history" | "reconcile">("history");
   const [reconcileTypeFilter, setReconcileTypeFilter] = useState<"all" | "inflow" | "outflow">("all");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | "pending" | "reconciled">("all");
   const [selectedTxs, setSelectedTxs] = useState<BankTransaction[]>([]);
+  const [selectedTxForEdit, setSelectedTxForEdit] = useState<BankTransaction | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const handleQuickSyncfySync = async () => {
     if (!selectedAccountId || !companyId) return;
@@ -405,8 +409,18 @@ export default function BancosPage() {
       }
       return pending;
     }
+
+    if (activeTab === "history") {
+      if (historyStatusFilter === "pending") {
+        return filteredTransactions.filter(t => !t.reconciled);
+      }
+      if (historyStatusFilter === "reconciled") {
+        return filteredTransactions.filter(t => t.reconciled);
+      }
+    }
+
     return filteredTransactions;
-  }, [filteredTransactions, activeTab, reconcileTypeFilter]);
+  }, [filteredTransactions, activeTab, reconcileTypeFilter, historyStatusFilter]);
 
   // History table sorting state
   const [sortField, setSortField] = useState<string>("date");
@@ -764,6 +778,19 @@ export default function BancosPage() {
                           </div>
                         </>
                       )}
+                      {activeTab === "history" && (
+                        <div className="flex items-center bg-background border rounded-md px-1.5 h-9 shadow-sm">
+                          <select
+                            className="bg-transparent border-none text-xs font-semibold outline-none focus:ring-0 p-1 cursor-pointer text-slate-700 w-36"
+                            value={historyStatusFilter}
+                            onChange={(e) => setHistoryStatusFilter(e.target.value as "all" | "pending" | "reconciled")}
+                          >
+                            <option value="all">Todos los estados</option>
+                            <option value="pending">Solo Pendientes</option>
+                            <option value="reconciled">Solo Conciliados</option>
+                          </select>
+                        </div>
+                      )}
                       <div className="relative w-64">
                           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                           <Input 
@@ -774,7 +801,7 @@ export default function BancosPage() {
                               onChange={(e) => setSearchQuery(e.target.value)}
                           />
                       </div>
-                      {(searchQuery || startDate || endDate || dateFilterOption !== "all") && (
+                      {(searchQuery || startDate || endDate || dateFilterOption !== "all" || historyStatusFilter !== "all") && (
                         <Button 
                           variant="ghost" 
                           size="sm" 
@@ -783,6 +810,7 @@ export default function BancosPage() {
                             setStartDate("");
                             setEndDate("");
                             setDateFilterOption("all");
+                            setHistoryStatusFilter("all");
                           }}
                           className="h-9 px-2 text-slate-400 hover:text-slate-600"
                           title="Limpiar filtros"
@@ -887,21 +915,34 @@ export default function BancosPage() {
                                               {renderSortIcon("deposit")}
                                           </div>
                                       </th>
+                                      <th className="px-3 py-3 text-center font-semibold text-muted-foreground w-12">
+                                          <span className="sr-only">Acciones</span>
+                                      </th>
                                   </tr>
                               </thead>
                               <tbody className="divide-y">
                                   {sortedHistoryTransactions.map((tx) => (
-                                      <tr key={tx.id} className="hover:bg-muted/30 transition-colors">
+                                      <tr 
+                                          key={tx.id} 
+                                          onClick={() => {
+                                              setSelectedTxForEdit(tx);
+                                              setIsEditModalOpen(true);
+                                          }}
+                                          className="hover:bg-indigo-50/40 cursor-pointer transition-colors group select-none"
+                                          title="Haz clic para ver o editar la conciliación de este movimiento"
+                                      >
                                           <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{tx.date}</td>
                                           <td className="px-4 py-3">
                                               <p className="font-medium flex items-center gap-2">
-                                                {tx.concept}
+                                                <span className="group-hover:text-indigo-900 transition-colors">{tx.concept}</span>
                                                 {tx.reconciled ? (
-                                                  <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                  <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                                     Conciliado
                                                   </span>
                                                 ) : (
-                                                  <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                                  <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                                                     Pendiente
                                                   </span>
                                                 )}
@@ -913,6 +954,11 @@ export default function BancosPage() {
                                           </td>
                                           <td className="px-4 py-3 text-right text-green-600 font-medium">
                                               {tx.amount > 0 ? formatMoney(tx.amount, selectedAccount?.currency) : ''}
+                                          </td>
+                                          <td className="px-3 py-3 text-center w-12">
+                                              <span className="p-1.5 rounded-lg text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-100/60 inline-flex items-center justify-center transition-all">
+                                                <Pencil className="w-3.5 h-3.5" />
+                                              </span>
                                           </td>
                                       </tr>
                                   ))}
@@ -1115,6 +1161,23 @@ export default function BancosPage() {
           onClose={() => setIsSyncfyModalOpen(false)}
           selectedAccountId={selectedAccountId}
           accounts={accounts}
+      />
+
+      <EditReconciliationModal
+          isOpen={isEditModalOpen}
+          transaction={selectedTxForEdit}
+          bankAccount={selectedAccount || null}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedTxForEdit(null);
+          }}
+          onSuccess={() => {
+            // Snapshot updates transaction automatically
+          }}
+          onOpenReconcilePanel={(tx) => {
+            setActiveTab("reconcile");
+            setSelectedTxs([tx]);
+          }}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { SyncfyService } from '@/lib/services/syncfyService';
 import { performSatSync } from '@/app/api/syncfy/sat/sync/route';
+import { normalizeDate, findMatchingTransaction } from '@/lib/services/bankTransactionMatcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,57 +64,101 @@ export async function POST(request: NextRequest) {
 
         const txsColRef = bankAccountDoc.ref.collection('transactions');
         const existingTxsSnap = await txsColRef.get();
-        const existingIds = new Set(existingTxsSnap.docs.map((d) => d.id));
+        const existingList = existingTxsSnap.docs.map((d) => ({ id: d.id, docId: d.id, ...d.data() } as any));
+        const existingIds = new Set(existingList.map((d) => d.id));
+        const usedExistingIds = new Set<string>();
+
+        const existingSyncfyTxIds = new Set<string>();
+        existingList.forEach((d) => {
+          if (d.syncfyTransactionId) existingSyncfyTxIds.add(d.syncfyTransactionId);
+          if (d.id && d.id.length === 24) existingSyncfyTxIds.add(d.id);
+        });
+
+        const bankAccountData = bankAccountDoc.data() || {};
+        const isCredit = Boolean(bankAccountData.isCredit || bankAccountData.type === 'credit');
 
         let imported = 0;
+        let linked = 0;
         const batch = adminDb.batch();
 
-        function parseTransactionDate(rawDate: any, fallbackStr: string): string {
-          if (!rawDate) return fallbackStr;
-          if (typeof rawDate === 'string') {
-            if (rawDate.includes('T')) return rawDate.split('T')[0];
-            if (rawDate.includes(' ')) return rawDate.split(' ')[0];
-            return rawDate;
-          }
-          if (typeof rawDate === 'number') {
-            const ms = rawDate < 10000000000 ? rawDate * 1000 : rawDate;
-            return new Date(ms).toISOString().split('T')[0];
-          }
-          if (rawDate instanceof Date) {
-            return rawDate.toISOString().split('T')[0];
-          }
-          return String(rawDate).split(' ')[0] || fallbackStr;
-        }
-
         for (const tx of txs) {
-          if (!tx.id_transaction || existingIds.has(tx.id_transaction)) continue;
+          const txId = tx.id_transaction;
+          if (!txId) continue;
+
+          // Si ya existe este ID o syncfyTransactionId, omitir
+          if (existingIds.has(txId) || existingSyncfyTxIds.has(txId)) continue;
 
           const amountNum = Number(tx.amount);
-          batch.set(txsColRef.doc(tx.id_transaction), {
-            id: tx.id_transaction,
-            date: parseTransactionDate(tx.dt_transaction, todayStr),
+          const isExpense = amountNum < 0;
+          const txDateStr = normalizeDate(tx.dt_transaction, todayStr);
+
+          const incomingCandidate = {
+            id: txId,
+            date: txDateStr,
+            amount: amountNum,
             concept: tx.description || 'Movimiento Syncfy Webhook',
             reference: tx.reference || '',
-            amount: amountNum,
-            type: amountNum < 0 ? 'EXPENSE' : 'INCOME',
-            syncProvider: 'syncfy',
-            syncfyAccountId: id_account,
-            createdAt: Date.now(),
-            reconciled: false,
-          });
-          imported++;
+          };
+
+          const match = findMatchingTransaction(incomingCandidate, existingList, usedExistingIds, isCredit);
+
+          if (match) {
+            // Vincular sin duplicar
+            usedExistingIds.add(match.id);
+            existingSyncfyTxIds.add(txId);
+
+            const updateFields: any = {
+              syncfyTransactionId: txId,
+              syncProvider: 'syncfy',
+              syncfyAccountId: id_account,
+            };
+            if (tx.reference && !match.reference) {
+              updateFields.reference = tx.reference;
+            }
+
+            batch.update(txsColRef.doc(match.id), updateFields);
+            linked++;
+          } else {
+            // Movimiento nuevo
+            batch.set(txsColRef.doc(txId), {
+              id: txId,
+              date: txDateStr,
+              concept: tx.description || 'Movimiento Syncfy Webhook',
+              reference: tx.reference || '',
+              amount: amountNum,
+              type: isExpense ? 'EXPENSE' : 'INCOME',
+              syncProvider: 'syncfy',
+              syncfyAccountId: id_account,
+              syncfyTransactionId: txId,
+              createdAt: Date.now(),
+              reconciled: false,
+            });
+            existingIds.add(txId);
+            existingSyncfyTxIds.add(txId);
+            imported++;
+          }
         }
 
-        if (imported > 0) {
+        if (imported > 0 || linked > 0) {
           await batch.commit();
         }
 
-        await bankAccountDoc.ref.update({
+        const updateAccountData: any = {
           lastSync: new Date().toISOString(),
           lastWebhookEvent: event || 'sync',
-        });
+        };
 
-        console.log(`[Syncfy Webhook] Sincronizados ${imported} movimientos para cuenta ${bankAccountId}`);
+        if (imported > 0) {
+          const allTxsSnap = await txsColRef.select('amount').get();
+          const totalTxsAmount = allTxsSnap.docs.reduce((sum, d) => sum + (Number(d.data().amount) || 0), 0);
+          const initBal = Number(bankAccountData.initialBalance || 0);
+          updateAccountData.balance = initBal + totalTxsAmount;
+          updateAccountData.Balance = initBal + totalTxsAmount;
+        }
+
+        await bankAccountDoc.ref.update(updateAccountData);
+
+        console.log(`[Syncfy Webhook] Procesados ${txs.length} movimientos (Nuevos importados: ${imported}, Vinculados existentes: ${linked}) para cuenta ${bankAccountId}`);
       }
     }
 

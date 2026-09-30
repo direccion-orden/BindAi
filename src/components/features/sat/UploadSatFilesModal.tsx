@@ -139,15 +139,17 @@ export function UploadSatFilesModal({ isOpen, onClose, companyId }: UploadSatFil
       const batch = writeBatch(db);
       
       chunk.forEach(inv => {
-        const docRef = doc(db, "companies", companyId, "expenses_inbox", inv.uuid);
-        if (existingUuids.has(inv.uuid)) {
+        const normUuid = (inv.uuid || "").trim().toUpperCase();
+        if (!normUuid) return;
+        const docRef = doc(db, "companies", companyId, "expenses_inbox", normUuid);
+        if (existingUuids.has(normUuid)) {
           // If invoice already exists, only update the xmlBase64 if present, avoiding status overwrite
           if (inv.xmlBase64) {
             batch.update(docRef, { xmlBase64: inv.xmlBase64 });
           }
         } else {
-          // If invoice is new, set the complete document
-          batch.set(docRef, inv);
+          // If invoice is new, set the complete document with uppercase UUID
+          batch.set(docRef, { ...inv, uuid: normUuid });
         }
       });
 

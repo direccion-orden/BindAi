@@ -7,7 +7,7 @@ import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X, ShieldCheck, CheckSquare, Square, Receipt, Layers, Package, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X, ShieldCheck, CheckSquare, Square, Receipt, Layers, Package, RefreshCw, Sparkles, Landmark } from "lucide-react";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 import { FormalizeProvisionalModal } from "./components/FormalizeProvisionalModal";
 import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
@@ -353,9 +353,13 @@ export default function GastosManualesPage() {
   // Filters State
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [bankAccountFilter, setBankAccountFilter] = useState("all");
   const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [outflowsByExpense, setOutflowsByExpense] = useState<Map<string, { bankIds: Set<string>; bankNames: Set<string> }>>(new Map());
 
   // Modals State
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -547,7 +551,7 @@ export default function GastosManualesPage() {
     }
   };
 
-  // Realtime listener for manual expenses
+  // Realtime listener for manual expenses, bank accounts, and outflows
   useEffect(() => {
     if (!companyId) return;
 
@@ -556,7 +560,7 @@ export default function GastosManualesPage() {
       orderBy("date", "desc")
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeExpenses = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setExpenses(data);
       setLoading(false);
@@ -565,7 +569,41 @@ export default function GastosManualesPage() {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    const unsubscribeBanks = onSnapshot(
+      query(collection(db, "companies", companyId, "bankAccounts")),
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setBankAccounts(data);
+      }
+    );
+
+    const unsubscribeOutflows = onSnapshot(
+      query(collection(db, "companies", companyId, "outflows")),
+      (snapshot) => {
+        const map = new Map<string, { bankIds: Set<string>; bankNames: Set<string> }>();
+        snapshot.docs.forEach((doc) => {
+          const d = doc.data();
+          const docId = d.documentId;
+          const bankId = d.bankAccountId;
+          const bankName = d.bankAccountName;
+          if (docId) {
+            if (!map.has(docId)) {
+              map.set(docId, { bankIds: new Set(), bankNames: new Set() });
+            }
+            const entry = map.get(docId)!;
+            if (bankId) entry.bankIds.add(bankId);
+            if (bankName) entry.bankNames.add(bankName);
+          }
+        });
+        setOutflowsByExpense(map);
+      }
+    );
+
+    return () => {
+      unsubscribeExpenses();
+      unsubscribeBanks();
+      unsubscribeOutflows();
+    };
   }, [companyId]);
 
   const handleSort = (field: string) => {
@@ -677,7 +715,21 @@ export default function GastosManualesPage() {
         if (!exp.isNonDeductible) return false;
       }
     }
-    // 3. Date range filter
+    // 3. Bank Account filter
+    if (bankAccountFilter !== "all") {
+      const outflowInfo = outflowsByExpense.get(exp.id);
+      const directBankId = exp.bankAccountId || exp.linkedBankAccountId;
+
+      if (bankAccountFilter === "no_account") {
+        const hasOutflow = outflowInfo && outflowInfo.bankIds.size > 0;
+        if (hasOutflow || directBankId) return false;
+      } else {
+        const matchesOutflow = outflowInfo && outflowInfo.bankIds.has(bankAccountFilter);
+        const matchesDirect = directBankId === bankAccountFilter;
+        if (!matchesOutflow && !matchesDirect) return false;
+      }
+    }
+    // 4. Date range filter
     if (dateFrom || dateTo) {
       if (dateFrom && exp.date < dateFrom) return false;
       if (dateTo && exp.date > dateTo) return false;
@@ -747,7 +799,7 @@ export default function GastosManualesPage() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in max-w-7xl mx-auto">
+    <div className="space-y-6 animate-in fade-in w-full max-w-[1650px] mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 text-indigo-950">
@@ -869,6 +921,24 @@ export default function GastosManualesPage() {
             </select>
           </div>
 
+          {/* Cuenta Bancaria */}
+          <div className="space-y-1 w-full sm:w-48">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Cuenta Bancaria</span>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              value={bankAccountFilter}
+              onChange={(e) => setBankAccountFilter(e.target.value)}
+            >
+              <option value="all">Todas las cuentas</option>
+              {bankAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.Name || acc.name || "Cuenta Bancaria"}
+                </option>
+              ))}
+              <option value="no_account">Sin cuenta / No pagado</option>
+            </select>
+          </div>
+
           {/* Fecha */}
           <div className="space-y-1 w-full sm:w-44">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rango de Fecha</span>
@@ -967,7 +1037,7 @@ export default function GastosManualesPage() {
       {/* Main Expenses Table */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
+          <table className="w-full min-w-[1250px] text-sm text-left">
             <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
                 <th className="px-3 py-3 w-10 text-center">
@@ -998,29 +1068,30 @@ export default function GastosManualesPage() {
                     );
                   })()}
                 </th>
-                <th className="px-3 py-3 w-28 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
+                <th className="px-3 py-3 w-28 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
                   <div className="flex items-center">Fecha {renderSortIcon("date")}</div>
                 </th>
-                <th className="px-3 py-3 w-32 cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
+                <th className="px-3 py-3 w-32 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
                   <div className="flex items-center">Folio {renderSortIcon("documentNumber")}</div>
                 </th>
                 <th className="px-3 py-3 min-w-[140px] max-w-[200px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
                   <div className="flex items-center">Proveedor {renderSortIcon("vendorName")}</div>
                 </th>
-                <th className="px-3 py-3 w-28">Sucursal</th>
-                <th className="px-3 py-3 w-24 text-center">Estatus</th>
-                <th className="px-3 py-3 w-28 text-right cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
+                <th className="px-3 py-3 w-28 whitespace-nowrap">Sucursal</th>
+                <th className="px-3 py-3 min-w-[130px] whitespace-nowrap">Cuenta Bancaria</th>
+                <th className="px-3 py-3 w-24 text-center whitespace-nowrap">Estatus</th>
+                <th className="px-3 py-3 w-28 text-right whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
                   <div className="flex items-center justify-end">Monto {renderSortIcon("amount")}</div>
                 </th>
-                <th className="px-3 py-3 w-24 text-right">Pagado</th>
-                <th className="px-3 py-3 w-24 text-right">Pendiente</th>
-                <th className="px-3 py-3 w-40 text-center">Acciones</th>
+                <th className="px-3 py-3 w-24 text-right whitespace-nowrap">Pagado</th>
+                <th className="px-3 py-3 w-24 text-right whitespace-nowrap">Pendiente</th>
+                <th className="px-3 py-3 min-w-[120px] text-center whitespace-nowrap">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {sortedExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
                     No se encontraron gastos operativos registrados.
                   </td>
                 </tr>
@@ -1076,6 +1147,36 @@ export default function GastosManualesPage() {
                        <td className="px-3 py-3 text-slate-500 font-medium text-xs truncate max-w-[120px]" title={exp.locationName}>
                          {exp.locationName || "-"}
                        </td>
+                       <td className="px-3 py-3 text-xs">
+                         {(() => {
+                           const outflowInfo = outflowsByExpense.get(exp.id);
+                           const names = new Set<string>();
+                           if (outflowInfo) {
+                             outflowInfo.bankIds.forEach(id => {
+                               const b = bankAccounts.find(acc => acc.id === id);
+                               if (b?.Name || b?.name) names.add(b.Name || b.name);
+                             });
+                             outflowInfo.bankNames.forEach(n => { if (n) names.add(n); });
+                           }
+                           if (names.size === 0 && exp.bankAccountId) {
+                             const directBank = bankAccounts.find(b => b.id === exp.bankAccountId);
+                             if (directBank?.Name || directBank?.name) names.add(directBank.Name || directBank.name);
+                           }
+                           if (names.size === 0) {
+                             return <span className="text-slate-400 font-mono text-[11px]">-</span>;
+                           }
+                           return (
+                             <div className="flex flex-col gap-1">
+                               {Array.from(names).map((name, i) => (
+                                 <span key={i} className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full max-w-[130px] truncate" title={name}>
+                                   <Landmark className="w-2.5 h-2.5 shrink-0 text-indigo-600" />
+                                   <span className="truncate">{name}</span>
+                                 </span>
+                               ))}
+                             </div>
+                           );
+                         })()}
+                       </td>
                        <td className="px-3 py-3 text-center">
                          {exp.isNonDeductible ? (
                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-300">
@@ -1112,23 +1213,8 @@ export default function GastosManualesPage() {
                        <td className={`px-3 py-3 text-right font-bold text-xs ${getPendingBalance(exp) > 0.01 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
                          {formatMoney(getPendingBalance(exp))}
                        </td>
-                       <td className="px-3 py-3 text-center">
-                         <div className="flex items-center justify-center gap-1.5 flex-nowrap">
-                           {isProv && (
-                             <Button
-                               variant="outline"
-                               size="sm"
-                               onClick={() => {
-                                 setFormalizeTargetExpenses([exp]);
-                                 setIsFormalizeModalOpen(true);
-                               }}
-                               className="h-8 px-2 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 text-[11px] font-bold gap-1 shrink-0"
-                               title="Formalizar gasto (vincular CFDI fiscal o declarar no deducible)"
-                             >
-                               <ShieldCheck className="w-3.5 h-3.5" />
-                               <span>Formalizar</span>
-                             </Button>
-                           )}
+                       <td className="px-3 py-3 text-center whitespace-nowrap">
+                         <div className="flex items-center justify-center gap-1.5 flex-nowrap min-w-max">
                            <Link href={`/gastos/${exp.id}`} target="_blank">
                              <Button 
                                variant="outline" 

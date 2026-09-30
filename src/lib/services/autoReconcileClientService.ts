@@ -480,8 +480,8 @@ export async function runClientAiReconciliation(
           const oDateStr = normalizeDateToISO(item.tx.date || "");
           const oDate = new Date(oDateStr + "T00:00:00");
           const diffDays = Math.round(Math.abs((cDate.getTime() - oDate.getTime()) / (1000 * 60 * 60 * 24)));
-          // Ventana de tolerancia extendida a 7 días para liquidaciones bancarias de fin de semana
-          if (isNaN(diffDays) || diffDays > 7) continue;
+          // Ventana de tolerancia a 3 días naturales
+          if (isNaN(diffDays) || diffDays > 3) continue;
 
           const oConcept = (item.tx.concept || "").toLowerCase();
           const oRef = (item.tx.reference || "").toLowerCase();
@@ -556,7 +556,7 @@ export async function runClientAiReconciliation(
           candidates.sort((a, b) => b.score - a.score);
           const best = candidates[0];
 
-          if (best.hasExactRefMatch || best.hasTransferKeyword || (candidates.length === 1 && best.diffDays <= 4)) {
+          if (best.hasExactRefMatch || best.hasTransferKeyword || (candidates.length === 1 && best.diffDays <= 3)) {
             const targetItem = best.item;
             matchedTargetIds.add(targetItem.tx.id);
             reconciledTransferTxIds.add(cTx.id);
@@ -723,7 +723,7 @@ export async function runClientAiReconciliation(
             const oDateStr = normalizeDateToISO(item.tx.date || "");
             const oDate = new Date(oDateStr + "T00:00:00");
             const diffDays = Math.round(Math.abs((cDate.getTime() - oDate.getTime()) / (1000 * 60 * 60 * 24)));
-            if (isNaN(diffDays) || diffDays > 7) continue;
+            if (isNaN(diffDays) || diffDays > 3) continue;
 
             const oConcept = (item.tx.concept || "").toLowerCase();
             const isCardPayment = 

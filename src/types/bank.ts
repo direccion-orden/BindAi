@@ -8,9 +8,32 @@ export interface BankTransaction {
   balanceAfter?: number; // optional tracking, calculated client-side mostly
   createdAt: number;
   reconciled?: boolean;
-  reconcileType?: 'match' | 'direct';
+  reconcileType?: 'match' | 'direct' | 'transfer' | 'refund' | string;
   matchedDocumentId?: string;
+  matchedAccountId?: string;
+  accountingAccountId?: string;
   matchedAt?: string;
+  syncProvider?: string;
+  syncfyAccountId?: string;
+  syncfyTransactionId?: string;
+}
+
+export interface BankAccount {
+  id: string;
+  name: string;
+  type: "cash" | "bank" | "terminal" | string;
+  currency: string;
+  initialBalance: number;
+  Name?: string;
+  CurrencyCode?: string;
+  isCredit?: boolean;
+  Type?: number;
+  TypeText?: string;
+  syncProvider?: string;
+  syncfyAccountId?: string;
+  syncfyCredentialId?: string;
+  syncfyAccountName?: string;
+  lastSync?: string;
 }
 
 export function isCreditAccount(acc: any): boolean {

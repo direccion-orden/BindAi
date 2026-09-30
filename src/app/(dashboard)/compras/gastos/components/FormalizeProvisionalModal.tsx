@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { findOrCreateOfficialVendor } from "@/lib/services/vendorSyncService";
 import { 
   Loader2, X, CheckCircle2, ShieldCheck, Building2, Layers, BookOpen, 
   AlertCircle, FileCheck, Receipt, Search, UploadCloud, Sparkles, Check
@@ -404,6 +405,19 @@ export function FormalizeProvisionalModal({
         const satVat = selectedInvoice.tax !== undefined ? Number(selectedInvoice.tax) : (satTotal - (satTotal / 1.16));
         const satSubtotal = selectedInvoice.subtotal !== undefined ? Number(selectedInvoice.subtotal) : (satTotal - satVat);
 
+        // Resolver o registrar en catálogo oficial de Proveedores
+        const candidateVendorName = selectedInvoice.emisorName || selectedInvoice.vendorName || singleExpense.vendorName || "Proveedor";
+        const candidateVendorRfc = selectedInvoice.emisorRfc || selectedInvoice.vendorRfc || singleExpense.vendorRfc || "";
+        const officialVendor = await findOrCreateOfficialVendor(companyId, {
+          rfc: candidateVendorRfc,
+          name: candidateVendorName,
+          createIfMissing: true
+        });
+
+        const finalVendorId = officialVendor?.id || singleExpense.vendorId || "";
+        const finalVendorName = officialVendor?.name || candidateVendorName;
+        const finalVendorRfc = officialVendor?.rfc || candidateVendorRfc;
+
         const updatePayload: any = {
           isProvisional: false,
           isPendingFiscalInvoice: false,
@@ -413,8 +427,9 @@ export function FormalizeProvisionalModal({
           satInvoiceId: satId,
           uuid: selectedInvoice.uuid || "",
           documentNumber: satDocNumber,
-          vendorName: selectedInvoice.emisorName || selectedInvoice.vendorName || singleExpense.vendorName,
-          vendorRfc: selectedInvoice.emisorRfc || selectedInvoice.vendorRfc || singleExpense.vendorRfc || "",
+          vendorId: finalVendorId,
+          vendorName: finalVendorName,
+          vendorRfc: finalVendorRfc,
           concept: singleExpense.concept || selectedInvoice.concept || `Gasto amparado por CFDI ${satDocNumber}`,
           subtotal: satSubtotal,
           tax: satVat,
@@ -428,7 +443,7 @@ export function FormalizeProvisionalModal({
           accountName: selectedAcc?.name || singleExpense.accountName || "Gastos Generales",
           reviewedBy: userEmail || "Formalización Fiscal",
           reviewedAt: now,
-          reviewNotes: reviewNotes || `Formalizado y vinculado a CFDI ${satDocNumber}`
+          reviewNotes: reviewNotes || `Formalizado y vinculado a CFDI ${satDocNumber}${officialVendor?.number ? ` (Proveedor oficial: ${officialVendor.number})` : ''}`
         };
 
         batch.update(expRef, updatePayload);
@@ -524,7 +539,27 @@ export function FormalizeProvisionalModal({
             updatePayload.isNonDeductible = true;
             updatePayload.status = exp.status || "paid";
             updatePayload.reviewNotes = reviewNotes || "Formalizado como gasto no deducible oficial";
-            if (vendorName.trim()) updatePayload.vendorName = vendorName.trim();
+            
+            const rawVendorToLink = vendorName.trim() || exp.vendorName || "";
+            if (rawVendorToLink && rawVendorToLink !== "Proveedor") {
+              try {
+                const resolved = await findOrCreateOfficialVendor(companyId, {
+                  name: rawVendorToLink,
+                  createIfMissing: true
+                });
+                if (resolved) {
+                  updatePayload.vendorId = resolved.id;
+                  updatePayload.vendorName = resolved.name;
+                  if (resolved.rfc) updatePayload.vendorRfc = resolved.rfc;
+                }
+              } catch (vErr) {
+                console.warn("Could not create vendor in single non-deductible:", vErr);
+                updatePayload.vendorName = rawVendorToLink;
+              }
+            } else if (rawVendorToLink) {
+              updatePayload.vendorName = rawVendorToLink;
+            }
+
             if (concept.trim()) updatePayload.concept = concept.trim();
           } else {
             // Bulk mode

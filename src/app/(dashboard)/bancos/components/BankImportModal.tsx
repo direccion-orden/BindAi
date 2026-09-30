@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, UploadCloud, X, ArrowRight, CheckCircle2, FileText, AlertCircle, Info, ShieldCheck, CreditCard, ArrowRightLeft } from "lucide-react";
 import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { parseBBVAPdf } from "@/lib/bank-parsers/bbva";
+import { normalizeDate, cleanText, transactionsMatch } from "@/lib/services/bankTransactionMatcher";
 
 interface BankImportModalProps {
   accounts: any[];
@@ -61,7 +62,6 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
   const [expenseCol, setExpenseCol] = useState("");
 
   const [candidateTransactions, setCandidateTransactions] = useState<BankTransaction[]>([]);
-  const [existingHashes, setExistingHashes] = useState<Set<string>>(new Set());
   const [finalTransactions, setFinalTransactions] = useState<(BankTransaction & { isDuplicate: boolean; selected: boolean })[]>([]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,13 +166,7 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
   };
 
   const parseDateStr = (val: any) => {
-    if (!val) return "";
-    const s = val.toString().trim();
-    const dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-    if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
-    const ymdMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-    if (ymdMatch) return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
-    return s;
+    return normalizeDate(val, "");
   };
 
   const handleCSVMappingConfirm = async () => {
@@ -214,45 +208,38 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
     await prepareDeduplication(txs);
   };
 
-  const getTxHash = (tx: Partial<BankTransaction>) => {
-    // Key fields for deduplication: date, amount (2 decimals), and part of concept
-    const amt = (tx.amount || 0).toFixed(2);
-    const concept = (tx.concept || "").toUpperCase().trim().substring(0, 50);
-    const ref = (tx.reference || "").toUpperCase().trim();
-    return `${tx.date}|${amt}|${concept}|${ref}`;
-  };
-
   const prepareDeduplication = async (candidates: BankTransaction[]) => {
     if (!companyId || !targetAccountId) return;
     setLoading(true);
     try {
-      const dates = candidates.map(t => t.date).filter(Boolean).sort();
-      if (dates.length === 0) throw new Error("No se detectaron fechas válidas.");
-      
-      const minDate = dates[0];
-      const maxDate = dates[dates.length - 1];
-
-      // Fetch existing txs in range
-      const q = query(
-        collection(db, "companies", companyId, "bankAccounts", targetAccountId, "transactions"),
-        where("date", ">=", minDate),
-        where("date", "<=", maxDate)
+      // Obtener todos los movimientos existentes de la cuenta para comparación robusta
+      const snap = await getDocs(
+        collection(db, "companies", companyId, "bankAccounts", targetAccountId, "transactions")
       );
-      
-      const snap = await getDocs(q);
-      const hashes = new Set<string>();
-      snap.docs.forEach(doc => {
-        hashes.add(getTxHash(doc.data() as BankTransaction));
-      });
+      const existingTxs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as BankTransaction));
 
-      setExistingHashes(hashes);
-      
+      const usedExistingIds = new Set<string>();
+      const seenCandidateKeys = new Set<string>();
+
       const enriched = candidates.map(tx => {
-        const isDuplicate = hashes.has(getTxHash(tx));
+        // 1. Buscar coincidencia en la base de datos (con fecha normalizada, importe y concepto difuso)
+        const dbMatch = existingTxs.find(existing => !usedExistingIds.has(existing.id) && transactionsMatch(tx, existing, isCredit));
+
+        // 2. Verificar duplicados dentro del mismo archivo cargado
+        const candAmt = (Number(tx.amount) || 0).toFixed(2);
+        const internalKey = `${normalizeDate(tx.date)}|${candAmt}|${cleanText(tx.concept).substring(0, 15)}|${cleanText(tx.reference)}`;
+        const isInternalDup = seenCandidateKeys.has(internalKey);
+        seenCandidateKeys.add(internalKey);
+
+        const isDuplicate = Boolean(dbMatch) || isInternalDup;
+        if (dbMatch) {
+          usedExistingIds.add(dbMatch.id);
+        }
+
         return {
           ...tx,
           isDuplicate,
-          selected: !isDuplicate // Auto-unselect duplicates
+          selected: !isDuplicate // Auto-deseleccionar duplicados
         };
       });
 
@@ -286,6 +273,17 @@ export function BankImportModal({ accounts, initialAccountId, onClose }: BankImp
         });
         await batch.commit();
       }
+
+      // Recalcular y persistir saldo de la cuenta bancaria
+      const allSnap = await getDocs(collection(db, "companies", cid, "bankAccounts", targetAccountId, "transactions"));
+      const totalAmount = allSnap.docs.reduce((sum, d) => sum + (Number(d.data().amount) || 0), 0);
+      const acc = accounts.find(a => a.id === targetAccountId);
+      const initBal = Number(acc?.initialBalance || 0);
+      await updateDoc(doc(db, "companies", cid, "bankAccounts", targetAccountId), {
+        balance: initBal + totalAmount,
+        Balance: initBal + totalAmount,
+      });
+
       setStep(5);
     } catch (err) {
       setError("Error al guardar en la base de datos.");

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { SyncfyService } from '@/lib/services/syncfyService';
+import { normalizeDate, findMatchingTransaction } from '@/lib/services/bankTransactionMatcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,57 +96,90 @@ export async function POST(request: NextRequest) {
 
     // 4. Ingestar transacciones evitando duplicados
     const txsColRef = accountDocRef.collection('transactions');
-    const existingTxsSnap = await txsColRef.select().get();
-    const existingIds = new Set(existingTxsSnap.docs.map((d) => d.id));
+    const existingTxsSnap = await txsColRef.get();
+    const existingList = existingTxsSnap.docs.map((d) => ({ id: d.id, docId: d.id, ...d.data() } as any));
+    const existingIds = new Set(existingList.map((d) => d.id));
+    const usedExistingIds = new Set<string>();
+
+    const existingSyncfyTxIds = new Set<string>();
+    existingList.forEach((d) => {
+      if (d.syncfyTransactionId) existingSyncfyTxIds.add(d.syncfyTransactionId);
+      if (d.id && d.id.length === 24) existingSyncfyTxIds.add(d.id);
+    });
+
+    const isCredit = Boolean(accountData.isCredit || accountData.type === 'credit');
 
     let importedCount = 0;
+    let linkedCount = 0;
     const batchSize = 450;
     let batch = adminDb.batch();
     let batchOps = 0;
 
-function parseTransactionDate(rawDate: any, fallbackStr: string): string {
-  if (!rawDate) return fallbackStr;
-  if (typeof rawDate === 'string') {
-    if (rawDate.includes('T')) return rawDate.split('T')[0];
-    if (rawDate.includes(' ')) return rawDate.split(' ')[0];
-    return rawDate;
-  }
-  if (typeof rawDate === 'number') {
-    const ms = rawDate < 10000000000 ? rawDate * 1000 : rawDate;
-    return new Date(ms).toISOString().split('T')[0];
-  }
-  if (rawDate instanceof Date) {
-    return rawDate.toISOString().split('T')[0];
-  }
-  return String(rawDate).split(' ')[0] || fallbackStr;
-}
-
     for (const tx of transactions) {
       const txId = tx.id_transaction;
-      if (!txId || existingIds.has(txId)) {
+      if (!txId) continue;
+
+      // Si ya existe un documento con este ID exacto o syncfyTransactionId, ya está registrado
+      if (existingIds.has(txId) || existingSyncfyTxIds.has(txId)) {
         continue;
       }
 
       const amountNum = Number(tx.amount);
       const isExpense = amountNum < 0;
-      const txDocData: any = {
+      const txDateStr = normalizeDate(tx.dt_transaction, todayStr);
+
+      const incomingCandidate = {
         id: txId,
-        date: parseTransactionDate(tx.dt_transaction, todayStr),
+        date: txDateStr,
+        amount: amountNum,
         concept: tx.description || 'Movimiento Bancario Syncfy',
         reference: tx.reference || '',
-        amount: amountNum,
-        type: isExpense ? 'EXPENSE' : 'INCOME',
-        syncProvider: 'syncfy',
-        syncfyAccountId: targetSyncAccountId,
-        createdAt: Date.now(),
-        reconciled: false,
       };
 
-      const docRef = txsColRef.doc(txId);
-      batch.set(docRef, txDocData);
-      existingIds.add(txId);
-      importedCount++;
-      batchOps++;
+      // Buscar si ya existe un movimiento previo (de CSV o manual) que corresponda a esta transacción
+      const match = findMatchingTransaction(incomingCandidate, existingList, usedExistingIds, isCredit);
+
+      if (match) {
+        // Vincular el movimiento existente con Syncfy sin duplicar el documento
+        usedExistingIds.add(match.id);
+        existingSyncfyTxIds.add(txId);
+
+        const updateFields: any = {
+          syncfyTransactionId: txId,
+          syncProvider: 'syncfy',
+          syncfyAccountId: targetSyncAccountId,
+        };
+        if (tx.reference && !match.reference) {
+          updateFields.reference = tx.reference;
+        }
+
+        const matchDocRef = txsColRef.doc(match.id);
+        batch.update(matchDocRef, updateFields);
+        linkedCount++;
+        batchOps++;
+      } else {
+        // Movimiento nuevo genuino: registrar en Firestore
+        const txDocData: any = {
+          id: txId,
+          date: txDateStr,
+          concept: tx.description || 'Movimiento Bancario Syncfy',
+          reference: tx.reference || '',
+          amount: amountNum,
+          type: isExpense ? 'EXPENSE' : 'INCOME',
+          syncProvider: 'syncfy',
+          syncfyAccountId: targetSyncAccountId,
+          syncfyTransactionId: txId,
+          createdAt: Date.now(),
+          reconciled: false,
+        };
+
+        const docRef = txsColRef.doc(txId);
+        batch.set(docRef, txDocData);
+        existingIds.add(txId);
+        existingSyncfyTxIds.add(txId);
+        importedCount++;
+        batchOps++;
+      }
 
       if (batchOps >= batchSize) {
         await batch.commit();
@@ -183,6 +217,7 @@ function parseTransactionDate(rawDate: any, fallbackStr: string): string {
     return NextResponse.json({
       success: true,
       imported: importedCount,
+      linked: linkedCount,
       totalFetched: transactions.length,
       dateRange: { from: fromStr, to: toStr },
     });

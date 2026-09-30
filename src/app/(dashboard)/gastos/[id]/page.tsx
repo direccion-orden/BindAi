@@ -1,13 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, use, useRef } from "react";
-import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, increment, orderBy, where, deleteDoc, getDocs } from "firebase/firestore";
+import React, { useState, useEffect, use, useRef, useMemo } from "react";
+import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, increment, orderBy, where, deleteDoc, getDocs, setDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Receipt, DollarSign, Calendar, CreditCard, BookOpen, FileText, CheckCircle2, AlertCircle, Landmark, User, Building2, Save, X, Trash2 } from "lucide-react";
+import { 
+  Loader2, ArrowLeft, Receipt, DollarSign, Calendar, CreditCard, BookOpen, 
+  FileText, CheckCircle2, AlertCircle, Landmark, User, Building2, Save, X, 
+  Trash2, ShieldCheck, FileCheck, UploadCloud, Sparkles, Check, Search 
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect, SearchableSelectItem } from "@/components/ui/searchable-select";
+import { findOrCreateOfficialVendor } from "@/lib/services/vendorSyncService";
 import Link from "next/link";
 
 interface ConceptItem {
@@ -22,9 +28,92 @@ interface ConceptItem {
   descuento?: number;
 }
 
+// Helper para parsear CFDI XML en navegador
+const parseXmlInvoice = (xmlText: string): any => {
+  try {
+    const cleanXml = xmlText.trim().replace(/^\uFEFF/, "");
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(cleanXml, "text/xml");
+    
+    const parserError = xmlDoc.getElementsByTagName("parsererror");
+    if (parserError.length > 0) return null;
+
+    let uuid = "";
+    const timbreNode = xmlDoc.getElementsByTagName("tfd:TimbreFiscalDigital")[0] 
+                   || xmlDoc.getElementsByTagName("TimbreFiscalDigital")[0];
+    if (timbreNode) {
+      uuid = timbreNode.getAttribute("UUID") || "";
+    } else {
+      const uuidMatch = cleanXml.match(/UUID="([^"]{36})"/i);
+      if (uuidMatch) uuid = uuidMatch[1];
+    }
+
+    if (!uuid || uuid.length !== 36) return null;
+
+    const comprobanteNode = xmlDoc.getElementsByTagName("cfdi:Comprobante")[0]
+                        || xmlDoc.getElementsByTagName("Comprobante")[0];
+    let total = 0;
+    let subtotal = 0;
+    let date = "";
+    let folio = "";
+    let serie = "";
+    if (comprobanteNode) {
+      total = parseFloat(comprobanteNode.getAttribute("Total") || "0") || 0;
+      subtotal = parseFloat(comprobanteNode.getAttribute("SubTotal") || "0") || 0;
+      date = comprobanteNode.getAttribute("Fecha") || "";
+      folio = comprobanteNode.getAttribute("Folio") || "";
+      serie = comprobanteNode.getAttribute("Serie") || "";
+    } else {
+      const totalMatch = cleanXml.match(/\bTotal="([^"]+)"/i);
+      const subtotalMatch = cleanXml.match(/\bSubTotal="([^"]+)"/i);
+      const fechaMatch = cleanXml.match(/\bFecha="([^"]+)"/i);
+      const folioMatch = cleanXml.match(/\bFolio="([^"]+)"/i);
+      const serieMatch = cleanXml.match(/\bSerie="([^"]+)"/i);
+      if (totalMatch) total = parseFloat(totalMatch[1]) || 0;
+      if (subtotalMatch) subtotal = parseFloat(subtotalMatch[1]) || 0;
+      if (fechaMatch) date = fechaMatch[1];
+      if (folioMatch) folio = folioMatch[1];
+      if (serieMatch) serie = serieMatch[1];
+    }
+    const combinedFolio = (serie ? `${serie}-${folio}` : folio) || "";
+
+    const emisorNode = xmlDoc.getElementsByTagName("cfdi:Emisor")[0]
+                   || xmlDoc.getElementsByTagName("Emisor")[0];
+    let emisorRfc = "Desconocido";
+    let emisorName = "Desconocido";
+    if (emisorNode) {
+      emisorRfc = emisorNode.getAttribute("Rfc") || "Desconocido";
+      emisorName = emisorNode.getAttribute("Nombre") || "Desconocido";
+    }
+
+    const xmlBase64 = btoa(unescape(encodeURIComponent(cleanXml)));
+
+    return {
+      id: uuid,
+      uuid,
+      total,
+      subtotal: subtotal || (total / 1.16),
+      tax: total - (subtotal || (total / 1.16)),
+      date: date ? date.split("T")[0] : new Date().toISOString().split("T")[0],
+      emisorRfc,
+      emisorName,
+      vendorName: emisorName,
+      vendorRfc: emisorRfc,
+      folio: combinedFolio,
+      invoiceNumber: combinedFolio,
+      xmlBase64,
+      status: "pending_review",
+      createdAt: new Date().toISOString()
+    };
+  } catch (err) {
+    console.error("Error parsing XML:", err);
+    return null;
+  }
+};
+
 export default function GastoDetallePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise);
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   const router = useRouter();
 
   const [invoice, setInvoice] = useState<any>(null);
@@ -32,6 +121,18 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
   const [saving, setSaving] = useState(false);
   const [conceptos, setConceptos] = useState<ConceptItem[]>([]);
   const [isManual, setIsManual] = useState(false);
+
+  // Fiscal / Formalization States
+  const [inboxInvoices, setInboxInvoices] = useState<any[]>([]);
+  const [selectedInboxId, setSelectedInboxId] = useState<string>("");
+  const [inboxSearch, setInboxSearch] = useState("");
+  const [uploadingXml, setUploadingXml] = useState(false);
+  const [activeFormalizeTab, setActiveFormalizeTab] = useState<"fiscal" | "nondeductible">("fiscal");
+  const [formalizeNotes, setFormalizeNotes] = useState("");
+  const [formalizing, setFormalizing] = useState(false);
+  const [formalizeSuccess, setFormalizeSuccess] = useState("");
+  const [formalizeError, setFormalizeError] = useState("");
+  const xmlFileInputRef = useRef<HTMLInputElement>(null);
 
   // Configurator / Payment States
   const [amount, setAmount] = useState<number>(0);
@@ -68,6 +169,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
   const [editAccountId, setEditAccountId] = useState("");
   const [editCostCenterId, setEditCostCenterId] = useState("");
 
+  const [creatingQuickVendor, setCreatingQuickVendor] = useState(false);
   const vendorSelectorRef = useRef<HTMLDivElement>(null);
 
   // Helper for UTF-8 Base64 decoding
@@ -185,7 +287,16 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
             recurrenceFrequency: invData.recurrenceFrequency || "",
             recurrenceEndDate: invData.recurrenceEndDate || "",
             estimatedAmount: invData.estimatedAmount || 0,
-            items: invData.items || []
+            items: invData.items || [],
+            isProvisional: Boolean(
+              invData.isProvisional ||
+              invData.isPendingFiscalInvoice ||
+              (invData.documentNumber && invData.documentNumber.startsWith("PROV-"))
+            ),
+            isNonDeductible: Boolean(invData.isNonDeductible),
+            formalizedWithSat: Boolean(invData.formalizedWithSat || invData.satInvoiceId || (invData.uuid && invData.uuid.length === 36)),
+            satInvoiceId: invData.satInvoiceId || null,
+            reviewNotes: invData.reviewNotes || ""
           };
 
           setInvoice(normalizedInvoice);
@@ -291,6 +402,416 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
     };
   }, [companyId]);
 
+  const expenseAccountItems = useMemo<SearchableSelectItem[]>(() => {
+    return expenseAccounts.map((a: any) => ({
+      id: a.id,
+      name: `${a.code ? `${a.code} - ` : ""}${a.name || a.Name || a.id}`,
+      subtitle: a.type || a.description || undefined
+    }));
+  }, [expenseAccounts]);
+
+  const costCenterItems = useMemo<SearchableSelectItem[]>(() => {
+    return [
+      { id: "none", name: "Ninguno", subtitle: "Sin centro de costos" },
+      ...costCenters
+        .filter((cc: any) => cc.isActive !== false)
+        .map((cc: any) => ({
+          id: cc.id,
+          name: `${cc.code ? `${cc.code} - ` : ""}${cc.name || cc.Name || cc.id}`,
+          subtitle: cc.description || undefined
+        }))
+    ];
+  }, [costCenters]);
+
+  const locationItems = useMemo<SearchableSelectItem[]>(() => {
+    return locations.map((l: any) => ({
+      id: l.id,
+      name: l.name || l.Name || l.id
+    }));
+  }, [locations]);
+
+  // Candidate invoices from expenses_inbox for formalizing
+  useEffect(() => {
+    if (!companyId || !invoice?.isProvisional) return;
+
+    const unsubInbox = onSnapshot(collection(db, "companies", companyId, "expenses_inbox"), (snap) => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(inv => inv.status !== "paid" && !inv.reconciled);
+
+      setInboxInvoices(list);
+
+      // Auto-preselect exact match if available
+      if (invoice?.total) {
+        const exactMatch = list.find(inv => {
+          const invTotal = Number(inv.total || inv.amount || 0);
+          return Math.abs(invTotal - Number(invoice.total)) < 0.05;
+        });
+        if (exactMatch) {
+          setSelectedInboxId(prev => prev || exactMatch.id || exactMatch.uuid);
+        }
+      }
+    });
+
+    return () => unsubInbox();
+  }, [companyId, invoice?.isProvisional, invoice?.total]);
+
+  const candidateInvoices = useMemo(() => {
+    if (!invoice?.isProvisional) return [];
+    const expAmount = Number(invoice.total || invoice.amount || 0);
+    const expVendor = (invoice.emisorName || invoice.vendorName || "").toLowerCase();
+    const q = inboxSearch.toLowerCase().trim();
+
+    return [...inboxInvoices]
+      .filter(inv => {
+        if (!q) return true;
+        const folio = (inv.invoiceNumber || inv.folio || "").toLowerCase();
+        const emisor = (inv.emisorName || inv.vendorName || "").toLowerCase();
+        const rfc = (inv.emisorRfc || inv.vendorRfc || "").toLowerCase();
+        const uuid = (inv.uuid || inv.id || "").toLowerCase();
+        return folio.includes(q) || emisor.includes(q) || rfc.includes(q) || uuid.includes(q);
+      })
+      .sort((a, b) => {
+        const aTotal = Number(a.total || a.amount || 0);
+        const bTotal = Number(b.total || b.amount || 0);
+        const aExact = Math.abs(aTotal - expAmount) < 0.05;
+        const bExact = Math.abs(bTotal - expAmount) < 0.05;
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+
+        const aVendor = (a.emisorName || a.vendorName || "").toLowerCase().includes(expVendor);
+        const bVendor = (b.emisorName || b.vendorName || "").toLowerCase().includes(expVendor);
+        if (aVendor && !bVendor) return -1;
+        if (!aVendor && bVendor) return 1;
+
+        return (b.date || "").localeCompare(a.date || "");
+      });
+  }, [inboxInvoices, inboxSearch, invoice]);
+
+  const selectedInvoiceObject = useMemo(() => {
+    if (!selectedInboxId) return null;
+    return inboxInvoices.find(inv => inv.id === selectedInboxId || inv.uuid === selectedInboxId) || null;
+  }, [selectedInboxId, inboxInvoices]);
+
+  const handleUploadXml = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !companyId) return;
+
+    setUploadingXml(true);
+    setFormalizeError("");
+    setFormalizeSuccess("");
+
+    try {
+      const text = await file.text();
+      const parsed = parseXmlInvoice(text);
+      if (!parsed) {
+        throw new Error("El archivo no es un XML CFDI válido o no contiene Timbre Fiscal Digital (UUID).");
+      }
+
+      const existingInboxRef = doc(db, "companies", companyId, "expenses_inbox", parsed.id);
+      await setDoc(existingInboxRef, parsed, { merge: true });
+
+      setInboxInvoices(prev => {
+        const filtered = prev.filter(i => i.id !== parsed.id);
+        return [parsed, ...filtered];
+      });
+      setSelectedInboxId(parsed.id);
+      setFormalizeSuccess(`XML "${parsed.folio || parsed.uuid.substring(0, 8)}" cargado correctamente.`);
+    } catch (err: any) {
+      console.error("Error al subir XML:", err);
+      setFormalizeError(err.message || "Error al procesar el archivo XML.");
+    } finally {
+      setUploadingXml(false);
+      if (xmlFileInputRef.current) xmlFileInputRef.current.value = "";
+    }
+  };
+
+  const handleFormalizeWithSat = async () => {
+    if (!companyId || !invoice) return;
+
+    const selectedInvoice = selectedInvoiceObject;
+    if (!selectedInvoice) {
+      setFormalizeError("Por favor selecciona o sube una Factura Fiscal (CFDI) para vincular.");
+      return;
+    }
+    if (!editAccountId) {
+      setFormalizeError("Por favor selecciona la Cuenta Contable de gasto en los datos del gasto.");
+      return;
+    }
+
+    setFormalizing(true);
+    setFormalizeError("");
+
+    try {
+      const selectedLoc = locations.find(l => l.id === editLocationId);
+      const selectedCC = costCenters.find(c => c.id === editCostCenterId);
+      const selectedAcc = expenseAccounts.find(a => a.id === editAccountId);
+
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      const expRef = doc(db, "companies", companyId, "expenses", invoice.id);
+      const satId = selectedInvoice.id || selectedInvoice.uuid;
+      const satDocNumber = selectedInvoice.folio || selectedInvoice.invoiceNumber || selectedInvoice.uuid.substring(0, 8);
+      const satTotal = Number(selectedInvoice.total || invoice.total);
+      const satVat = selectedInvoice.tax !== undefined ? Number(selectedInvoice.tax) : (satTotal - (satTotal / 1.16));
+      const satSubtotal = selectedInvoice.subtotal !== undefined ? Number(selectedInvoice.subtotal) : (satTotal - satVat);
+
+      // Parse items from XML if available
+      let satItems: any[] = [];
+      if (selectedInvoice.xmlBase64) {
+        try {
+          const xmlText = decodeBase64Utf8(selectedInvoice.xmlBase64);
+          const rawItems = parseCFDIXml(xmlText);
+          if (rawItems.length > 0) {
+            satItems = rawItems.map(p => ({
+              lineKey: crypto.randomUUID(),
+              productId: "custom",
+              variantId: p.noIdentificacion || crypto.randomUUID(),
+              productName: p.descripcion || "Concepto SAT",
+              variantTitle: "CFDI-XML",
+              quantity: p.cantidad || 1,
+              unitCost: p.valorUnitario || 0,
+              amount: p.importe || 0,
+              claveProdServ: p.claveProdServ || "",
+              claveUnidad: p.claveUnidad || "",
+              unidad: p.unidad || "PZA",
+              accountId: editAccountId,
+              costCenterId: editCostCenterId || null,
+              locationId: editLocationId || null
+            }));
+          }
+        } catch (e) {
+          console.warn("Could not parse items from XML:", e);
+        }
+      }
+
+      // Encontrar o dar de alta al proveedor oficial por RFC o Nombre
+      const candidateVendorName = selectedInvoice.emisorName || selectedInvoice.vendorName || invoice.emisorName || "Proveedor";
+      const candidateVendorRfc = selectedInvoice.emisorRfc || selectedInvoice.vendorRfc || "";
+      const officialVendor = await findOrCreateOfficialVendor(companyId, {
+        rfc: candidateVendorRfc,
+        name: candidateVendorName,
+        createIfMissing: true
+      });
+
+      const finalVendorId = officialVendor?.id || editVendorId || invoice.vendorId || "";
+      const finalVendorName = officialVendor?.name || candidateVendorName;
+      const finalVendorRfc = officialVendor?.rfc || candidateVendorRfc;
+
+      const updatePayload: any = {
+        isProvisional: false,
+        isPendingFiscalInvoice: false,
+        isNonDeductible: false,
+        formalizedWithSat: true,
+        status: "paid",
+        satInvoiceId: satId,
+        uuid: selectedInvoice.uuid || "",
+        documentNumber: satDocNumber,
+        vendorId: finalVendorId,
+        vendorName: finalVendorName,
+        vendorRfc: finalVendorRfc,
+        concept: editConcept || selectedInvoice.concept || `Gasto amparado por CFDI ${satDocNumber}`,
+        subtotal: satSubtotal,
+        tax: satVat,
+        vatRate: 0.16,
+        locationId: editLocationId || "",
+        locationName: selectedLoc?.name || selectedLoc?.Name || "",
+        costCenterId: editCostCenterId || null,
+        costCenterName: selectedCC?.name || selectedCC?.Name || "",
+        accountId: editAccountId,
+        accountCode: selectedAcc?.code || "",
+        accountName: selectedAcc?.name || "",
+        reviewedBy: user?.email || "Detalle Formalización Fiscal",
+        reviewedAt: now,
+        reviewNotes: formalizeNotes || `Formalizado y vinculado a CFDI ${satDocNumber}${officialVendor?.number ? ` (Proveedor oficial: ${officialVendor.number})` : ''}`,
+        xmlBase64: selectedInvoice.xmlBase64 || null
+      };
+
+      if (satItems.length > 0) {
+        updatePayload.items = satItems;
+      }
+
+      batch.update(expRef, updatePayload);
+
+      // Actualizar factura en expenses_inbox como pagada y enlazada
+      const satRef = doc(db, "companies", companyId, "expenses_inbox", satId);
+      batch.update(satRef, {
+        status: "paid",
+        reconciled: true,
+        reconciledAt: now,
+        linkedExpenseId: invoice.id,
+        paidAmount: satTotal
+      });
+
+      // Actualizar la Póliza Contable si existe
+      try {
+        const qJournal = query(
+          collection(db, "companies", companyId, "journal_entries"),
+          where("documentId", "==", invoice.id)
+        );
+        const snapJournal = await getDocs(qJournal);
+        snapJournal.forEach(jDoc => {
+          const jData = jDoc.data();
+          const entries = Array.isArray(jData.entries) ? [...jData.entries] : [];
+          
+          const creditEntry = entries.find(e => e.credit > 0) || {
+            accountCode: "102.01",
+            accountName: "Banco",
+            debit: 0,
+            credit: satTotal
+          };
+
+          const targetExpenseCode = selectedAcc?.code || "601.01";
+          const targetExpenseName = selectedAcc?.name || "Gastos Generales";
+
+          const updatedEntries = [
+            {
+              accountCode: targetExpenseCode,
+              accountName: targetExpenseName,
+              debit: satSubtotal,
+              credit: 0
+            },
+            {
+              accountCode: "118.01",
+              accountName: "IVA Acreditable Pagado",
+              debit: satVat,
+              credit: 0
+            },
+            {
+              accountCode: creditEntry.accountCode,
+              accountName: creditEntry.accountName,
+              debit: 0,
+              credit: satTotal
+            }
+          ];
+
+          batch.update(jDoc.ref, {
+            entries: updatedEntries,
+            updatedAt: now,
+            reference: satDocNumber,
+            concept: `Formalización Fiscal CFDI: ${selectedInvoice.emisorName || invoice.emisorName} - ${editConcept || ''}`
+          });
+        });
+      } catch (jErr) {
+        console.warn("No se pudo actualizar la póliza del gasto formalizado:", jErr);
+      }
+
+      await batch.commit();
+      alert(`¡Gasto formalizado con éxito! Se vinculó el CFDI ${satDocNumber}.`);
+      window.location.reload();
+    } catch (err: any) {
+      console.error("Error al formalizar gasto con SAT:", err);
+      setFormalizeError(`Error: ${err.message || "No se pudo vincular la factura."}`);
+    } finally {
+      setFormalizing(false);
+    }
+  };
+
+  const handleDeclareNonDeductible = async () => {
+    if (!companyId || !invoice) return;
+
+    if (!editAccountId) {
+      setFormalizeError("Por favor selecciona la Cuenta Contable en los datos del gasto.");
+      return;
+    }
+
+    setFormalizing(true);
+    setFormalizeError("");
+
+    try {
+      const selectedLoc = locations.find(l => l.id === editLocationId);
+      const selectedCC = costCenters.find(c => c.id === editCostCenterId);
+      const selectedAcc = expenseAccounts.find(a => a.id === editAccountId);
+
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      const expRef = doc(db, "companies", companyId, "expenses", invoice.id);
+      // Resolver o crear proveedor oficial si se tiene proveedor asignado
+      let nonDeductibleVendorId = editVendorId || invoice.vendorId || "";
+      let nonDeductibleVendorName = editVendorSearchQuery || invoice.emisorName || invoice.vendorName || "Proveedor";
+      if (!nonDeductibleVendorId && nonDeductibleVendorName && nonDeductibleVendorName !== "Proveedor") {
+        try {
+          const resolved = await findOrCreateOfficialVendor(companyId, {
+            name: nonDeductibleVendorName,
+            createIfMissing: true
+          });
+          if (resolved) {
+            nonDeductibleVendorId = resolved.id;
+            nonDeductibleVendorName = resolved.name;
+          }
+        } catch (vErr) {
+          console.warn("Could not auto create vendor for non-deductible:", vErr);
+        }
+      }
+
+      const updatePayload: any = {
+        isProvisional: false,
+        isPendingFiscalInvoice: false,
+        isNonDeductible: true,
+        status: invoice.status || "paid",
+        vendorId: nonDeductibleVendorId || "",
+        vendorName: nonDeductibleVendorName,
+        locationId: editLocationId || "",
+        locationName: selectedLoc?.name || selectedLoc?.Name || "",
+        costCenterId: editCostCenterId || null,
+        costCenterName: selectedCC?.name || selectedCC?.Name || "",
+        accountId: editAccountId,
+        accountCode: selectedAcc?.code || "",
+        accountName: selectedAcc?.name || "",
+        reviewedBy: user?.email || "Detalle No Deducible",
+        reviewedAt: now,
+        reviewNotes: formalizeNotes || "Declarado como gasto no deducible oficial"
+      };
+
+      if (editConcept.trim()) updatePayload.concept = editConcept.trim();
+
+      batch.update(expRef, updatePayload);
+
+      // Actualizar póliza contable si existe
+      try {
+        const qJournal = query(
+          collection(db, "companies", companyId, "journal_entries"),
+          where("documentId", "==", invoice.id)
+        );
+        const snapJournal = await getDocs(qJournal);
+        snapJournal.forEach(jDoc => {
+          const jData = jDoc.data();
+          const entries = Array.isArray(jData.entries) ? [...jData.entries] : [];
+          let changed = false;
+
+          entries.forEach(entry => {
+            if (entry.debit > 0) {
+              entry.accountCode = selectedAcc?.code || entry.accountCode;
+              entry.accountName = selectedAcc?.name || entry.accountName;
+              changed = true;
+            }
+          });
+
+          if (changed) {
+            batch.update(jDoc.ref, {
+              entries,
+              updatedAt: now,
+              concept: `Gasto Oficial No Deducible: ${invoice.emisorName || ''} - ${editConcept || ''}`
+            });
+          }
+        });
+      } catch (jErr) {
+        console.warn("Could not update journal entry for non deductible:", jErr);
+      }
+
+      await batch.commit();
+      alert("¡Gasto confirmado como Oficial No Deducible!");
+      window.location.reload();
+    } catch (err: any) {
+      console.error("Error al declarar gasto no deducible:", err);
+      setFormalizeError(`Error: ${err.message || "No se pudo oficializar."}`);
+    } finally {
+      setFormalizing(false);
+    }
+  };
+
   // Fetch associated payments/outflows
   useEffect(() => {
     if (!companyId || !params.id) return;
@@ -355,35 +876,64 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const handleQuickCreateVendor = async (vendorNameToCreate: string) => {
+    if (!companyId || !vendorNameToCreate.trim()) return;
+    setCreatingQuickVendor(true);
+    try {
+      const created = await findOrCreateOfficialVendor(companyId, {
+        name: vendorNameToCreate.trim(),
+        createIfMissing: true
+      });
+      if (created) {
+        setEditVendorId(created.id);
+        setEditVendorSearchQuery(created.name);
+        setShowVendorDropdown(false);
+        alert(`¡Proveedor oficial registrado exitosamente! ${created.name} (${created.number || 'Sin número'})`);
+      }
+    } catch (err: any) {
+      console.error("Error creating quick vendor:", err);
+      alert(`No se pudo crear el proveedor: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setCreatingQuickVendor(false);
+    }
+  };
+
   const handleUpdateManualExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!companyId || !invoice) return;
 
-    if (!editVendorId) {
-      alert("Debes seleccionar un proveedor.");
-      return;
-    }
-    if (!editAccountId) {
-      alert("Debes seleccionar una cuenta contable.");
-      return;
-    }
-    if (!editLocationId) {
-      alert("Debes seleccionar una sucursal.");
-      return;
-    }
-    if (editAmount <= 0) {
-      alert("El monto debe ser mayor a 0.");
-      return;
-    }
-    if (editAmount < (invoice.paidAmount || 0)) {
-      alert(`El monto total no puede ser menor al monto ya pagado ($${(invoice.paidAmount || 0).toLocaleString("es-MX")}).`);
-      return;
-    }
-
     setSaving(true);
     try {
+      let finalVendorId = editVendorId;
+      let vendorName = editVendorSearchQuery.trim() || "Proveedor";
+      let vendorRfc = "";
+
       const selectedVendor = vendors.find(v => v.id === editVendorId);
-      const vendorName = selectedVendor?.name || editVendorSearchQuery || "Proveedor";
+      if (selectedVendor) {
+        vendorName = selectedVendor.name;
+        vendorRfc = selectedVendor.rfc || "";
+      } else if (vendorName && vendorName !== "Proveedor") {
+        // Si el usuario escribió un proveedor pero no lo seleccionó del listado, crearlo/resolverlo automáticamente
+        try {
+          const resolved = await findOrCreateOfficialVendor(companyId, {
+            name: vendorName,
+            createIfMissing: true
+          });
+          if (resolved) {
+            finalVendorId = resolved.id;
+            vendorName = resolved.name;
+            vendorRfc = resolved.rfc || "";
+          }
+        } catch (vErr) {
+          console.warn("Could not auto-create vendor in manual save:", vErr);
+        }
+      }
+
+      if (!finalVendorId) {
+        alert("Debes seleccionar o crear un proveedor oficial para este gasto.");
+        setSaving(false);
+        return;
+      }
 
       const selectedAccount = expenseAccounts.find(a => a.id === editAccountId);
       const selectedLocation = locations.find(l => l.id === editLocationId);
@@ -416,8 +966,9 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
 
       const expenseUpdates = {
         date: editDate,
-        vendorId: editVendorId,
+        vendorId: finalVendorId,
         vendorName,
+        vendorRfc: vendorRfc || "",
         concept: editConcept,
         amount: editAmount,
         vatRate: editVatRate,
@@ -764,39 +1315,50 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
           Historial de Pagos y Egresos
         </h3>
         <div className="space-y-3">
-          {associatedPayments.map((payment) => (
-            <div key={payment.id} className="flex justify-between items-center p-3 bg-slate-50 border rounded-lg hover:bg-slate-100/70 transition-colors">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700">{payment.date}</span>
-                  <span className="text-[10px] px-2 py-0.5 bg-slate-200 border rounded-full font-medium text-slate-600 uppercase">{payment.method}</span>
+          {associatedPayments.map((payment) => {
+            const bank = bankAccounts.find((b) => b.id === payment.bankAccountId);
+            const bankName = bank?.Name || bank?.name || payment.bankAccountName || "";
+
+            return (
+              <div key={payment.id} className="flex justify-between items-center p-3 bg-slate-50 border rounded-lg hover:bg-slate-100/70 transition-colors">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-slate-700">{payment.date}</span>
+                    <span className="text-[10px] px-2 py-0.5 bg-slate-200 border rounded-full font-medium text-slate-600 uppercase">{payment.method}</span>
+                    {bankName && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 bg-indigo-50 border border-indigo-200 rounded-full font-bold text-indigo-700" title={`Cuenta bancaria: ${bankName}`}>
+                        <Landmark className="w-3 h-3 text-indigo-600" />
+                        {bankName}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium truncate max-w-xs" title={payment.reference}>
+                    {payment.reference ? `Ref: ${payment.reference}` : "Sin referencia"}
+                  </p>
+                  {payment.bankTransactionId && (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                      Conciliado con Banco
+                    </span>
+                  )}
                 </div>
-                <p className="text-[11px] text-slate-500 font-medium truncate max-w-xs" title={payment.reference}>
-                  {payment.reference ? `Ref: ${payment.reference}` : "Sin referencia"}
-                </p>
-                {payment.bankTransactionId && (
-                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded mt-0.5">
-                    Conciliado con Banco
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-sm text-rose-600">
+                    -${(payment.amount || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
                   </span>
-                )}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleDeletePayment(payment)}
+                    disabled={saving}
+                    className="h-8 w-8 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 shrink-0"
+                    title="Eliminar y Revertir Pago"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-sm text-rose-600">
-                  -${(payment.amount || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
-                </span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleDeletePayment(payment)}
-                  disabled={saving}
-                  className="h-8 w-8 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 shrink-0"
-                  title="Eliminar y Revertir Pago"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -828,7 +1390,23 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Fiscal Status Badge */}
+          {invoice.isNonDeductible ? (
+            <div className="px-3 py-1.5 bg-slate-100 text-slate-800 font-bold rounded-lg flex items-center gap-1.5 border border-slate-300 text-xs">
+              <ShieldCheck className="w-4 h-4 text-slate-600" /> Oficial No Deducible
+            </div>
+          ) : invoice.isProvisional ? (
+            <div className="px-3 py-1.5 bg-amber-50 text-amber-900 font-bold rounded-lg flex items-center gap-1.5 border border-amber-300 text-xs animate-pulse">
+              <Sparkles className="w-4 h-4 text-amber-600" /> Gasto Provisional
+            </div>
+          ) : (invoice.formalizedWithSat || invoice.satInvoiceId) ? (
+            <div className="px-3 py-1.5 bg-indigo-50 text-indigo-700 font-bold rounded-lg flex items-center gap-1.5 border border-indigo-200 text-xs">
+              <ShieldCheck className="w-4 h-4 text-indigo-600" /> Deducible CFDI
+            </div>
+          ) : null}
+
+          {/* Payment Status Badge */}
           {invoice.status === "paid" ? (
             <div className="px-4 py-2 bg-emerald-50 text-emerald-700 font-bold rounded-lg flex items-center gap-2 border border-emerald-200 text-sm">
               <CheckCircle2 className="w-5 h-5" /> Gasto Pagado
@@ -846,7 +1424,285 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       </div>
 
       {isManual ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="space-y-6">
+          {/* Panel para Oficializar si es Provisional */}
+          {invoice.isProvisional && (
+            <div className="bg-card border-2 border-indigo-200 rounded-xl p-6 shadow-sm space-y-5 bg-white animate-in fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl shrink-0">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                      <span>Oficializar Gasto Provisional</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-900 font-extrabold px-2 py-0.5 rounded-full border border-amber-300">
+                        PROVISIONAL
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Este gasto está registrado de manera provisional. Puedes vincularlo a una factura fiscal SAT (CFDI) o declararlo como no deducible.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Selector de Pestaña */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => { setActiveFormalizeTab("fiscal"); setFormalizeError(""); }}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                      activeFormalizeTab === "fiscal"
+                        ? "bg-white text-indigo-700 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Vincular Factura SAT (CFDI)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveFormalizeTab("nondeductible"); setFormalizeError(""); }}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                      activeFormalizeTab === "nondeductible"
+                        ? "bg-white text-indigo-700 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Declarar No Deducible
+                  </button>
+                </div>
+              </div>
+
+              {/* Mensajes de error / éxito */}
+              {formalizeError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs font-semibold text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{formalizeError}</span>
+                </div>
+              )}
+              {formalizeSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-semibold text-emerald-700 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{formalizeSuccess}</span>
+                </div>
+              )}
+
+              {activeFormalizeTab === "fiscal" ? (
+                <div className="space-y-4">
+                  {/* Header de búsqueda y subida XML */}
+                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        placeholder="Buscar factura en buzón SAT por folio, proveedor, RFC o UUID..."
+                        value={inboxSearch}
+                        onChange={e => setInboxSearch(e.target.value)}
+                        className="pl-9 h-9 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        ref={xmlFileInputRef}
+                        type="file"
+                        accept=".xml"
+                        onChange={handleUploadXml}
+                        className="hidden"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingXml}
+                        onClick={() => xmlFileInputRef.current?.click()}
+                        className="gap-1.5 text-xs font-bold text-indigo-700 border-indigo-200 hover:bg-indigo-50 w-full sm:w-auto h-9"
+                      >
+                        {uploadingXml ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                        Subir XML CFDI
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Lista de Facturas Candidatas */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto divide-y bg-slate-50/60 custom-scrollbar">
+                    {candidateInvoices.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-slate-500">
+                        No se encontraron facturas SAT pendientes en el buzón con este criterio. Puedes subir el archivo XML directamente con el botón "Subir XML CFDI".
+                      </div>
+                    ) : (
+                      candidateInvoices.map(inv => {
+                        const invTotal = Number(inv.total || inv.amount || 0);
+                        const isExact = Math.abs(invTotal - Number(invoice.total || 0)) < 0.05;
+                        const isSelected = selectedInboxId === inv.id || selectedInboxId === inv.uuid;
+
+                        return (
+                          <div
+                            key={inv.id}
+                            onClick={() => setSelectedInboxId(inv.id || inv.uuid)}
+                            className={`p-3 text-xs flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                              isSelected ? "bg-indigo-50/90 font-semibold" : "hover:bg-slate-100/70"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <input
+                                type="radio"
+                                name="selectedInvoice"
+                                checked={isSelected}
+                                onChange={() => setSelectedInboxId(inv.id || inv.uuid)}
+                                className="text-indigo-600 focus:ring-indigo-500 h-4 w-4 shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-extrabold text-slate-900">{inv.folio || inv.invoiceNumber || "Sin Folio"}</span>
+                                  <span className="text-[10px] px-1.5 py-0.2 bg-slate-200 rounded font-medium text-slate-700">{inv.date?.split("T")[0] || "-"}</span>
+                                  {isExact && (
+                                    <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold border border-emerald-300 flex items-center gap-1">
+                                      <Sparkles className="w-2.5 h-2.5" /> Monto Exacto
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-600 truncate mt-0.5 font-medium" title={inv.emisorName || inv.vendorName}>
+                                  {inv.emisorName || inv.vendorName || "Proveedor"}
+                                </p>
+                                <p className="text-[10px] font-mono text-slate-400 truncate">{inv.uuid}</p>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-extrabold text-slate-900 text-sm">
+                                ${invTotal.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[10px] text-slate-500 block">IVA: ${Number(inv.tax || (invTotal - invTotal/1.16)).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Previsualización de Factura Seleccionada & Botón de Oficialización */}
+                  {selectedInvoiceObject && (
+                    <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                          <Check className="w-4 h-4 text-emerald-600" />
+                          Factura seleccionada: <span className="font-mono">{selectedInvoiceObject.folio || selectedInvoiceObject.uuid?.substring(0, 8)}</span>
+                        </p>
+                        <p className="text-[11px] text-slate-600">
+                          {selectedInvoiceObject.emisorName || selectedInvoiceObject.vendorName} ({selectedInvoiceObject.emisorRfc || selectedInvoiceObject.vendorRfc}) | Total: ${(Number(selectedInvoiceObject.total || selectedInvoiceObject.amount || 0)).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        disabled={formalizing}
+                        onClick={handleFormalizeWithSat}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-2 shrink-0 h-10 px-5 shadow-sm"
+                      >
+                        {formalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                        Vincular CFDI y Oficializar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-4 space-y-2 text-xs text-amber-900 leading-relaxed">
+                    <p className="font-bold flex items-center gap-1.5 text-amber-950">
+                      <AlertCircle className="w-4 h-4 text-amber-600" />
+                      Declaración Oficial de Gasto No Deducible
+                    </p>
+                    <p>
+                      Al confirmar, este gasto dejará de ser considerado provisional y se reclasificará de forma oficial como <strong>Gasto No Deducible</strong> (por ejemplo: comisiones bancarias sin CFDI, retiros de cajero, recibos simples o gastos operativos sin factura fiscal).
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700">Notas de Justificación Administrativa (Opcional):</label>
+                    <Input
+                      placeholder="Ej. Comisión por terminal bancaria sin factura fiscal..."
+                      value={formalizeNotes}
+                      onChange={e => setFormalizeNotes(e.target.value)}
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="button"
+                      disabled={formalizing}
+                      onClick={handleDeclareNonDeductible}
+                      className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs gap-2 h-10 px-5 shadow-sm"
+                    >
+                      {formalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                      Confirmar como No Deducible Oficial
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Banner si el gasto ya está oficializado con CFDI */}
+          {invoice.formalizedWithSat && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-600 text-white shrink-0">
+                  <FileCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-emerald-950 flex items-center gap-2">
+                    <span>Gasto Oficial amparado con Factura SAT</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full border border-emerald-300">
+                      CFDI DEDUCIBLE
+                    </span>
+                  </h4>
+                  <p className="text-xs text-emerald-700 mt-0.5">
+                    Folio Fiscal (UUID): <span className="font-mono font-semibold">{invoice.uuid}</span>
+                  </p>
+                </div>
+              </div>
+              {invoice.xmlBase64 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const xmlText = decodeBase64Utf8(invoice.xmlBase64);
+                    const blob = new Blob([xmlText], { type: "text/xml" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${invoice.invoiceNumber || invoice.uuid}.xml`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="text-xs font-bold border-emerald-300 text-emerald-800 hover:bg-emerald-100 gap-1.5 shrink-0"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  Descargar XML
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Banner si el gasto es Oficial No Deducible */}
+          {invoice.isNonDeductible && (
+            <div className="bg-slate-100 border border-slate-300 rounded-xl p-4 shadow-sm flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-slate-700 text-white shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <span>Gasto Oficial No Deducible</span>
+                  <span className="text-[10px] bg-slate-200 text-slate-800 font-extrabold px-2 py-0.5 rounded-full border border-slate-400">
+                    NO DEDUCIBLE
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  {invoice.reviewNotes || "Este gasto ha sido clasificado formalmente sin comprobante fiscal CFDI."}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Columna Izquierda: Formulario de Edición (Col 7) */}
           <div className="lg:col-span-7 space-y-6">
             <div className="bg-card border rounded-xl p-6 shadow-sm space-y-6 bg-white">
@@ -906,13 +1762,34 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                       )}
                     </div>
                     {showVendorDropdown && (
-                      <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-56 overflow-y-auto">
+                        {/* Botón para dar de alta nuevo proveedor rápidamente si hay texto escrito */}
+                        {editVendorSearchQuery.trim() && (
+                          <div className="p-2 border-b bg-indigo-50/60 sticky top-0 z-10">
+                            <button
+                              type="button"
+                              disabled={creatingQuickVendor}
+                              onClick={() => handleQuickCreateVendor(editVendorSearchQuery)}
+                              className="w-full text-left px-2.5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center justify-between gap-1 shadow-sm transition-colors"
+                            >
+                              <span className="flex items-center gap-1.5 truncate">
+                                {creatingQuickVendor ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-300" />}
+                                <span className="truncate">Crear "{editVendorSearchQuery.trim()}" en Catálogo</span>
+                              </span>
+                              <span className="text-[10px] bg-indigo-700 px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
+                                Nuevo
+                              </span>
+                            </button>
+                          </div>
+                        )}
+
                         {vendors.filter(v => {
                           const q = editVendorSearchQuery.toLowerCase();
                           return v.name.toLowerCase().includes(q) || (v.rfc || "").toLowerCase().includes(q);
                         }).length === 0 ? (
-                          <div className="p-3 text-xs text-slate-500 text-center">
-                            No se encontraron proveedores
+                          <div className="p-4 text-xs text-slate-500 text-center space-y-1">
+                            <p className="font-semibold text-slate-700">No se encontró ningún proveedor registrado</p>
+                            <p className="text-[11px] text-slate-400">Puedes crearlo usando el botón superior azul.</p>
                           </div>
                         ) : (
                           vendors.filter(v => {
@@ -927,10 +1804,19 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                                 setEditVendorSearchQuery(vendor.name);
                                 setShowVendorDropdown(false);
                               }}
-                              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex flex-col border-b last:border-b-0"
+                              className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex flex-col border-b last:border-b-0 ${
+                                vendor.id === editVendorId ? "bg-indigo-50/70" : ""
+                              }`}
                             >
-                              <span className="font-semibold text-slate-800">{vendor.name}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">{vendor.rfc}</span>
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold text-slate-800">{vendor.name}</span>
+                                {vendor.id === editVendorId && (
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded">
+                                    Seleccionado
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-mono">{vendor.rfc || "Sin RFC"}</span>
                             </button>
                           ))
                         )}
@@ -961,17 +1847,13 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                       <Building2 className="w-3.5 h-3.5 text-slate-400" />
                       Sucursal *
                     </label>
-                    <select
-                      value={editLocationId}
-                      onChange={e => setEditLocationId(e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
+                    <SearchableSelect
+                      placeholder="Selecciona sucursal..."
+                      items={locationItems}
+                      selectedId={editLocationId}
+                      onSelect={(id) => setEditLocationId(id === "manual" ? "" : id)}
                       required
-                    >
-                      <option value="" disabled>Selecciona sucursal...</option>
-                      {locations.map(l => (
-                        <option key={l.id} value={l.id}>{l.name}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
 
                   {/* Cuenta Contable */}
@@ -980,17 +1862,13 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                       <BookOpen className="w-3.5 h-3.5 text-slate-400" />
                       Cuenta Contable *
                     </label>
-                    <select
-                      value={editAccountId}
-                      onChange={e => setEditAccountId(e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
+                    <SearchableSelect
+                      placeholder="Busca cuenta contable..."
+                      items={expenseAccountItems}
+                      selectedId={editAccountId}
+                      onSelect={(id) => setEditAccountId(id === "manual" ? "" : id)}
                       required
-                    >
-                      <option value="" disabled>Selecciona cuenta...</option>
-                      {expenseAccounts.map(a => (
-                        <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
 
                   {/* Centro de Costos */}
@@ -999,16 +1877,12 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                       <BookOpen className="w-3.5 h-3.5 text-slate-400" />
                       Centro de Costos
                     </label>
-                    <select
-                      value={editCostCenterId}
-                      onChange={e => setEditCostCenterId(e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
-                    >
-                      <option value="">Ninguno</option>
-                      {costCenters.map(cc => (
-                        <option key={cc.id} value={cc.id}>{cc.code} - {cc.name}</option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      placeholder="Busca centro de costos..."
+                      items={costCenterItems}
+                      selectedId={editCostCenterId || "none"}
+                      onSelect={(id) => setEditCostCenterId(id === "none" || id === "manual" ? "" : id)}
+                    />
                   </div>
                 </div>
 
@@ -1223,6 +2097,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
             {renderPaymentsList()}
           </div>
         </div>
+      </div>
       ) : (
         <>
           {/* Datos Generales y Configuración (Encabezado) */}
@@ -1373,17 +2248,13 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                         <BookOpen className="w-3.5 h-3.5 text-slate-400" />
                         Clasificación de Gasto *
                       </label>
-                      <select
-                        value={expenseAccountId}
-                        onChange={e => setExpenseAccountId(e.target.value)}
-                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
+                      <SearchableSelect
+                        placeholder="Busca cuenta contable..."
+                        items={expenseAccountItems}
+                        selectedId={expenseAccountId}
+                        onSelect={(id) => setExpenseAccountId(id === "manual" ? "" : id)}
                         required
-                      >
-                        <option value="" disabled>Clasifica este egreso...</option>
-                        {expenseAccounts.map(a => (
-                          <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                        ))}
-                      </select>
+                      />
                     </div>
                   )}
 

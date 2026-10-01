@@ -51,11 +51,10 @@ export async function cancelPaymentOperation(companyId: string, paymentId: strin
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const docData = docSnap.data();
-      const updates: any = {
-        paidAmount: increment(-payment.amount)
-      };
-
       const newPaidAmount = Math.max(0, (docData.paidAmount || 0) - payment.amount);
+      const updates: any = {
+        paidAmount: newPaidAmount
+      };
       const totalAmount = docData.totalAmount || 0;
 
       // Revert status from pagada to its previous state

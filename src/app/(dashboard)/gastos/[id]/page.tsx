@@ -303,7 +303,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
 
           // Initialize payment configuration
           const totalVal = normalizedInvoice.total;
-          const paidVal = normalizedInvoice.paidAmount;
+          const paidVal = Math.max(0, normalizedInvoice.paidAmount);
           const outstanding = Math.max(0, totalVal - paidVal);
           setAmount(Number(outstanding.toFixed(2)));
           setDate(new Date().toISOString().split("T")[0]);
@@ -1002,7 +1002,8 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
     return <div className="p-10 text-center text-muted-foreground">Factura no encontrada.</div>;
   }
 
-  const saldoPendiente = Math.max(0, (invoice.total || 0) - (invoice.paidAmount || 0));
+  const safePaidAmount = Math.max(0, invoice.paidAmount || 0);
+  const saldoPendiente = Math.max(0, (invoice.total || 0) - safePaidAmount);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1162,7 +1163,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         docUpdates.accountName = expenseAccount?.name || "";
       }
 
-      const newPaidAmount = (invoice.paidAmount || 0) + amount;
+      const newPaidAmount = Math.max(0, invoice.paidAmount || 0) + amount;
       if (newPaidAmount >= (invoice.total || 0) - 0.01) {
         if (!invoice.status || invoice.status === "pending_review") {
           docUpdates.status = "paid";
@@ -1253,20 +1254,27 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         console.warn("Failed to revert journal entries:", err);
       }
 
-      // 3. Revert Manual Expense status and paidAmount
-      const diffPaidAmount = -payment.amount;
+      // 3. Revert Manual Expense status and paidAmount based on actual remaining payments
+      const remainingPayments = associatedPayments.filter((p) => p.id !== payment.id);
+      const newPaidAmount = Math.max(
+        0,
+        remainingPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+      );
+      const invoiceTotal = Number(invoice.total || invoice.amount || 0);
+      const newStatus = newPaidAmount >= invoiceTotal - 0.01 && invoiceTotal > 0 ? "paid" : "pending";
+
       if (isManual) {
         await updateDoc(doc(db, "companies", companyId, "expenses", invoice.id), {
-          paidAmount: increment(diffPaidAmount),
-          status: "pending"
+          paidAmount: newPaidAmount,
+          status: newStatus
         });
 
         // Also update linked SAT XML if exists
         if (invoice.satInvoiceId) {
           try {
             await updateDoc(doc(db, "companies", companyId, "expenses_inbox", invoice.satInvoiceId), {
-              paidAmount: increment(diffPaidAmount),
-              status: "processed"
+              paidAmount: newPaidAmount,
+              status: newPaidAmount >= invoiceTotal - 0.01 ? "paid" : "processed"
             });
           } catch (err) {
             console.warn("Failed to update related SAT invoice:", err);
@@ -1275,16 +1283,16 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       } else {
         // XML directly
         await updateDoc(doc(db, "companies", companyId, "expenses_inbox", invoice.id), {
-          paidAmount: increment(diffPaidAmount),
-          status: invoice.expenseId ? "processed" : null
+          paidAmount: newPaidAmount,
+          status: newPaidAmount >= invoiceTotal - 0.01 ? "paid" : (invoice.expenseId ? "processed" : "pending_review")
         });
 
         // Also update linked manual expense if it exists
         if (invoice.expenseId) {
           try {
             await updateDoc(doc(db, "companies", companyId, "expenses", invoice.expenseId), {
-              paidAmount: increment(diffPaidAmount),
-              status: "pending"
+              paidAmount: newPaidAmount,
+              status: newStatus
             });
           } catch (err) {
             console.warn("Failed to update related manual expense:", err);
@@ -1954,7 +1962,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                 </div>
                 <div className="text-center border-r border-slate-200 last:border-none">
                   <p className="text-[10px] text-slate-500 font-semibold uppercase">Pagado</p>
-                  <p className="font-bold text-sm text-emerald-600">${(invoice.paidAmount || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</p>
+                  <p className="font-bold text-sm text-emerald-600">${Math.max(0, invoice.paidAmount || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className="text-center last:border-none">
                   <p className="text-[10px] text-slate-500 font-semibold uppercase">Saldo</p>

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect, SearchableSelectItem } from "@/components/ui/searchable-select";
 import { findOrCreateOfficialVendor } from "@/lib/services/vendorSyncService";
+import { findBankAccountingAccount } from "@/lib/services/autoReconcileClientService";
 import Link from "next/link";
 
 interface ConceptItem {
@@ -144,6 +145,8 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
   const [vatRate, setVatRate] = useState<number>(0.16);
   const [unreconciledTransactions, setUnreconciledTransactions] = useState<any[]>([]);
   const [selectedTransactionId, setSelectedTransactionId] = useState<string>("manual");
+  const [selectedLocationId, setSelectedLocationId] = useState("");
+  const [selectedCostCenterId, setSelectedCostCenterId] = useState("");
 
   // Firestore lists
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
@@ -308,6 +311,8 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
           setAmount(Number(outstanding.toFixed(2)));
           setDate(new Date().toISOString().split("T")[0]);
           setExpenseAccountId(normalizedInvoice.accountId || "");
+          setSelectedLocationId(normalizedInvoice.locationId || "");
+          setSelectedCostCenterId(normalizedInvoice.costCenterId || "");
 
           // Pre-fill edit fields if manual
           if (manual) {
@@ -378,10 +383,14 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
     });
 
     const unsubLoc = onSnapshot(query(collection(db, "companies", companyId, "locations")), (snap) => {
-      setLocations(snap.docs.map(d => ({
+      const locList = snap.docs.map(d => ({
         id: d.id,
         name: d.data().name || d.data().Name || "Sucursal sin nombre"
-      })));
+      }));
+      setLocations(locList);
+      if (locList.length === 1) {
+        setSelectedLocationId(prev => prev || locList[0].id);
+      }
     });
 
     const unsubCC = onSnapshot(query(collection(db, "companies", companyId, "cost_centers"), orderBy("code", "asc")), (snap) => {
@@ -1025,6 +1034,37 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       return;
     }
 
+    const finalLocationId = !isManual ? selectedLocationId : (invoice.locationId || editLocationId);
+    if (!isManual && !finalLocationId) {
+      alert("Debes seleccionar una Sucursal para registrar este egreso.");
+      return;
+    }
+    const finalCostCenterId = !isManual 
+      ? (selectedCostCenterId === "none" ? "" : selectedCostCenterId)
+      : (editCostCenterId === "none" ? "" : editCostCenterId);
+
+    const selectedLocation = locations.find((l) => l.id === finalLocationId);
+    const selectedCostCenter = costCenters.find((c) => c.id === finalCostCenterId);
+
+    const physicalBankAccount = bankAccounts.find((a) => a.id === bankAccountId);
+    if (!physicalBankAccount) {
+      alert("No se encontró la cuenta bancaria seleccionada.");
+      return;
+    }
+
+    const bankAccountingAccount = findBankAccountingAccount(physicalBankAccount, accountingAccounts);
+    if (!bankAccountingAccount) {
+      alert(`La cuenta/caja "${physicalBankAccount?.Name || physicalBankAccount?.name || "seleccionada"}" no está enlazada a una cuenta contable. Por favor configúrala en el catálogo de cuentas.`);
+      return;
+    }
+    const bankAccountingId = bankAccountingAccount.id;
+
+    const expenseAccount = expenseAccounts.find((a) => a.id === finalExpenseAccountId);
+    if (!expenseAccount) {
+      alert("No se encontró la cuenta contable de gasto especificada.");
+      return;
+    }
+
     setSaving(true);
     try {
       const providerName = invoice.emisorName || "Proveedor";
@@ -1068,6 +1108,10 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         providerName,
         bankAccountId,
         expenseAccountId: finalExpenseAccountId,
+        locationId: finalLocationId || null,
+        locationName: selectedLocation?.name || null,
+        costCenterId: finalCostCenterId || null,
+        costCenterName: selectedCostCenter?.name || null,
         createdAt: new Date().toISOString(),
         bankTransactionId: finalBankTransactionId
       };
@@ -1075,17 +1119,6 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       const paymentRef = await addDoc(collection(db, "companies", companyId, "outflows"), paymentData);
 
       // 2. Create Journal Entry (Póliza de Egreso)
-      const physicalBankAccount = bankAccounts.find((a) => a.id === bankAccountId);
-      const expenseAccount = expenseAccounts.find((a) => a.id === finalExpenseAccountId);
-      const bankAccountingId = physicalBankAccount?.accountId;
-      const bankAccountingAccount = bankAccountingId ? accountingAccounts.find((a) => a.id === bankAccountingId) : null;
-
-      if (!bankAccountingAccount) {
-        alert(`La cuenta/caja "${physicalBankAccount?.Name || physicalBankAccount?.name || "seleccionada"}" no está enlazada a una cuenta contable. Por favor configúrala.`);
-        setSaving(false);
-        return;
-      }
-
       if (physicalBankAccount && expenseAccount && bankAccountingAccount) {
         let subtotalAmount = amount;
         let vatAmount = 0;
@@ -1097,13 +1130,14 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
           vatAccount = vatAccounts[0];
         }
 
-        const entries = [
+        const entries: any[] = [
           {
             accountId: finalExpenseAccountId,
             accountCode: expenseAccount.code,
             accountName: expenseAccount.name,
             debit: subtotalAmount,
             credit: 0,
+            costCenterId: finalCostCenterId || null,
           },
           {
             accountId: bankAccountingId,
@@ -1161,6 +1195,25 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
         docUpdates.accountId = expenseAccountId;
         docUpdates.accountCode = expenseAccount?.code || "";
         docUpdates.accountName = expenseAccount?.name || "";
+      }
+
+      if (finalLocationId) {
+        docUpdates.locationId = finalLocationId;
+        docUpdates.locationName = selectedLocation?.name || "";
+      }
+
+      if (finalCostCenterId) {
+        docUpdates.costCenterId = finalCostCenterId;
+        docUpdates.costCenterName = selectedCostCenter?.name || "";
+      }
+
+      if (invoice.items && Array.isArray(invoice.items) && invoice.items.length > 0) {
+        docUpdates.items = invoice.items.map((it: any) => ({
+          ...it,
+          locationId: finalLocationId || it.locationId || null,
+          costCenterId: finalCostCenterId || it.costCenterId || null,
+          accountId: finalExpenseAccountId || it.accountId || null
+        }));
       }
 
       const newPaidAmount = Math.max(0, invoice.paidAmount || 0) + amount;
@@ -2250,23 +2303,48 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                     </select>
                   </div>
 
-                  {!invoice.accountId && (
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                        <BookOpen className="w-3.5 h-3.5 text-slate-400" />
-                        Clasificación de Gasto *
-                      </label>
-                      <SearchableSelect
-                        placeholder="Busca cuenta contable..."
-                        items={expenseAccountItems}
-                        selectedId={expenseAccountId}
-                        onSelect={(id) => setExpenseAccountId(id === "manual" ? "" : id)}
-                        required
-                      />
-                    </div>
-                  )}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                      Clasificación de Gasto *
+                    </label>
+                    <SearchableSelect
+                      placeholder="Busca cuenta contable..."
+                      items={expenseAccountItems}
+                      selectedId={expenseAccountId || invoice.accountId || ""}
+                      onSelect={(id) => setExpenseAccountId(id === "manual" ? "" : id)}
+                      required
+                    />
+                  </div>
 
-                  <div className={invoice.accountId ? "space-y-1 md:col-span-2" : "space-y-1 md:col-span-1"}>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      Sucursal *
+                    </label>
+                    <SearchableSelect
+                      placeholder="Selecciona sucursal..."
+                      items={locationItems}
+                      selectedId={selectedLocationId}
+                      onSelect={(id) => setSelectedLocationId(id === "manual" ? "" : id)}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                      Centro de Costos
+                    </label>
+                    <SearchableSelect
+                      placeholder="Busca centro de costos..."
+                      items={costCenterItems}
+                      selectedId={selectedCostCenterId || "none"}
+                      onSelect={(id) => setSelectedCostCenterId(id === "none" || id === "manual" ? "" : id)}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
                       <FileText className="w-3.5 h-3.5 text-slate-400" />
                       Referencia / Notas
@@ -2279,11 +2357,11 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
                     />
                   </div>
 
-                  <div className="flex justify-end">
+                  <div className="sm:col-span-2 md:col-span-4 flex justify-end pt-2">
                     <Button 
                       type="submit" 
                       disabled={saving} 
-                      className="w-full bg-rose-600 hover:bg-rose-700 text-white gap-2 h-9 font-bold text-xs shadow-sm animate-in fade-in"
+                      className="w-full sm:w-auto px-8 bg-rose-600 hover:bg-rose-700 text-white gap-2 h-10 font-bold text-xs shadow-sm animate-in fade-in"
                     >
                       {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
                       Confirmar Egreso

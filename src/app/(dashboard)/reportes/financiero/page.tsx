@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Loader2, DollarSign, Wallet, FileX, Download, Calendar, BarChart3, AlertCircle, Filter } from "lucide-react";
+import { Loader2, DollarSign, Wallet, FileX, Download, Calendar, BarChart3, AlertCircle, Filter, Table as TableIcon, Activity } from "lucide-react";
+import EstadoResultadosTable from "./components/EstadoResultadosTable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -148,6 +149,7 @@ export default function ReporteFinancieroPage() {
   const [costCenters, setCostCenters] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"pnl" | "flow">("pnl");
 
   // Date Filter States
   const [timeRange, setTimeRange] = useState<string>("ytd"); // "month" | "quarter" | "ytd" | "specific_month" | "custom"
@@ -552,18 +554,65 @@ export default function ReporteFinancieroPage() {
 
   return (
     <div className="flex flex-col space-y-6 pb-10">
-      {/* Header & Global Filters */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+      {/* Page Header with Tabs */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Salud Financiera</h1>
-          <p className="text-muted-foreground">
-            Métricas de liquidez, cuentas por cobrar y rentabilidad global.
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Salud Financiera</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Estado de Resultados, rentabilidad por sucursal, costos y flujo de liquidez.
           </p>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Quick Preset Tabs */}
-          <div className="flex flex-wrap items-center bg-white border rounded-lg p-1 shadow-sm gap-1">
+
+        {/* Tab Switcher */}
+        <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-inner">
+          <Button
+            variant={activeTab === "pnl" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("pnl")}
+            className={`text-xs h-8 px-4 font-bold flex items-center gap-2 rounded-lg transition-all ${
+              activeTab === "pnl"
+                ? "bg-white text-indigo-700 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <TableIcon className="w-3.5 h-3.5 text-indigo-600" />
+            Estado de Resultados (P&L)
+          </Button>
+          <Button
+            variant={activeTab === "flow" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("flow")}
+            className={`text-xs h-8 px-4 font-bold flex items-center gap-2 rounded-lg transition-all ${
+              activeTab === "flow"
+                ? "bg-white text-indigo-700 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 text-indigo-600" />
+            Flujo de Efectivo & Gráficos
+          </Button>
+        </div>
+      </div>
+
+      {activeTab === "pnl" ? (
+        <EstadoResultadosTable
+          locations={locations}
+          remisiones={remisiones}
+          facturas={facturas}
+          expenses={expenses}
+          expensesInbox={expensesInbox}
+          costCenters={costCenters}
+        />
+      ) : (
+        <div className="flex flex-col space-y-6 animate-in fade-in duration-200">
+          {/* Global Time Filters for Flow */}
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-slate-50 border p-3 rounded-2xl">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+              Período de Flujo:
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center bg-white border rounded-lg p-1 shadow-sm gap-1">
             <Button 
               variant={timeRange === 'month' ? 'secondary' : 'ghost'} 
               size="sm" 
@@ -800,6 +849,8 @@ export default function ReporteFinancieroPage() {
           </ResponsiveContainer>
         </div>
       </div>
+        </div>
+      )}
 
     </div>
   );

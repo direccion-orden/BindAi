@@ -19,7 +19,10 @@ import {
   EyeOff,
   DollarSign,
   Receipt,
-  BarChart3
+  BarChart3,
+  Landmark,
+  Wallet,
+  Coins
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,6 +108,7 @@ export default function EstadoResultadosTable({
   const currentQuarter = Math.floor(currentMonth / 3);
 
   // Filters & View State
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("monthly");
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth);
@@ -112,19 +116,60 @@ export default function EstadoResultadosTable({
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [hideZeroRows, setHideZeroRows] = useState<boolean>(true);
 
+  const selectedLocationObj = useMemo(() => {
+    if (selectedLocation === "all") return null;
+    return locations.find((l) => l.id === selectedLocation) || null;
+  }, [locations, selectedLocation]);
+
+  const selectedLocationName = useMemo(() => {
+    if (!selectedLocationObj) return "";
+    return (selectedLocationObj.name || selectedLocationObj.Name || "").trim();
+  }, [selectedLocationObj]);
+
   // Collapsible sections
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
     ingresos: true,
     costos: true,
     gastos: true,
+    financieros: true,
+    impuestos: true,
+    dividendos: true,
+    margenBruto: false,
+    margenOperativo: false,
+    margenNeto: false,
+    margenRetenido: false,
   });
 
   const toggleSection = (key: string) => {
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const expandAll = () => setExpandedSections({ ingresos: true, costos: true, gastos: true });
-  const collapseAll = () => setExpandedSections({ ingresos: false, costos: false, gastos: false });
+  const expandAll = () =>
+    setExpandedSections({
+      ingresos: true,
+      costos: true,
+      gastos: true,
+      financieros: true,
+      impuestos: true,
+      dividendos: true,
+      margenBruto: true,
+      margenOperativo: true,
+      margenNeto: true,
+      margenRetenido: true,
+    });
+  const collapseAll = () =>
+    setExpandedSections({
+      ingresos: false,
+      costos: false,
+      gastos: false,
+      financieros: false,
+      impuestos: false,
+      dividendos: false,
+      margenBruto: false,
+      margenOperativo: false,
+      margenNeto: false,
+      margenRetenido: false,
+    });
 
   // Available Years in Data
   const yearOptions = useMemo(() => {
@@ -173,9 +218,20 @@ export default function EstadoResultadosTable({
   }, [costCenters]);
 
   // Helper to determine Costo vs Gasto
-  const isCostoOperativo = (name: string, type?: string) => {
-    if (type && type.toLowerCase() === "costo") return true;
-    if (type && type.toLowerCase() === "gasto") return false;
+  const isCostoOperativo = (name: string, typeOrClass?: string) => {
+    if (typeOrClass) {
+      const lower = typeOrClass.toLowerCase();
+      if (lower === "costo") return true;
+      if (lower === "gasto") return false;
+      if (
+        lower === "financiero" ||
+        lower === "impuestos" ||
+        lower === "dividendos" ||
+        lower === "balance"
+      ) {
+        return false;
+      }
+    }
 
     const lower = normalize(name);
     if (lower.includes("sin centro")) return false; // Egresos sin asignar van a Gastos
@@ -281,12 +337,32 @@ export default function EstadoResultadosTable({
     const tree: { [location: string]: { [year: number]: { [month: number]: number } } } = {};
     const allLocations = new Set<string>();
 
-    // Pre-populate with all registered locations
-    locations.forEach((l) => {
-      const name = (l.name || l.Name || "Sucursal General").trim();
-      allLocations.add(name);
-      if (!tree[name]) tree[name] = {};
-    });
+    // Pre-populate with registered locations
+    if (selectedLocation !== "all") {
+      if (selectedLocationName) {
+        allLocations.add(selectedLocationName);
+        if (!tree[selectedLocationName]) tree[selectedLocationName] = {};
+      }
+    } else {
+      locations.forEach((l) => {
+        const name = (l.name || l.Name || "Sucursal General").trim();
+        allLocations.add(name);
+        if (!tree[name]) tree[name] = {};
+      });
+    }
+
+    const matchesLocation = (locId?: string, locNameCandidate?: string) => {
+      if (selectedLocation === "all") return true;
+      if (locId && locId === selectedLocation) return true;
+      if (
+        selectedLocationName &&
+        locNameCandidate &&
+        normalize(locNameCandidate) === normalize(selectedLocationName)
+      ) {
+        return true;
+      }
+      return false;
+    };
 
     const addIncome = (locName: string, dateStr: string | undefined, amount: number) => {
       if (!dateStr || isNaN(amount) || amount <= 0) return;
@@ -302,54 +378,57 @@ export default function EstadoResultadosTable({
     // 1. Remisiones
     remisiones.forEach((r) => {
       if (r.status === "cancelada") return;
-      const locName = r.locationId && locationNameMap[r.locationId]
-        ? locationNameMap[r.locationId]
-        : (r.locationName || "Sin Sucursal / General");
-      const val = Number(r.subtotal !== undefined && r.subtotal !== null && r.subtotal > 0 ? r.subtotal : (r.totalAmount || r.total || 0));
+      if (!matchesLocation(r.locationId, r.locationName)) return;
+      const locName =
+        r.locationId && locationNameMap[r.locationId]
+          ? locationNameMap[r.locationId]
+          : r.locationName || "Sin Sucursal / General";
+      const val = Number(
+        r.subtotal !== undefined && r.subtotal !== null && r.subtotal > 0
+          ? r.subtotal
+          : r.totalAmount || r.total || 0
+      );
       addIncome(locName, r.date || r.createdAt, val);
     });
 
     // 2. Facturas (excluyendo vinculadas a remisiones o POS para evitar duplicidad)
     facturas.forEach((f) => {
       if (f.status === "cancelada" || f.posSaleId || f.remisionId || f.remissionId) return;
-      const locName = f.locationId && locationNameMap[f.locationId]
-        ? locationNameMap[f.locationId]
-        : (f.locationName || "Sin Sucursal / General");
-      const val = Number(f.subtotal !== undefined && f.subtotal !== null && f.subtotal > 0 ? f.subtotal : (f.totalAmount || f.total || 0));
+      if (!matchesLocation(f.locationId, f.locationName)) return;
+      const locName =
+        f.locationId && locationNameMap[f.locationId]
+          ? locationNameMap[f.locationId]
+          : f.locationName || "Sin Sucursal / General";
+      const val = Number(
+        f.subtotal !== undefined && f.subtotal !== null && f.subtotal > 0
+          ? f.subtotal
+          : f.totalAmount || f.total || 0
+      );
       addIncome(locName, f.date || f.createdAt, val);
     });
 
     return { tree, locations: Array.from(allLocations).sort() };
-  }, [remisiones, facturas, locations, locationNameMap]);
+  }, [remisiones, facturas, locations, locationNameMap, selectedLocation, selectedLocationName]);
 
-  // Function to identify non-operational / balance-sheet cost centers (e.g. debt repayment, federal taxes, dividends)
-  const isNonOperationalCostCenter = (name: string): boolean => {
-    const n = normalize(name);
-    return (
-      n.includes("pago deuda") ||
-      n.includes("pago de impuestos") ||
-      n.includes("pago iva") ||
-      n.includes("iva trasladado") ||
-      n.includes("amortizacion") ||
-      n.includes("traspaso")
-    );
-  };
-
-  // Function to detect non-operational / balance-sheet / debt / credit card payments
-  const isNonOperationalExpense = (doc: any): boolean => {
-    const concept = normalize(doc.concept || "");
-    const vendor = normalize(doc.vendorName || doc.providerName || "");
-    const cc = normalize(costCenterMap[doc.costCenterId] || doc.costCenterName || "");
-    const itemsCC = normalize(doc.items?.map((it: any) => costCenterMap[it.costCenterId] || it.costCenterName || "").join(" ") || "");
-    const acc = normalize(doc.accountName || "");
-    const combined = `${concept} ${vendor} ${cc} ${itemsCC} ${acc}`;
-
-    // Direct check against non-operational cost centers
-    if (isNonOperationalCostCenter(cc) || isNonOperationalCostCenter(itemsCC)) {
-      return true;
+  // 1. Balance-sheet flows that NEVER enter P&L (neither OPEX nor post-EBITDA)
+  const isBalanceSheetPassThrough = (doc: any, ccName?: string, item?: any): boolean => {
+    // Check explicit cost center classification
+    const ccId = (item && item.costCenterId) || doc.costCenterId;
+    const ccObj =
+      (ccId && costCenterMap[ccId]) ||
+      (ccName && costCentersByName[normalize(ccName)]);
+    if (ccObj) {
+      const classif = (ccObj.classification || ccObj.type || "").toLowerCase();
+      if (classif === "balance") return true;
     }
 
-    // 1. Credit card bill payments (Paying off credit card balances is a balance sheet flow)
+    const concept = normalize(doc.concept || (item && item.concept) || "");
+    const vendor = normalize(doc.vendorName || doc.providerName || "");
+    const cc = normalize(ccName || (ccObj && ccObj.name) || (doc.costCenterId && costCenterMap[doc.costCenterId]?.name) || doc.costCenterName || "");
+    const acc = normalize(doc.accountName || "");
+    const combined = `${concept} ${vendor} ${cc} ${acc}`;
+
+    // Credit card balance payoff
     if (
       combined.includes("pago de servicio de tarjeta") ||
       combined.includes("pago de tarjeta de credito") ||
@@ -362,8 +441,9 @@ export default function EstadoResultadosTable({
       return true;
     }
 
-    // 2. Debt principal repayments and bank loan payments
+    // Debt principal amortization / loan repayments
     if (
+      cc.includes("pago deuda") ||
       combined.includes("pago deuda") ||
       combined.includes("pago de deuda") ||
       combined.includes("amortizacion") ||
@@ -375,29 +455,94 @@ export default function EstadoResultadosTable({
       return true;
     }
 
-    // 3. Tax payments to SAT (VAT / Income Tax pass-through)
+    // VAT pass-through payments (Pago IVA trasladado / pasivo fiscal)
     if (
-      combined.includes("pago de impuestos") ||
-      combined.includes("pago impuestos sat") ||
-      combined.includes("pago iva") ||
-      combined.includes("iva trasladado") ||
-      combined.includes("pago de derechos sat")
+      cc.includes("pago iva trasladado") ||
+      combined.includes("pago iva trasladado") ||
+      combined.includes("pago de iva trasladado") ||
+      combined.includes("iva trasladado")
     ) {
       return true;
     }
 
-    // 4. Transfers between company accounts
-    if (
-      combined.includes("traspaso") ||
-      combined.includes("transferencia entre cuentas")
-    ) {
+    // Internal transfers between company bank accounts
+    if (combined.includes("traspaso") || combined.includes("transferencia entre cuentas")) {
       return true;
     }
 
     return false;
   };
 
-  // Process Expenses by [Category: Costo | Gasto, CostCenterName, Year, Month]
+  // 2. Classify post-EBITDA deduction category (Financieros, Impuestos, Dividendos)
+  const classifyPostEbitda = (
+    doc: any,
+    ccName?: string,
+    item?: any
+  ): "gastos_financieros" | "impuestos" | "dividendos" | null => {
+    // Check explicit cost center classification
+    const ccId = (item && item.costCenterId) || doc.costCenterId;
+    const ccObj =
+      (ccId && costCenterMap[ccId]) ||
+      (ccName && costCentersByName[normalize(ccName)]);
+    if (ccObj) {
+      const classif = (ccObj.classification || ccObj.type || "").toLowerCase();
+      if (classif === "financiero" || classif === "gastos_financieros") return "gastos_financieros";
+      if (classif === "impuestos") return "impuestos";
+      if (classif === "dividendos") return "dividendos";
+      if (classif === "costo" || classif === "gasto" || classif === "balance") return null;
+    }
+
+    const concept = normalize(doc.concept || (item && item.concept) || "");
+    const vendor = normalize(doc.vendorName || doc.providerName || "");
+    const cc = normalize(ccName || (ccObj && ccObj.name) || (doc.costCenterId && costCenterMap[doc.costCenterId]?.name) || doc.costCenterName || "");
+    const acc = normalize(doc.accountName || "");
+
+    // Gastos Financieros (Intereses y comisiones bancarias)
+    if (
+      cc.includes("intereses") ||
+      cc.includes("otras comisiones banco") ||
+      acc.includes("gastos financieros") ||
+      acc.includes("intereses") ||
+      concept.includes("intereses") ||
+      concept.includes("interes ") ||
+      concept.includes("comision por apertura") ||
+      concept.includes("interes moratorio")
+    ) {
+      return "gastos_financieros";
+    }
+
+    // Impuestos (SAT / ISR)
+    if (
+      cc.includes("pago de impuestos") ||
+      acc.includes("impuestos y derechos") ||
+      acc.includes("impuesto sobre la renta") ||
+      concept.includes("pago de impuestos") ||
+      concept.includes("pago impuestos sat") ||
+      concept.includes("impuestos sat") ||
+      concept.includes("sat - guia") ||
+      concept.includes("impuesto sobre la renta") ||
+      concept.includes("isr ") ||
+      (vendor.includes("sat") && (concept.includes("impuesto") || concept.includes("declaracion")))
+    ) {
+      return "impuestos";
+    }
+
+    // Dividendos / Retiros de socios / Gastos personales
+    if (
+      cc.includes("gastos personales") ||
+      concept.includes("gastos personales") ||
+      concept.includes("dividendo") ||
+      concept.includes("retiro de socio") ||
+      concept.includes("retiro socio") ||
+      concept.includes("utilidad distribuida")
+    ) {
+      return "dividendos";
+    }
+
+    return null;
+  };
+
+  // Process Expenses by [Category: Costo | Gasto | Financieros | Impuestos | Dividendos, Year, Month]
   const processedExpenses = useMemo(() => {
     const expSatIds = new Set<string>();
     const expDatesAndAmounts = new Set<string>();
@@ -412,14 +557,29 @@ export default function EstadoResultadosTable({
 
     const costosTree: { [ccName: string]: { [year: number]: { [month: number]: number } } } = {};
     const gastosTree: { [ccName: string]: { [year: number]: { [month: number]: number } } } = {};
+    const financierosTree: { [catName: string]: { [year: number]: { [month: number]: number } } } = {};
+    const impuestosTree: { [catName: string]: { [year: number]: { [month: number]: number } } } = {};
+    const dividendosTree: { [catName: string]: { [year: number]: { [month: number]: number } } } = {};
+
     const allCostosCC = new Set<string>();
     const allGastosCC = new Set<string>();
+    const allFinancierosCats = new Set<string>([
+      "Intereses y Costo Financiero",
+      "Comisiones Bancarias y Financieras"
+    ]);
+    const allImpuestosCats = new Set<string>(["Impuestos Federales (SAT / ISR)"]);
+    const allDividendosCats = new Set<string>(["Retiros y Gastos Personales de Socios"]);
 
-    // Pre-populate with all registered cost centers (excluding non-operational ones like debt and tax pass-through)
+    allFinancierosCats.forEach((c) => { if (!financierosTree[c]) financierosTree[c] = {}; });
+    allImpuestosCats.forEach((c) => { if (!impuestosTree[c]) impuestosTree[c] = {}; });
+    allDividendosCats.forEach((c) => { if (!dividendosTree[c]) dividendosTree[c] = {}; });
+
+    // Pre-populate with all registered cost centers (excluding balance sheet and post-EBITDA ones)
     costCenters.forEach((cc) => {
       const name = cc.name || cc.code || "Centro General";
-      if (isNonOperationalCostCenter(name)) return;
-      if (isCostoOperativo(name, cc.type)) {
+      if (isBalanceSheetPassThrough({ costCenterName: name, costCenterId: cc.id }, name)) return;
+      if (classifyPostEbitda({ costCenterName: name, costCenterId: cc.id }, name)) return;
+      if (isCostoOperativo(name, cc.classification || cc.type)) {
         allCostosCC.add(name);
         if (!costosTree[name]) costosTree[name] = {};
       } else {
@@ -430,7 +590,6 @@ export default function EstadoResultadosTable({
 
     const addExpense = (ccName: string, isCosto: boolean, dateStr: string | undefined, amount: number) => {
       if (!dateStr || isNaN(amount) || amount <= 0) return;
-      if (isNonOperationalCostCenter(ccName)) return;
       const p = parseDateParts(dateStr);
       if (!p) return;
 
@@ -447,14 +606,46 @@ export default function EstadoResultadosTable({
       }
     };
 
+    const addPostExpense = (
+      type: "financieros" | "impuestos" | "dividendos",
+      catName: string,
+      dateStr: string | undefined,
+      amount: number
+    ) => {
+      if (!dateStr || isNaN(amount) || amount <= 0) return;
+      const p = parseDateParts(dateStr);
+      if (!p) return;
+
+      if (type === "financieros") {
+        allFinancierosCats.add(catName);
+        if (!financierosTree[catName]) financierosTree[catName] = {};
+        if (!financierosTree[catName][p.year]) financierosTree[catName][p.year] = {};
+        financierosTree[catName][p.year][p.month] =
+          (financierosTree[catName][p.year][p.month] || 0) + amount;
+      } else if (type === "impuestos") {
+        allImpuestosCats.add(catName);
+        if (!impuestosTree[catName]) impuestosTree[catName] = {};
+        if (!impuestosTree[catName][p.year]) impuestosTree[catName][p.year] = {};
+        impuestosTree[catName][p.year][p.month] =
+          (impuestosTree[catName][p.year][p.month] || 0) + amount;
+      } else if (type === "dividendos") {
+        allDividendosCats.add(catName);
+        if (!dividendosTree[catName]) dividendosTree[catName] = {};
+        if (!dividendosTree[catName][p.year]) dividendosTree[catName][p.year] = {};
+        dividendosTree[catName][p.year][p.month] =
+          (dividendosTree[catName][p.year][p.month] || 0) + amount;
+      }
+    };
+
     const processDoc = (doc: any, isInbox = false) => {
       if (doc.status === "cancelado") return;
 
-      // 1. Exclude non-operational payments (credit cards, debt principal, taxes, transfers)
-      if (isNonOperationalExpense(doc)) return;
-
       const dateStr = doc.date || doc.createdAt;
-      const val = Number(doc.subtotal !== undefined && doc.subtotal !== null && doc.subtotal > 0 ? doc.subtotal : (doc.amount || doc.totalAmount || doc.total || 0));
+      const val = Number(
+        doc.subtotal !== undefined && doc.subtotal !== null && doc.subtotal > 0
+          ? doc.subtotal
+          : doc.amount || doc.totalAmount || doc.total || 0
+      );
       if (val <= 0) return;
 
       // 2. Deduplicate exact provisional duplicates from AI auto-reconciler
@@ -465,19 +656,69 @@ export default function EstadoResultadosTable({
         seenProvisionalKeys.add(provKey);
       }
 
+      const processItemOrDoc = (item?: any, itemVal?: number) => {
+        const actualVal = itemVal !== undefined ? itemVal : val;
+        if (actualVal <= 0) return;
+
+        // Location check if a specific branch is selected
+        if (selectedLocation !== "all") {
+          const itemLocId = (item && item.locationId) || doc.locationId;
+          const itemLocName =
+            (item && item.locationName) ||
+            doc.locationName ||
+            (itemLocId && locationNameMap[itemLocId]);
+          const matchesLocId = itemLocId && itemLocId === selectedLocation;
+          const matchesLocName =
+            selectedLocationName &&
+            itemLocName &&
+            normalize(itemLocName) === normalize(selectedLocationName);
+          if (!matchesLocId && !matchesLocName) return;
+        }
+
+        const ccName = resolveCostCenter(doc, item);
+
+        // A. Balance-sheet pass-through check (exclude from P&L completely)
+        if (isBalanceSheetPassThrough(doc, ccName, item)) return;
+
+        // B. Post-EBITDA classification check
+        const postCat = classifyPostEbitda(doc, ccName, item);
+        if (postCat === "gastos_financieros") {
+          const lower = normalize(ccName) + " " + normalize(doc.concept || "");
+          const catName = lower.includes("comision") && !lower.includes("interes")
+            ? "Comisiones Bancarias y Financieras"
+            : "Intereses y Costo Financiero";
+          addPostExpense("financieros", catName, dateStr, actualVal);
+          return;
+        }
+        if (postCat === "impuestos") {
+          const catName = "Impuestos Federales (SAT / ISR)";
+          addPostExpense("impuestos", catName, dateStr, actualVal);
+          return;
+        }
+        if (postCat === "dividendos") {
+          const catName = "Retiros y Gastos Personales de Socios";
+          addPostExpense("dividendos", catName, dateStr, actualVal);
+          return;
+        }
+
+        // C. Operating Cost vs Expense
+        const ccObj =
+          (item && item.costCenterId && costCenterMap[item.costCenterId]) ||
+          (doc.costCenterId && costCenterMap[doc.costCenterId]) ||
+          costCentersByName[normalize(ccName)];
+        const isCost = isCostoOperativo(ccName, ccObj?.classification || ccObj?.type);
+        addExpense(ccName, isCost, dateStr, actualVal);
+      };
+
       // If document has items with individual amounts and cost centers, allocate item by item
       if (doc.items && doc.items.length > 0 && doc.items.some((it: any) => it.costCenterId || it.amount || it.subtotal)) {
         doc.items.forEach((it: any) => {
           const itemVal = Number(it.subtotal || it.amount || ((it.quantity || 1) * (it.unitCost || 0)) || 0);
           if (itemVal <= 0) return;
-          const ccName = resolveCostCenter(doc, it);
-          const isCost = isCostoOperativo(ccName);
-          addExpense(ccName, isCost, dateStr, itemVal);
+          processItemOrDoc(it, itemVal);
         });
       } else {
-        const ccName = resolveCostCenter(doc);
-        const isCost = isCostoOperativo(ccName);
-        addExpense(ccName, isCost, dateStr, val);
+        processItemOrDoc();
       }
     };
 
@@ -499,8 +740,14 @@ export default function EstadoResultadosTable({
       costosCC: Array.from(allCostosCC).sort(),
       gastosTree,
       gastosCC: Array.from(allGastosCC).sort(),
+      financierosTree,
+      financierosCats: Array.from(allFinancierosCats).sort(),
+      impuestosTree,
+      impuestosCats: Array.from(allImpuestosCats).sort(),
+      dividendosTree,
+      dividendosCats: Array.from(allDividendosCats).sort(),
     };
-  }, [expenses, expensesInbox, costCenters, costCenterMap, costCentersByName]);
+  }, [expenses, expensesInbox, costCenters, costCenterMap, costCentersByName, locationNameMap, selectedLocation, selectedLocationName]);
 
   // Dynamic Columns Configuration based on View Mode
   interface TableColumn {
@@ -796,6 +1043,27 @@ export default function EstadoResultadosTable({
       const utilidadOperacion = utilidadBruta - totalGastos;
       const margenOperativoPct = totalIngresos > 0 ? (utilidadOperacion / totalIngresos) * 100 : 0;
 
+      let totalFinancieros = 0;
+      processedExpenses.financierosCats.forEach((cat) => {
+        totalFinancieros += col.getValue(processedExpenses.financierosTree[cat]);
+      });
+
+      let totalImpuestos = 0;
+      processedExpenses.impuestosCats.forEach((cat) => {
+        totalImpuestos += col.getValue(processedExpenses.impuestosTree[cat]);
+      });
+
+      const utilidadNeta = utilidadOperacion - totalFinancieros - totalImpuestos;
+      const margenNetoPct = totalIngresos > 0 ? (utilidadNeta / totalIngresos) * 100 : 0;
+
+      let totalDividendos = 0;
+      processedExpenses.dividendosCats.forEach((cat) => {
+        totalDividendos += col.getValue(processedExpenses.dividendosTree[cat]);
+      });
+
+      const utilidadRetenida = utilidadNeta - totalDividendos;
+      const margenRetenidoPct = totalIngresos > 0 ? (utilidadRetenida / totalIngresos) * 100 : 0;
+
       return {
         colId: col.id,
         totalIngresos,
@@ -805,6 +1073,13 @@ export default function EstadoResultadosTable({
         totalGastos,
         utilidadOperacion,
         margenOperativoPct,
+        totalFinancieros,
+        totalImpuestos,
+        utilidadNeta,
+        margenNetoPct,
+        totalDividendos,
+        utilidadRetenida,
+        margenRetenidoPct,
       };
     });
   }, [columns, processedIncomes, processedExpenses]);
@@ -816,14 +1091,14 @@ export default function EstadoResultadosTable({
       const q = searchTerm.toLowerCase();
       list = list.filter((loc) => loc.toLowerCase().includes(q));
     }
-    if (hideZeroRows) {
+    if (hideZeroRows && selectedLocation === "all") {
       list = list.filter((loc) => {
         const tree = processedIncomes.tree[loc];
         return columns.some((col) => Math.abs(col.getValue(tree)) > 0.01);
       });
     }
     return list;
-  }, [processedIncomes, searchTerm, hideZeroRows, columns]);
+  }, [processedIncomes, searchTerm, hideZeroRows, columns, selectedLocation]);
 
   const filteredCostosCC = useMemo(() => {
     let list = processedExpenses.costosCC;
@@ -849,6 +1124,51 @@ export default function EstadoResultadosTable({
     if (hideZeroRows) {
       list = list.filter((cc) => {
         const tree = processedExpenses.gastosTree[cc];
+        return columns.some((col) => Math.abs(col.getValue(tree)) > 0.01);
+      });
+    }
+    return list;
+  }, [processedExpenses, searchTerm, hideZeroRows, columns]);
+
+  const filteredFinancierosCats = useMemo(() => {
+    let list = processedExpenses.financierosCats;
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter((cat) => cat.toLowerCase().includes(q));
+    }
+    if (hideZeroRows) {
+      list = list.filter((cat) => {
+        const tree = processedExpenses.financierosTree[cat];
+        return columns.some((col) => Math.abs(col.getValue(tree)) > 0.01);
+      });
+    }
+    return list;
+  }, [processedExpenses, searchTerm, hideZeroRows, columns]);
+
+  const filteredImpuestosCats = useMemo(() => {
+    let list = processedExpenses.impuestosCats;
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter((cat) => cat.toLowerCase().includes(q));
+    }
+    if (hideZeroRows) {
+      list = list.filter((cat) => {
+        const tree = processedExpenses.impuestosTree[cat];
+        return columns.some((col) => Math.abs(col.getValue(tree)) > 0.01);
+      });
+    }
+    return list;
+  }, [processedExpenses, searchTerm, hideZeroRows, columns]);
+
+  const filteredDividendosCats = useMemo(() => {
+    let list = processedExpenses.dividendosCats;
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter((cat) => cat.toLowerCase().includes(q));
+    }
+    if (hideZeroRows) {
+      list = list.filter((cat) => {
+        const tree = processedExpenses.dividendosTree[cat];
         return columns.some((col) => Math.abs(col.getValue(tree)) > 0.01);
       });
     }
@@ -886,6 +1206,13 @@ export default function EstadoResultadosTable({
     totalGastos: 0,
     utilidadOperacion: 0,
     margenOperativoPct: 0,
+    totalFinancieros: 0,
+    totalImpuestos: 0,
+    utilidadNeta: 0,
+    margenNetoPct: 0,
+    totalDividendos: 0,
+    utilidadRetenida: 0,
+    margenRetenidoPct: 0,
   };
 
   // CSV Export
@@ -929,13 +1256,41 @@ export default function EstadoResultadosTable({
     rows.push(makeRow("UTILIDAD DE OPERACIÓN (EBITDA)", (col, idx) => totalsByCol[idx].utilidadOperacion));
     rows.push(makeRow("MARGEN OPERATIVO (%)", (col, idx) => `${totalsByCol[idx].margenOperativoPct.toFixed(1)}%`));
 
+    rows.push(['"--- 4. GASTOS FINANCIEROS ---"']);
+    filteredFinancierosCats.forEach((cat) => {
+      rows.push(makeRow(cat, (col) => col.getValue(processedExpenses.financierosTree[cat])));
+    });
+    rows.push(makeRow("TOTAL GASTOS FINANCIEROS", (col, idx) => totalsByCol[idx].totalFinancieros));
+
+    rows.push(['"--- 5. IMPUESTOS (SAT / ISR) ---"']);
+    filteredImpuestosCats.forEach((cat) => {
+      rows.push(makeRow(cat, (col) => col.getValue(processedExpenses.impuestosTree[cat])));
+    });
+    rows.push(makeRow("TOTAL IMPUESTOS SAT / ISR", (col, idx) => totalsByCol[idx].totalImpuestos));
+
+    rows.push(makeRow("UTILIDAD NETA DEL EJERCICIO", (col, idx) => totalsByCol[idx].utilidadNeta));
+    rows.push(makeRow("MARGEN NETO (%)", (col, idx) => `${totalsByCol[idx].margenNetoPct.toFixed(1)}%`));
+
+    rows.push(['"--- 6. DISTRIBUCIONES (DIVIDENDOS) ---"']);
+    filteredDividendosCats.forEach((cat) => {
+      rows.push(makeRow(cat, (col) => col.getValue(processedExpenses.dividendosTree[cat])));
+    });
+    rows.push(makeRow("TOTAL DIVIDENDOS Y RETIROS", (col, idx) => totalsByCol[idx].totalDividendos));
+
+    rows.push(makeRow("UTILIDAD RETENIDA FINAL", (col, idx) => totalsByCol[idx].utilidadRetenida));
+    rows.push(makeRow("MARGEN RETENIDO (%)", (col, idx) => `${totalsByCol[idx].margenRetenidoPct.toFixed(1)}%`));
+
     const csvContent =
       "data:text/csv;charset=utf-8," +
       [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
+    const locTag =
+      selectedLocation === "all"
+        ? "Consolidado"
+        : selectedLocationName.replace(/\s+/g, "_");
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Estado_Resultados_${viewMode}_${selectedYear}.csv`);
+    link.setAttribute("download", `Estado_Resultados_${locTag}_${viewMode}_${selectedYear}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -944,7 +1299,7 @@ export default function EstadoResultadosTable({
   return (
     <div className="flex flex-col space-y-6 animate-in fade-in duration-300">
       {/* KPI Cards: High-Level View of Current Selected Scope */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* 1. Ingresos */}
         <div className="bg-white border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500 mb-1">
@@ -957,7 +1312,9 @@ export default function EstadoResultadosTable({
             {formatMoney(activeTotals.totalIngresos)}
           </div>
           <span className="text-[10px] text-muted-foreground mt-1">
-            Ventas de {filteredLocations.length} sucursales
+            {selectedLocation === "all"
+              ? `Ventas de ${filteredLocations.length} sucursales`
+              : `Sucursal: ${selectedLocationName}`}
           </span>
         </div>
 
@@ -969,7 +1326,7 @@ export default function EstadoResultadosTable({
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-amber-900">
+          <div className="text-xl font-black text-slate-900">
             {formatMoney(activeTotals.totalCostos)}
           </div>
           <span className="text-[10px] text-muted-foreground mt-1">
@@ -978,17 +1335,17 @@ export default function EstadoResultadosTable({
         </div>
 
         {/* 3. Utilidad Bruta */}
-        <div className="bg-white border rounded-2xl p-4 shadow-sm flex flex-col justify-between border-emerald-100">
+        <div className="bg-white border rounded-2xl p-4 shadow-sm flex flex-col justify-between border-slate-200">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800">Utilidad Bruta</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-700">Utilidad Bruta</span>
             <div className="p-1.5 bg-emerald-50 rounded-lg text-emerald-600">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-emerald-900">
+          <div className="text-xl font-black text-slate-900">
             {formatMoney(activeTotals.utilidadBruta)}
           </div>
-          <span className="text-[10px] font-bold text-emerald-600 mt-1">
+          <span className="text-[10px] font-semibold text-emerald-700 mt-1">
             Margen: {activeTotals.margenBrutoPct.toFixed(1)}%
           </span>
         </div>
@@ -1001,7 +1358,7 @@ export default function EstadoResultadosTable({
               <Receipt className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-rose-900">
+          <div className="text-xl font-black text-slate-900">
             {formatMoney(activeTotals.totalGastos)}
           </div>
           <span className="text-[10px] text-muted-foreground mt-1">
@@ -1010,18 +1367,34 @@ export default function EstadoResultadosTable({
         </div>
 
         {/* 5. EBITDA */}
-        <div className="bg-slate-900 text-white border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-300 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-amber-300">EBITDA Op.</span>
-            <div className="p-1.5 bg-slate-800 rounded-lg text-amber-400">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-700">EBITDA Op.</span>
+            <div className="p-1.5 bg-blue-50 rounded-lg text-blue-600">
               <BarChart3 className="w-4 h-4" />
             </div>
           </div>
-          <div className={`text-xl font-black ${activeTotals.utilidadOperacion >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+          <div className={`text-xl font-black ${activeTotals.utilidadOperacion >= 0 ? "text-slate-900" : "text-rose-600"}`}>
             {formatMoney(activeTotals.utilidadOperacion)}
           </div>
-          <span className="text-[10px] text-slate-400 mt-1">
+          <span className="text-[10px] font-semibold text-blue-700 mt-1">
             Margen Op: {activeTotals.margenOperativoPct.toFixed(1)}%
+          </span>
+        </div>
+
+        {/* 6. Utilidad Retenida */}
+        <div className="bg-white border border-emerald-200/80 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800">Utilidad Retenida</span>
+            <div className="p-1.5 bg-emerald-50 rounded-lg text-emerald-600">
+              <Coins className="w-4 h-4" />
+            </div>
+          </div>
+          <div className={`text-xl font-black ${activeTotals.utilidadRetenida >= 0 ? "text-slate-900" : "text-rose-600"}`}>
+            {formatMoney(activeTotals.utilidadRetenida)}
+          </div>
+          <span className="text-[10px] font-semibold text-emerald-700 mt-1">
+            Retención: {activeTotals.margenRetenidoPct.toFixed(1)}%
           </span>
         </div>
       </div>
@@ -1149,8 +1522,34 @@ export default function EstadoResultadosTable({
           </div>
         </div>
 
-        {/* Dynamic Contextual Selectors (Year, Month, Quarter, Search) */}
+        {/* Dynamic Contextual Selectors (Sucursal, Year, Month, Quarter, Search) */}
         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100 text-xs">
+          {/* Sucursal Selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-500 font-semibold flex items-center gap-1">
+              <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+              Sucursal:
+            </span>
+            <Select value={selectedLocation} onValueChange={(val) => setSelectedLocation(val)}>
+              <SelectTrigger className="w-[195px] h-8 text-xs bg-slate-50 border-slate-200 font-bold">
+                <SelectValue placeholder="Todas las sucursales" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  Todas las Sucursales (Consolidado)
+                </SelectItem>
+                {locations.map((loc) => {
+                  const locName = (loc.name || loc.Name || "Sucursal").trim();
+                  return (
+                    <SelectItem key={loc.id} value={loc.id}>
+                      {locName}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Year Selector */}
           <div className="flex items-center gap-1.5">
             <span className="text-slate-500 font-semibold">Año:</span>
@@ -1225,21 +1624,21 @@ export default function EstadoResultadosTable({
         <div className="overflow-x-auto max-h-[850px]">
           <table className="w-full text-left border-collapse text-xs">
             {/* Header */}
-            <thead className="sticky top-0 z-30 bg-slate-900 text-white shadow-md">
+            <thead className="sticky top-0 z-30 bg-slate-100/95 text-slate-700 backdrop-blur-sm border-b border-slate-200 shadow-sm">
               <tr>
-                <th className="py-3 px-4 font-bold text-slate-100 uppercase tracking-wider text-[11px] sticky left-0 z-40 bg-slate-900 min-w-[260px] border-r border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.15)]">
+                <th className="py-3 px-4 font-bold text-slate-800 uppercase tracking-wider text-[11px] sticky left-0 z-40 bg-slate-100 min-w-[260px] border-r border-slate-200 shadow-[1px_0_3px_rgba(0,0,0,0.05)]">
                   Concepto Financiero
                 </th>
                 {columns.map((col) => (
                   <th
                     key={col.id}
-                    className={`py-3 px-3 text-right font-bold text-[11px] whitespace-nowrap min-w-[110px] border-r border-slate-800 last:border-r-0 ${
-                      col.isTotal ? "bg-slate-800 text-amber-300" : ""
-                    } ${col.isVariance || col.isPercentage ? "bg-slate-850" : ""}`}
+                    className={`py-3 px-3 text-right font-bold text-[11px] whitespace-nowrap min-w-[110px] border-r border-slate-200 last:border-r-0 ${
+                      col.isTotal ? "bg-slate-200/60 text-slate-900" : "text-slate-700"
+                    } ${col.isVariance || col.isPercentage ? "bg-slate-150/40" : ""}`}
                   >
                     <div>{col.label}</div>
                     {col.subLabel && (
-                      <div className="text-[10px] font-normal text-slate-400 font-mono">
+                      <div className="text-[10px] font-normal text-slate-500 font-mono">
                         {col.subLabel}
                       </div>
                     )}
@@ -1254,23 +1653,29 @@ export default function EstadoResultadosTable({
               {/* ======================================================== */}
               <tr
                 onClick={() => toggleSection("ingresos")}
-                className="bg-indigo-50/70 hover:bg-indigo-100/70 cursor-pointer select-none transition-colors border-t-2 border-indigo-200"
+                className="bg-slate-50/80 hover:bg-slate-100/80 cursor-pointer select-none transition-colors border-t border-slate-200"
               >
-                <td
-                  colSpan={columns.length + 1}
-                  className="py-2.5 px-4 font-black text-indigo-950 uppercase tracking-wider text-xs sticky left-0 z-20 flex items-center gap-2"
-                >
+                <td className="py-2.5 px-4 font-bold text-slate-800 uppercase tracking-wider text-xs sticky left-0 z-20 bg-slate-50 hover:bg-slate-100 border-r border-slate-200 flex items-center gap-2 shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
                   {expandedSections.ingresos ? (
-                    <ChevronDown className="w-4 h-4 text-indigo-600" />
+                    <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />
                   ) : (
-                    <ChevronRight className="w-4 h-4 text-indigo-600" />
+                    <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
                   )}
-                  <Building2 className="w-4 h-4 text-indigo-600" />
-                  <span>1. Ingresos Operativos (Ventas por Sucursal)</span>
-                  <Badge variant="outline" className="ml-2 bg-white text-indigo-700 text-[10px] py-0 px-1.5 border-indigo-200 font-bold">
-                    {filteredLocations.length} sucursales
-                  </Badge>
+                  <span className="truncate">1. Ingresos Operativos (Ventas por Sucursal)</span>
                 </td>
+                {columns.map((col, idx) => {
+                  const val = totalsByCol[idx].totalIngresos;
+                  return (
+                    <td
+                      key={col.id}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap text-slate-800 font-bold border-r border-slate-200 last:border-r-0 ${
+                        col.isTotal ? "bg-slate-100/80 text-slate-900" : ""
+                      }`}
+                    >
+                      {formatMoney(val)}
+                    </td>
+                  );
+                })}
               </tr>
 
               {/* Rows: Each Location */}
@@ -1311,48 +1716,36 @@ export default function EstadoResultadosTable({
                   </tr>
                 ))}
 
-              {/* Total Ingresos Row */}
-              <tr className="bg-indigo-50/40 font-black border-t border-b-2 border-indigo-200">
-                <td className="py-2.5 px-4 pl-6 text-indigo-950 font-black sticky left-0 z-10 bg-indigo-50/90 border-r border-indigo-100 uppercase tracking-wider text-[11px] shadow-[1px_0_3px_rgba(0,0,0,0.05)]">
-                  TOTAL INGRESOS OPERATIVOS
-                </td>
-                {columns.map((col, idx) => {
-                  const val = totalsByCol[idx].totalIngresos;
-                  return (
-                    <td
-                      key={col.id}
-                      className={`py-2.5 px-3 text-right whitespace-nowrap text-indigo-950 font-black border-r border-indigo-100 last:border-r-0 ${
-                        col.isTotal ? "bg-indigo-100/60 text-indigo-900" : ""
-                      }`}
-                    >
-                      {formatMoney(val)}
-                    </td>
-                  );
-                })}
-              </tr>
+
 
               {/* ======================================================== */}
               {/* 2. SECCIÓN: COSTOS OPERATIVOS (CENTROS DE COSTO) */}
               {/* ======================================================== */}
               <tr
                 onClick={() => toggleSection("costos")}
-                className="bg-amber-50/70 hover:bg-amber-100/70 cursor-pointer select-none transition-colors border-t-2 border-amber-200"
+                className="bg-slate-50/80 hover:bg-slate-100/80 cursor-pointer select-none transition-colors border-t border-slate-200"
               >
-                <td
-                  colSpan={columns.length + 1}
-                  className="py-2.5 px-4 font-black text-amber-950 uppercase tracking-wider text-xs sticky left-0 z-20 flex items-center gap-2"
-                >
+                <td className="py-2.5 px-4 font-bold text-slate-800 uppercase tracking-wider text-xs sticky left-0 z-20 bg-slate-50 hover:bg-slate-100 border-r border-slate-200 flex items-center gap-2 shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
                   {expandedSections.costos ? (
-                    <ChevronDown className="w-4 h-4 text-amber-600" />
+                    <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />
                   ) : (
-                    <ChevronRight className="w-4 h-4 text-amber-600" />
+                    <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
                   )}
-                  <Layers className="w-4 h-4 text-amber-600" />
-                  <span>2. Costos Operativos y de Venta (Centros de Costo)</span>
-                  <Badge variant="outline" className="ml-2 bg-white text-amber-700 text-[10px] py-0 px-1.5 border-amber-200 font-bold">
-                    {filteredCostosCC.length} centros
-                  </Badge>
+                  <span className="truncate">2. Costos Operativos y de Venta (Centros de Costo)</span>
                 </td>
+                {columns.map((col, idx) => {
+                  const val = totalsByCol[idx].totalCostos;
+                  return (
+                    <td
+                      key={col.id}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap text-slate-800 font-bold border-r border-slate-200 last:border-r-0 ${
+                        col.isTotal ? "bg-slate-100/80 text-slate-900" : ""
+                      }`}
+                    >
+                      {formatMoney(val)}
+                    </td>
+                  );
+                })}
               </tr>
 
               {/* Rows: Each Costo Cost Center */}
@@ -1393,33 +1786,23 @@ export default function EstadoResultadosTable({
                   </tr>
                 ))}
 
-              {/* Total Costos Row */}
-              <tr className="bg-amber-50/40 font-black border-t border-b-2 border-amber-200">
-                <td className="py-2.5 px-4 pl-6 text-amber-950 font-black sticky left-0 z-10 bg-amber-50/90 border-r border-amber-100 uppercase tracking-wider text-[11px] shadow-[1px_0_3px_rgba(0,0,0,0.05)]">
-                  TOTAL COSTOS OPERATIVOS
-                </td>
-                {columns.map((col, idx) => {
-                  const val = totalsByCol[idx].totalCostos;
-                  return (
-                    <td
-                      key={col.id}
-                      className={`py-2.5 px-3 text-right whitespace-nowrap text-amber-950 font-black border-r border-amber-100 last:border-r-0 ${
-                        col.isTotal ? "bg-amber-100/60 text-amber-900" : ""
-                      }`}
-                    >
-                      {formatMoney(val)}
-                    </td>
-                  );
-                })}
-              </tr>
+
 
               {/* ======================================================== */}
               {/* 3. UTILIDAD BRUTA Y MARGEN BRUTO */}
               {/* ======================================================== */}
-              <tr className="bg-emerald-50/80 font-black border-t-2 border-b border-emerald-300">
-                <td className="py-3 px-4 font-black text-emerald-950 uppercase tracking-wider text-xs sticky left-0 z-10 bg-emerald-100 border-r border-emerald-200 flex items-center justify-between shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+              <tr
+                onClick={() => toggleSection("margenBruto")}
+                className="bg-emerald-50/40 hover:bg-emerald-100/50 cursor-pointer select-none font-bold border-t-2 border-b border-emerald-200 transition-colors"
+                title="Clic para mostrar/ocultar % de Margen Bruto"
+              >
+                <td className="py-2.5 px-4 font-bold text-emerald-900 uppercase tracking-wider text-xs sticky left-0 z-10 bg-emerald-50/80 hover:bg-emerald-100/70 border-r border-emerald-200 flex items-center justify-between shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
                   <span className="flex items-center gap-1.5">
-                    <TrendingUp className="w-4 h-4 text-emerald-700" />
+                    {expandedSections.margenBruto ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    )}
                     UTILIDAD BRUTA
                   </span>
                   <span className="text-[10px] text-emerald-700 font-mono font-normal">
@@ -1431,9 +1814,9 @@ export default function EstadoResultadosTable({
                   return (
                     <td
                       key={col.id}
-                      className={`py-3 px-3 text-right whitespace-nowrap font-black text-xs border-r border-emerald-200 last:border-r-0 ${
-                        val >= 0 ? "text-emerald-900" : "text-rose-700"
-                      } ${col.isTotal ? "bg-emerald-100 text-emerald-950 font-black" : ""}`}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap font-bold text-xs border-r border-emerald-200 last:border-r-0 ${
+                        val >= 0 ? "text-emerald-900" : "text-rose-600"
+                      } ${col.isTotal ? "bg-emerald-100/60 text-emerald-950 font-black" : ""}`}
                     >
                       {formatMoney(val)}
                     </td>
@@ -1441,48 +1824,56 @@ export default function EstadoResultadosTable({
                 })}
               </tr>
 
-              {/* Margen Bruto % */}
-              <tr className="bg-emerald-50/30 text-xs font-semibold text-emerald-800 border-b-2 border-emerald-200">
-                <td className="py-1.5 px-4 pl-8 sticky left-0 z-10 bg-emerald-50/90 border-r border-emerald-100 text-[11px] italic">
-                  Margen Bruto (%)
-                </td>
-                {columns.map((col, idx) => {
-                  const pct = totalsByCol[idx].margenBrutoPct;
-                  return (
-                    <td
-                      key={col.id}
-                      className={`py-1.5 px-3 text-right whitespace-nowrap border-r border-emerald-100 last:border-r-0 font-mono text-[11px] ${
-                        pct >= 30 ? "text-emerald-700 font-bold" : pct > 0 ? "text-amber-700" : "text-rose-600"
-                      }`}
-                    >
-                      {pct.toFixed(1)}%
-                    </td>
-                  );
-                })}
-              </tr>
+              {/* Margen Bruto % (Colapsable) */}
+              {expandedSections.margenBruto && (
+                <tr className="bg-emerald-50/20 text-xs font-semibold text-slate-600 border-b border-slate-200 animate-in fade-in duration-200">
+                  <td className="py-1 px-4 pl-8 sticky left-0 z-10 bg-emerald-50/40 border-r border-emerald-100 text-[11px] italic text-slate-500">
+                    Margen Bruto (%)
+                  </td>
+                  {columns.map((col, idx) => {
+                    const pct = totalsByCol[idx].margenBrutoPct;
+                    return (
+                      <td
+                        key={col.id}
+                        className={`py-1 px-3 text-right whitespace-nowrap border-r border-emerald-100 last:border-r-0 font-mono text-[11px] ${
+                          pct >= 30 ? "text-emerald-700 font-bold" : pct > 0 ? "text-slate-600" : "text-rose-600"
+                        }`}
+                      >
+                        {pct.toFixed(1)}%
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
 
               {/* ======================================================== */}
               {/* 4. SECCIÓN: GASTOS OPERATIVOS / ADMINISTRATIVOS */}
               {/* ======================================================== */}
               <tr
                 onClick={() => toggleSection("gastos")}
-                className="bg-rose-50/70 hover:bg-rose-100/70 cursor-pointer select-none transition-colors border-t-2 border-rose-200"
+                className="bg-slate-50/80 hover:bg-slate-100/80 cursor-pointer select-none transition-colors border-t border-slate-200"
               >
-                <td
-                  colSpan={columns.length + 1}
-                  className="py-2.5 px-4 font-black text-rose-950 uppercase tracking-wider text-xs sticky left-0 z-20 flex items-center gap-2"
-                >
+                <td className="py-2.5 px-4 font-bold text-slate-800 uppercase tracking-wider text-xs sticky left-0 z-20 bg-slate-50 hover:bg-slate-100 border-r border-slate-200 flex items-center gap-2 shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
                   {expandedSections.gastos ? (
-                    <ChevronDown className="w-4 h-4 text-rose-600" />
+                    <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />
                   ) : (
-                    <ChevronRight className="w-4 h-4 text-rose-600" />
+                    <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
                   )}
-                  <Layers className="w-4 h-4 text-rose-600" />
-                  <span>3. Gastos de Operación y Administración (Centros de Costo)</span>
-                  <Badge variant="outline" className="ml-2 bg-white text-rose-700 text-[10px] py-0 px-1.5 border-rose-200 font-bold">
-                    {filteredGastosCC.length} centros
-                  </Badge>
+                  <span className="truncate">3. Gastos de Operación y Administración (Centros de Costo)</span>
                 </td>
+                {columns.map((col, idx) => {
+                  const val = totalsByCol[idx].totalGastos;
+                  return (
+                    <td
+                      key={col.id}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap text-slate-800 font-bold border-r border-slate-200 last:border-r-0 ${
+                        col.isTotal ? "bg-slate-100/80 text-slate-900" : ""
+                      }`}
+                    >
+                      {formatMoney(val)}
+                    </td>
+                  );
+                })}
               </tr>
 
               {/* Rows: Each Gasto Cost Center */}
@@ -1523,36 +1914,26 @@ export default function EstadoResultadosTable({
                   </tr>
                 ))}
 
-              {/* Total Gastos Row */}
-              <tr className="bg-rose-50/40 font-black border-t border-b-2 border-rose-200">
-                <td className="py-2.5 px-4 pl-6 text-rose-950 font-black sticky left-0 z-10 bg-rose-50/90 border-r border-rose-100 uppercase tracking-wider text-[11px] shadow-[1px_0_3px_rgba(0,0,0,0.05)]">
-                  TOTAL GASTOS OPERATIVOS
-                </td>
-                {columns.map((col, idx) => {
-                  const val = totalsByCol[idx].totalGastos;
-                  return (
-                    <td
-                      key={col.id}
-                      className={`py-2.5 px-3 text-right whitespace-nowrap text-rose-950 font-black border-r border-rose-100 last:border-r-0 ${
-                        col.isTotal ? "bg-rose-100/60 text-rose-900" : ""
-                      }`}
-                    >
-                      {formatMoney(val)}
-                    </td>
-                  );
-                })}
-              </tr>
+
 
               {/* ======================================================== */}
               {/* 5. UTILIDAD DE OPERACIÓN (EBITDA) Y MARGEN OPERATIVO */}
               {/* ======================================================== */}
-              <tr className="bg-slate-900 text-white font-black border-t-4 border-double border-slate-700">
-                <td className="py-3.5 px-4 font-black uppercase tracking-wider text-xs sticky left-0 z-10 bg-slate-950 border-r border-slate-800 flex items-center justify-between shadow-[2px_0_5px_rgba(0,0,0,0.2)]">
-                  <span className="flex items-center gap-1.5 text-amber-300">
-                    <TrendingUp className="w-4 h-4 text-amber-400" />
+              <tr
+                onClick={() => toggleSection("margenOperativo")}
+                className="bg-emerald-50/40 hover:bg-emerald-100/50 cursor-pointer select-none font-bold border-t-2 border-b border-emerald-200 transition-colors"
+                title="Clic para mostrar/ocultar % de Margen Operativo"
+              >
+                <td className="py-2.5 px-4 font-bold text-emerald-900 uppercase tracking-wider text-xs sticky left-0 z-10 bg-emerald-50/80 hover:bg-emerald-100/70 border-r border-emerald-200 flex items-center justify-between shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
+                  <span className="flex items-center gap-1.5">
+                    {expandedSections.margenOperativo ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    )}
                     UTILIDAD DE OPERACIÓN (EBITDA)
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono font-normal">
+                  <span className="text-[10px] text-emerald-700 font-mono font-normal">
                     (U. Bruta - Gastos)
                   </span>
                 </td>
@@ -1561,9 +1942,9 @@ export default function EstadoResultadosTable({
                   return (
                     <td
                       key={col.id}
-                      className={`py-3.5 px-3 text-right whitespace-nowrap font-black text-sm border-r border-slate-800 last:border-r-0 ${
-                        val >= 0 ? "text-emerald-400" : "text-rose-400"
-                      } ${col.isTotal ? "bg-slate-850 text-amber-300" : ""}`}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap font-bold text-xs border-r border-emerald-200 last:border-r-0 ${
+                        val >= 0 ? "text-emerald-900" : "text-rose-600"
+                      } ${col.isTotal ? "bg-emerald-100/60 text-emerald-950 font-black" : ""}`}
                     >
                       {formatMoney(val)}
                     </td>
@@ -1571,25 +1952,328 @@ export default function EstadoResultadosTable({
                 })}
               </tr>
 
-              {/* Margen Operativo % */}
-              <tr className="bg-slate-800 text-slate-300 text-xs font-semibold">
-                <td className="py-1.5 px-4 pl-8 sticky left-0 z-10 bg-slate-850 border-r border-slate-700 text-[11px] italic">
-                  Margen Operativo (%)
+              {/* Margen Operativo % (Colapsable) */}
+              {expandedSections.margenOperativo && (
+                <tr className="bg-emerald-50/20 text-xs font-semibold text-slate-600 border-b border-slate-200 animate-in fade-in duration-200">
+                  <td className="py-1 px-4 pl-8 sticky left-0 z-10 bg-emerald-50/40 border-r border-emerald-100 text-[11px] italic text-slate-500">
+                    Margen Operativo (%)
+                  </td>
+                  {columns.map((col, idx) => {
+                    const pct = totalsByCol[idx].margenOperativoPct;
+                    return (
+                      <td
+                        key={col.id}
+                        className={`py-1 px-3 text-right whitespace-nowrap border-r border-emerald-100 last:border-r-0 font-mono text-[11px] ${
+                          pct >= 15 ? "text-emerald-700 font-bold" : pct > 0 ? "text-slate-600" : "text-rose-600"
+                        }`}
+                      >
+                        {pct.toFixed(1)}%
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
+
+              {/* ======================================================== */}
+              {/* 6. SECCIÓN: GASTOS FINANCIEROS (INTERESES Y COSTO FINANCIERO) */}
+              {/* ======================================================== */}
+              <tr
+                onClick={() => toggleSection("financieros")}
+                className="bg-slate-50/70 hover:bg-slate-100/70 cursor-pointer select-none transition-colors border-t border-slate-200"
+              >
+                <td className="py-2.5 px-4 font-bold text-slate-800 uppercase tracking-wider text-xs sticky left-0 z-20 bg-slate-50 hover:bg-slate-100 border-r border-slate-200 flex items-center gap-2 shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
+                  {expandedSections.financieros ? (
+                    <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
+                  )}
+                  <span className="truncate">(-) Gastos Financieros (Intereses y Comisiones de Crédito)</span>
                 </td>
                 {columns.map((col, idx) => {
-                  const pct = totalsByCol[idx].margenOperativoPct;
+                  const val = totalsByCol[idx].totalFinancieros;
                   return (
                     <td
                       key={col.id}
-                      className={`py-1.5 px-3 text-right whitespace-nowrap border-r border-slate-700 last:border-r-0 font-mono text-[11px] ${
-                        pct >= 15 ? "text-emerald-400 font-bold" : pct > 0 ? "text-amber-400" : "text-rose-400"
+                      className={`py-2.5 px-3 text-right whitespace-nowrap text-slate-800 font-bold border-r border-slate-200 last:border-r-0 ${
+                        col.isTotal ? "bg-slate-100/80 text-slate-900" : ""
                       }`}
                     >
-                      {pct.toFixed(1)}%
+                      {formatMoney(val)}
                     </td>
                   );
                 })}
               </tr>
+
+              {/* Filas de Gastos Financieros */}
+              {expandedSections.financieros &&
+                filteredFinancierosCats.map((cat) => (
+                  <tr key={cat} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2 px-4 pl-10 text-slate-700 sticky left-0 z-10 bg-white border-r border-slate-100 font-normal truncate max-w-[280px]">
+                      {cat}
+                    </td>
+                    {columns.map((col) => {
+                      const val = col.getValue(processedExpenses.financierosTree[cat]);
+                      const isPct = col.isPercentage;
+                      return (
+                        <td
+                          key={col.id}
+                          className={`py-2 px-3 text-right whitespace-nowrap border-r border-slate-50 last:border-r-0 ${
+                            col.isTotal ? "bg-amber-50/30 font-bold text-slate-900" : "text-slate-600"
+                          } ${
+                            isPct
+                              ? val > 0 ? "text-rose-600 font-bold" : val < 0 ? "text-emerald-600 font-bold" : "text-slate-400"
+                              : col.isVariance
+                              ? val > 0 ? "text-rose-700 font-semibold" : val < 0 ? "text-emerald-700 font-semibold" : ""
+                              : ""
+                          }`}
+                        >
+                          {isPct ? formatPct(val) : formatMoney(val)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+
+
+              {/* ======================================================== */}
+              {/* 7. SECCIÓN: IMPUESTOS (SAT / ISR) */}
+              {/* ======================================================== */}
+              <tr
+                onClick={() => toggleSection("impuestos")}
+                className="bg-slate-50/70 hover:bg-slate-100/70 cursor-pointer select-none transition-colors border-t border-slate-200"
+              >
+                <td className="py-2.5 px-4 font-bold text-slate-800 uppercase tracking-wider text-xs sticky left-0 z-20 bg-slate-50 hover:bg-slate-100 border-r border-slate-200 flex items-center gap-2 shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
+                  {expandedSections.impuestos ? (
+                    <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
+                  )}
+                  <span className="truncate">(-) Impuestos (Contribuciones Federales y SAT)</span>
+                </td>
+                {columns.map((col, idx) => {
+                  const val = totalsByCol[idx].totalImpuestos;
+                  return (
+                    <td
+                      key={col.id}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap text-slate-800 font-bold border-r border-slate-200 last:border-r-0 ${
+                        col.isTotal ? "bg-slate-100/80 text-slate-900" : ""
+                      }`}
+                    >
+                      {formatMoney(val)}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {/* Filas de Impuestos */}
+              {expandedSections.impuestos &&
+                filteredImpuestosCats.map((cat) => (
+                  <tr key={cat} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2 px-4 pl-10 text-slate-700 sticky left-0 z-10 bg-white border-r border-slate-100 font-normal truncate max-w-[280px]">
+                      {cat}
+                    </td>
+                    {columns.map((col) => {
+                      const val = col.getValue(processedExpenses.impuestosTree[cat]);
+                      const isPct = col.isPercentage;
+                      return (
+                        <td
+                          key={col.id}
+                          className={`py-2 px-3 text-right whitespace-nowrap border-r border-slate-50 last:border-r-0 ${
+                            col.isTotal ? "bg-rose-50/30 font-bold text-slate-900" : "text-slate-600"
+                          } ${
+                            isPct
+                              ? val > 0 ? "text-rose-600 font-bold" : val < 0 ? "text-emerald-600 font-bold" : "text-slate-400"
+                              : col.isVariance
+                              ? val > 0 ? "text-rose-700 font-semibold" : val < 0 ? "text-emerald-700 font-semibold" : ""
+                              : ""
+                          }`}
+                        >
+                          {isPct ? formatPct(val) : formatMoney(val)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+
+
+
+              {/* ======================================================== */}
+              {/* 8. UTILIDAD NETA DEL EJERCICIO */}
+              {/* ======================================================== */}
+              <tr
+                onClick={() => toggleSection("margenNeto")}
+                className="bg-emerald-50/40 hover:bg-emerald-100/50 cursor-pointer select-none font-bold border-t-2 border-b border-emerald-200 transition-colors"
+                title="Clic para mostrar/ocultar % de Margen Neto"
+              >
+                <td className="py-2.5 px-4 font-bold text-emerald-900 uppercase tracking-wider text-xs sticky left-0 z-10 bg-emerald-50/80 hover:bg-emerald-100/70 border-r border-emerald-200 flex items-center justify-between shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
+                  <span className="flex items-center gap-1.5">
+                    {expandedSections.margenNeto ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    )}
+                    UTILIDAD NETA DEL EJERCICIO
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-mono font-normal">
+                    (EBITDA - Financ. - Imp.)
+                  </span>
+                </td>
+                {columns.map((col, idx) => {
+                  const val = totalsByCol[idx].utilidadNeta;
+                  return (
+                    <td
+                      key={col.id}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap font-bold text-xs border-r border-emerald-200 last:border-r-0 ${
+                        val >= 0 ? "text-emerald-900" : "text-rose-600"
+                      } ${col.isTotal ? "bg-emerald-100/60 text-emerald-950 font-black" : ""}`}
+                    >
+                      {formatMoney(val)}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {/* Margen Neto % (Colapsable) */}
+              {expandedSections.margenNeto && (
+                <tr className="bg-emerald-50/20 text-xs font-semibold text-slate-600 border-b border-slate-200 animate-in fade-in duration-200">
+                  <td className="py-1 px-4 pl-8 sticky left-0 z-10 bg-emerald-50/40 border-r border-emerald-100 text-[11px] italic text-slate-500">
+                    Margen Neto (%)
+                  </td>
+                  {columns.map((col, idx) => {
+                    const pct = totalsByCol[idx].margenNetoPct;
+                    return (
+                      <td
+                        key={col.id}
+                        className={`py-1 px-3 text-right whitespace-nowrap border-r border-emerald-100 last:border-r-0 font-mono text-[11px] ${
+                          pct >= 10 ? "text-emerald-700 font-bold" : pct > 0 ? "text-slate-600" : "text-rose-600"
+                        }`}
+                      >
+                        {pct.toFixed(1)}%
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
+
+              {/* ======================================================== */}
+              {/* 9. SECCIÓN: DISTRIBUCIONES (DIVIDENDOS Y RETIROS DE SOCIOS) */}
+              {/* ======================================================== */}
+              <tr
+                onClick={() => toggleSection("dividendos")}
+                className="bg-slate-50/70 hover:bg-slate-100/70 cursor-pointer select-none transition-colors border-t border-slate-200"
+              >
+                <td className="py-2.5 px-4 font-bold text-slate-800 uppercase tracking-wider text-xs sticky left-0 z-20 bg-slate-50 hover:bg-slate-100 border-r border-slate-200 flex items-center gap-2 shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
+                  {expandedSections.dividendos ? (
+                    <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
+                  )}
+                  <span className="truncate">(-) Dividendos y Retiros de Socios (Gastos Personales)</span>
+                </td>
+                {columns.map((col, idx) => {
+                  const val = totalsByCol[idx].totalDividendos;
+                  return (
+                    <td
+                      key={col.id}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap text-slate-800 font-bold border-r border-slate-200 last:border-r-0 ${
+                        col.isTotal ? "bg-slate-100/80 text-slate-900" : ""
+                      }`}
+                    >
+                      {formatMoney(val)}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {/* Filas de Dividendos */}
+              {expandedSections.dividendos &&
+                filteredDividendosCats.map((cat) => (
+                  <tr key={cat} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2 px-4 pl-10 text-slate-700 sticky left-0 z-10 bg-white border-r border-slate-100 font-normal truncate max-w-[280px]">
+                      {cat}
+                    </td>
+                    {columns.map((col) => {
+                      const val = col.getValue(processedExpenses.dividendosTree[cat]);
+                      const isPct = col.isPercentage;
+                      return (
+                        <td
+                          key={col.id}
+                          className={`py-2 px-3 text-right whitespace-nowrap border-r border-slate-50 last:border-r-0 ${
+                            col.isTotal ? "bg-purple-50/30 font-bold text-slate-900" : "text-slate-600"
+                          } ${
+                            isPct
+                              ? val > 0 ? "text-rose-600 font-bold" : val < 0 ? "text-emerald-600 font-bold" : "text-slate-400"
+                              : col.isVariance
+                              ? val > 0 ? "text-rose-700 font-semibold" : val < 0 ? "text-emerald-700 font-semibold" : ""
+                              : ""
+                          }`}
+                        >
+                          {isPct ? formatPct(val) : formatMoney(val)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+
+
+
+              {/* ======================================================== */}
+              {/* 10. UTILIDAD RETENIDA FINAL DEL EJERCICIO */}
+              {/* ======================================================== */}
+              <tr
+                onClick={() => toggleSection("margenRetenido")}
+                className="bg-emerald-50/40 hover:bg-emerald-100/50 cursor-pointer select-none font-bold border-t-2 border-b border-emerald-200 transition-colors"
+                title="Clic para mostrar/ocultar % de Margen de Retención"
+              >
+                <td className="py-2.5 px-4 font-bold text-emerald-900 uppercase tracking-wider text-xs sticky left-0 z-10 bg-emerald-50/80 hover:bg-emerald-100/70 border-r border-emerald-200 flex items-center justify-between shadow-[1px_0_3px_rgba(0,0,0,0.03)]">
+                  <span className="flex items-center gap-1.5">
+                    {expandedSections.margenRetenido ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    )}
+                    UTILIDAD RETENIDA FINAL
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-mono font-normal">
+                    (Remanente Reinvertible)
+                  </span>
+                </td>
+                {columns.map((col, idx) => {
+                  const val = totalsByCol[idx].utilidadRetenida;
+                  return (
+                    <td
+                      key={col.id}
+                      className={`py-2.5 px-3 text-right whitespace-nowrap font-bold text-xs border-r border-emerald-200 last:border-r-0 ${
+                        val >= 0 ? "text-emerald-900" : "text-rose-600"
+                      } ${col.isTotal ? "bg-emerald-100/60 text-emerald-950 font-black" : ""}`}
+                    >
+                      {formatMoney(val)}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {/* Margen Retenido % (Colapsable) */}
+              {expandedSections.margenRetenido && (
+                <tr className="bg-emerald-50/20 text-xs font-semibold text-slate-600 border-b border-slate-200 animate-in fade-in duration-200">
+                  <td className="py-1 px-4 pl-8 sticky left-0 z-10 bg-emerald-50/40 border-r border-emerald-100 text-[11px] italic text-slate-500">
+                    Margen de Retención (%)
+                  </td>
+                  {columns.map((col, idx) => {
+                    const pct = totalsByCol[idx].margenRetenidoPct;
+                    return (
+                      <td
+                        key={col.id}
+                        className={`py-1 px-3 text-right whitespace-nowrap border-r border-emerald-100 last:border-r-0 font-mono text-[11px] ${
+                          pct >= 10 ? "text-emerald-700 font-bold" : pct > 0 ? "text-slate-600" : "text-rose-600"
+                        }`}
+                      >
+                        {pct.toFixed(1)}%
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -9,13 +9,124 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
-interface CostCenter {
+export type CostCenterClassification =
+  | "costo"
+  | "gasto"
+  | "financiero"
+  | "impuestos"
+  | "dividendos"
+  | "balance";
+
+export interface CostCenter {
   id: string;
   code: string;
   name: string;
+  classification?: CostCenterClassification;
+  type?: string;
   isActive: boolean;
   createdAt: string;
 }
+
+export const CLASSIFICATION_OPTIONS: {
+  value: CostCenterClassification;
+  label: string;
+  section: string;
+  badgeClass: string;
+}[] = [
+  {
+    value: "costo",
+    label: "Costo de Venta / Producción",
+    section: "Afecta Utilidad Bruta",
+    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  {
+    value: "gasto",
+    label: "Gasto Operativo (OPEX)",
+    section: "Afecta EBITDA",
+    badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+  },
+  {
+    value: "financiero",
+    label: "Gasto Financiero",
+    section: "Intereses y comisiones bancarias",
+    badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
+  },
+  {
+    value: "impuestos",
+    label: "Impuestos (SAT / ISR)",
+    section: "Impuestos sobre la renta",
+    badgeClass: "bg-rose-50 text-rose-700 border-rose-200",
+  },
+  {
+    value: "dividendos",
+    label: "Dividendos / Retiros de Socios",
+    section: "Afecta Utilidad Retenida",
+    badgeClass: "bg-purple-50 text-purple-700 border-purple-200",
+  },
+  {
+    value: "balance",
+    label: "Balance General / Pasivo",
+    section: "Excluido de P&L (Amortización de deuda)",
+    badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+];
+
+export const inferClassificationFromName = (name: string): CostCenterClassification => {
+  const lower = (name || "").toLowerCase().trim();
+  if (
+    lower.includes("pago deuda") ||
+    lower.includes("amortizacion") ||
+    lower.includes("pago de prestamo") ||
+    lower.includes("pago iva trasladado") ||
+    lower.includes("iva trasladado") ||
+    lower.includes("traspaso") ||
+    lower.includes("equipamiento") ||
+    lower.includes("remodelacion")
+  ) {
+    return "balance";
+  }
+  if (
+    lower.includes("intereses") ||
+    lower.includes("comisiones banco") ||
+    lower.includes("comisiones tpv") ||
+    lower.includes("otras comisiones")
+  ) {
+    return "financiero";
+  }
+  if (
+    lower.includes("pago de impuestos") ||
+    lower.includes("impuesto") ||
+    lower.includes("sat") ||
+    lower.includes("isr")
+  ) {
+    return "impuestos";
+  }
+  if (
+    lower.includes("gastos personales") ||
+    lower.includes("retiro de socio") ||
+    lower.includes("dividendo")
+  ) {
+    return "dividendos";
+  }
+  if (
+    lower.includes("materia prima") ||
+    lower.includes("maquila") ||
+    lower.includes("compra de inventario") ||
+    lower.includes("inventario") ||
+    lower.includes("insumos de proyectos") ||
+    lower.includes("insumos") ||
+    lower.includes("fletes") ||
+    lower.includes("empaque") ||
+    lower.includes("costo directo") ||
+    lower.includes("costo de venta") ||
+    lower.includes("consignacion") ||
+    lower.includes("produccion") ||
+    lower.includes("fabricacion")
+  ) {
+    return "costo";
+  }
+  return "gasto";
+};
 
 export default function CentrosCostosPage() {
   const { companyId } = useAuth();
@@ -28,6 +139,7 @@ export default function CentrosCostosPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
+  const [classification, setClassification] = useState<CostCenterClassification>("gasto");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -67,53 +179,55 @@ export default function CentrosCostosPage() {
     setInitializing(true);
     try {
       const batch = writeBatch(db);
-      const defaultCenters = [
-        "ARRENDAMIENTO VEHÍCULO",
-        "COMISIONES TPV",
-        "COMPRA DE INVENTARIO",
-        "EMPAQUE ECOMMERCE",
-        "EMPAQUE PRODUCTO",
-        "EMPAQUE TIENDA",
-        "FLETES",
-        "GASOLINA",
-        "GASTOS ADMINISTRATIVOS",
-        "GASTOS GENERALES",
-        "GASTOS PERSONALES",
-        "IMSS",
-        "INFONAVIT",
-        "INSUMOS DE PROYECTOS",
-        "INTERESES",
-        "INVERSIÓN EN EQUIPAMIENTO",
-        "ISN NL",
-        "MANTENIMIENTO FÁBRICA",
-        "MANTENIMIENTO VEHICULOS",
-        "MAQUILA",
-        "MATERIA PRIMA",
-        "NÓMINA",
-        "OTRAS COMISIONES BANCO",
-        "PAGO CONSIGNACIÓN VENDIDA",
-        "PAGO DE IMPUESTOS",
-        "PAGO DEUDA",
-        "PAGO IVA TRASLADADO",
-        "PAPELERIA Y MATERIALES",
-        "PUBLICIDAD",
-        "REMODELACIÓN TIENDA",
-        "RENTA BODEGA",
-        "RENTA TIENDA",
-        "SEGURO GASTOS MÉDICOS",
-        "SISTEMAS INFORMACIÓN",
-        "UNIFORMES",
-        "VIÁTICOS Y GASTOS DE VIAJE",
+      const defaultCenters: { name: string; classification: CostCenterClassification }[] = [
+        { name: "ARRENDAMIENTO VEHÍCULO", classification: "gasto" },
+        { name: "COMISIONES TPV", classification: "financiero" },
+        { name: "COMPRA DE INVENTARIO", classification: "costo" },
+        { name: "EMPAQUE ECOMMERCE", classification: "costo" },
+        { name: "EMPAQUE PRODUCTO", classification: "costo" },
+        { name: "EMPAQUE TIENDA", classification: "costo" },
+        { name: "FLETES", classification: "costo" },
+        { name: "GASOLINA", classification: "gasto" },
+        { name: "GASTOS ADMINISTRATIVOS", classification: "gasto" },
+        { name: "GASTOS GENERALES", classification: "gasto" },
+        { name: "GASTOS PERSONALES", classification: "dividendos" },
+        { name: "IMSS", classification: "gasto" },
+        { name: "INFONAVIT", classification: "gasto" },
+        { name: "INSUMOS DE PROYECTOS", classification: "costo" },
+        { name: "INTERESES", classification: "financiero" },
+        { name: "INVERSIÓN EN EQUIPAMIENTO", classification: "balance" },
+        { name: "ISN NL", classification: "gasto" },
+        { name: "MANTENIMIENTO FÁBRICA", classification: "gasto" },
+        { name: "MANTENIMIENTO VEHICULOS", classification: "gasto" },
+        { name: "MAQUILA", classification: "costo" },
+        { name: "MATERIA PRIMA", classification: "costo" },
+        { name: "NÓMINA", classification: "gasto" },
+        { name: "OTRAS COMISIONES BANCO", classification: "financiero" },
+        { name: "PAGO CONSIGNACIÓN VENDIDA", classification: "costo" },
+        { name: "PAGO DE IMPUESTOS", classification: "impuestos" },
+        { name: "PAGO DEUDA", classification: "balance" },
+        { name: "PAGO IVA TRASLADADO", classification: "balance" },
+        { name: "PAPELERIA Y MATERIALES", classification: "gasto" },
+        { name: "PUBLICIDAD", classification: "gasto" },
+        { name: "REMODELACIÓN TIENDA", classification: "balance" },
+        { name: "RENTA BODEGA", classification: "gasto" },
+        { name: "RENTA TIENDA", classification: "gasto" },
+        { name: "SEGURO GASTOS MÉDICOS", classification: "gasto" },
+        { name: "SISTEMAS INFORMACIÓN", classification: "gasto" },
+        { name: "UNIFORMES", classification: "gasto" },
+        { name: "VIÁTICOS Y GASTOS DE VIAJE", classification: "gasto" },
       ];
 
-      defaultCenters.forEach((name, index) => {
+      defaultCenters.forEach((item, index) => {
         const id = crypto.randomUUID();
         const generatedCode = `CC-${String(index + 1).padStart(3, "0")}`;
         const docRef = doc(db, "companies", companyId, "cost_centers", id);
         batch.set(docRef, {
           id,
           code: generatedCode,
-          name,
+          name: item.name,
+          classification: item.classification,
+          type: item.classification,
           isActive: true,
           createdAt: new Date().toISOString(),
         });
@@ -135,6 +249,9 @@ export default function CentrosCostosPage() {
       setEditingId(item.id);
       setCode(item.code);
       setName(item.name);
+      setClassification(
+        item.classification || (item.type as CostCenterClassification) || inferClassificationFromName(item.name)
+      );
       setIsActive(item.isActive);
     } else {
       setEditingId(null);
@@ -142,6 +259,7 @@ export default function CentrosCostosPage() {
       const nextNum = costCenters.length + 1;
       setCode(`CC-${String(nextNum).padStart(3, "0")}`);
       setName("");
+      setClassification("gasto");
       setIsActive(true);
     }
     setIsModalOpen(true);
@@ -163,6 +281,8 @@ export default function CentrosCostosPage() {
           id,
           code: code.trim(),
           name: name.trim(),
+          classification,
+          type: classification,
           isActive,
           createdAt: editingId ? undefined : new Date().toISOString(),
         },
@@ -173,6 +293,7 @@ export default function CentrosCostosPage() {
       // reset form
       setCode("");
       setName("");
+      setClassification("gasto");
       setIsActive(true);
     } catch (err) {
       console.error("Error saving cost center:", err);
@@ -208,11 +329,20 @@ export default function CentrosCostosPage() {
   };
 
   // Filter cost centers based on search
-  const filteredCostCenters = costCenters.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCostCenters = costCenters.filter((c) => {
+    const itemClass =
+      c.classification ||
+      (c.type as CostCenterClassification) ||
+      inferClassificationFromName(c.name);
+    const opt = CLASSIFICATION_OPTIONS.find((o) => o.value === itemClass);
+    const search = searchTerm.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(search) ||
+      c.code.toLowerCase().includes(search) ||
+      (opt && opt.label.toLowerCase().includes(search)) ||
+      (opt && opt.section.toLowerCase().includes(search))
+    );
+  });
 
   if (loading) {
     return (
@@ -265,7 +395,7 @@ export default function CentrosCostosPage() {
           <div className="relative w-full max-w-md">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por código o nombre..."
+              placeholder="Buscar por código, nombre o clasificación..."
               className="pl-9 bg-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -314,62 +444,83 @@ export default function CentrosCostosPage() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-slate-600 border-b">
                   <tr>
-                    <th className="text-left font-semibold px-6 py-3 w-1/4">Código</th>
-                    <th className="text-left font-semibold px-6 py-3 w-1/2">Nombre del Centro</th>
-                    <th className="text-center font-semibold px-6 py-3 w-1/8">Estado</th>
-                    <th className="text-center font-semibold px-6 py-3 w-1/8">Acciones</th>
+                    <th className="text-left font-semibold px-6 py-3 w-1/6">Código</th>
+                    <th className="text-left font-semibold px-6 py-3 w-1/3">Nombre del Centro</th>
+                    <th className="text-left font-semibold px-6 py-3 w-1/3">Clasificación en P&L</th>
+                    <th className="text-center font-semibold px-6 py-3 w-1/12">Estado</th>
+                    <th className="text-center font-semibold px-6 py-3 w-1/12">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredCostCenters.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-3 font-mono font-bold text-slate-700">{item.code}</td>
-                      <td className="px-6 py-3 font-medium text-slate-900">{item.name}</td>
-                      <td className="px-6 py-3 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                            item.isActive
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-slate-50 text-slate-600 border-slate-200"
-                          }`}
-                        >
-                          {item.isActive ? (
-                            <>
-                              <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                              Activo
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-3.5 h-3.5 text-slate-400" />
-                              Inactivo
-                            </>
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
-                            onClick={() => openModal(item)}
-                            title="Editar"
+                  {filteredCostCenters.map((item) => {
+                    const itemClass =
+                      item.classification ||
+                      (item.type as CostCenterClassification) ||
+                      inferClassificationFromName(item.name);
+                    const opt =
+                      CLASSIFICATION_OPTIONS.find((o) => o.value === itemClass) ||
+                      CLASSIFICATION_OPTIONS[1];
+
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-3 font-mono font-bold text-slate-700">{item.code}</td>
+                        <td className="px-6 py-3 font-medium text-slate-900">{item.name}</td>
+                        <td className="px-6 py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span
+                              className={`inline-flex items-center text-[11px] font-bold px-2.5 py-0.5 rounded-full border w-fit ${opt.badgeClass}`}
+                            >
+                              {opt.label}
+                            </span>
+                            <span className="text-[10px] text-slate-400 pl-1">{opt.section}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3 text-center">
+                          <span
+                            className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                              item.isActive
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-slate-50 text-slate-600 border-slate-200"
+                            }`}
                           >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-rose-600 hover:text-rose-800 hover:bg-rose-50"
-                            onClick={() => confirmDelete(item)}
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {item.isActive ? (
+                              <>
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                                Activo
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="w-3.5 h-3.5 text-slate-400" />
+                                Inactivo
+                              </>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
+                              onClick={() => openModal(item)}
+                              title="Editar"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-rose-600 hover:text-rose-800 hover:bg-rose-50"
+                              onClick={() => confirmDelete(item)}
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -405,11 +556,35 @@ export default function CentrosCostosPage() {
               <label className="text-xs font-bold text-slate-600">Nombre del Centro</label>
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setName(val);
+                  if (!editingId) {
+                    setClassification(inferClassificationFromName(val));
+                  }
+                }}
                 placeholder="Ej. ADMINISTRATIVO"
                 required
                 className="h-9"
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Clasificación en Estado de Resultados</label>
+              <select
+                value={classification}
+                onChange={(e) => setClassification(e.target.value as CostCenterClassification)}
+                className="w-full h-10 px-3 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+              >
+                {CLASSIFICATION_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label} — ({opt.section})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500">
+                Determina a qué nivel del Estado de Resultados impacta este centro (Costo de Venta, OPEX, Financieros, Impuestos, Dividendos o Excluido).
+              </p>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-50 border rounded-lg">

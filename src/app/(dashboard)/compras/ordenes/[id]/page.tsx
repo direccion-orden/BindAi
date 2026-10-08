@@ -435,22 +435,25 @@ export default function DetalleOrdenCompraPage() {
         ? order.totalAmount
         : Math.round((pdfSubtotal + pdfIva) * 100) / 100;
 
+      const totalsLabelX = pageWidth - 80;
+      const totalsValX = pageWidth - margin - 2;
+
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(TAUPE_DARK[0], TAUPE_DARK[1], TAUPE_DARK[2]);
 
-      doc.text("Subtotal:", pageWidth - 55, y);
-      doc.text(`$${pdfSubtotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 2, y, { align: "right" });
+      doc.text("Subtotal:", totalsLabelX, y);
+      doc.text(`$${pdfSubtotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, totalsValX, y, { align: "right" });
 
       y += 5;
-      doc.text("IVA (16%):", pageWidth - 55, y);
-      doc.text(`$${pdfIva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 2, y, { align: "right" });
+      doc.text("IVA (16%):", totalsLabelX, y);
+      doc.text(`$${pdfIva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, totalsValX, y, { align: "right" });
 
       y += 6;
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("TOTAL (con IVA):", pageWidth - 55, y);
-      doc.text(`$${pdfTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 2, y, { align: "right" });
+      doc.text("TOTAL (con IVA):", totalsLabelX, y);
+      doc.text(`$${pdfTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, totalsValX, y, { align: "right" });
 
       // --- Notes ---
       if (order.notes) {

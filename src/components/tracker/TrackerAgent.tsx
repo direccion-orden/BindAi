@@ -39,8 +39,8 @@ export function TrackerAgent({ companyId }: TrackerAgentProps) {
           
           {/* Label on hover (only when closed) */}
           {!isOpen && (
-            <span className="absolute right-full mr-4 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl">
-              ¿En qué puedo ayudarte?
+            <span className="absolute right-full mr-4 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl border border-slate-700">
+              Tracker CFO | Asesor Financiero
             </span>
           )}
         </button>
@@ -48,10 +48,10 @@ export function TrackerAgent({ companyId }: TrackerAgentProps) {
 
       {/* Chat Window Container */}
       <div className={`
-        fixed bottom-24 right-6 z-50 w-[350px] sm:w-[400px] h-[500px] max-h-[70vh] transition-all duration-500 transform
+        fixed bottom-24 right-4 sm:right-6 z-50 w-[92vw] sm:w-[450px] md:w-[480px] h-[580px] max-h-[84vh] transition-all duration-300 transform
         ${isOpen 
           ? "translate-y-0 opacity-100 scale-100" 
-          : "translate-y-10 opacity-0 scale-95 pointer-events-none"
+          : "translate-y-6 opacity-0 scale-95 pointer-events-none"
         }
       `}>
         {isOpen && <TrackerChat companyId={companyId} onClose={() => setIsOpen(false)} />}

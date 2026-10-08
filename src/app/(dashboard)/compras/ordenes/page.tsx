@@ -22,6 +22,8 @@ export interface PurchaseOrder {
   vendorName: string;
   status: "DRAFT" | "SENT" | "PARTIAL" | "COMPLETED" | "CANCELLED";
   totalAmount: number;
+  subtotal?: number;
+  tax?: number;
   expectedDate?: string;
   createdAt: string;
   createdBy: string;
@@ -228,7 +230,7 @@ export default function OrdenesCompraPage() {
                       {getStatusBadge(order.status)}
                     </td>
                     <td className="px-6 py-4 font-bold">
-                      ${order.totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      ${((order.tax !== undefined ? order.totalAmount : (order.totalAmount ? order.totalAmount * 1.16 : 0)) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <Link href={`/compras/ordenes/${order.id}`} target="_blank">

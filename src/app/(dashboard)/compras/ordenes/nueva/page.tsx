@@ -198,7 +198,9 @@ export default function NuevaOrdenCompraPage() {
     setSelectedItems(prev => prev.filter(i => (i.lineKey || i.variantId) !== lineKeyOrVariantId));
   };
 
-  const totalCost = selectedItems.reduce((acc, item) => acc + (item.quantity * item.unitCost), 0);
+  const subtotal = selectedItems.reduce((acc, item) => acc + (item.quantity * (Number(item.unitCost) || 0)), 0);
+  const iva = Math.round(subtotal * 0.16 * 100) / 100;
+  const totalCost = Math.round((subtotal + iva) * 100) / 100;
 
   const handleSave = async () => {
     if (!companyId || !vendorId) {
@@ -240,6 +242,8 @@ export default function NuevaOrdenCompraPage() {
           description: i.description || "",
           lineKey: i.lineKey || ""
         })),
+        subtotal,
+        tax: iva,
         totalAmount: totalCost,
         locationId,
         locationName: locations.find(l => l.id === locationId)?.name || "",
@@ -558,10 +562,18 @@ export default function NuevaOrdenCompraPage() {
             </h3>
 
             <div className="space-y-3">
-              <div className="pt-4 space-y-2 text-sm">
-                <div className="flex justify-between text-lg font-bold text-slate-800">
+              <div className="pt-2 space-y-2 text-sm">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal</span>
+                  <span className="font-medium text-slate-800">${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>IVA (16%)</span>
+                  <span className="font-medium text-slate-800">${iva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="border-t pt-2 mt-2 flex justify-between text-lg font-bold text-slate-900">
                   <span>Total Estimado</span>
-                  <span className="font-black text-indigo-700">${totalCost.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                  <span className="font-black text-indigo-700">${totalCost.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
               

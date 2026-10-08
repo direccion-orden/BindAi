@@ -184,7 +184,9 @@ export default function DetalleOrdenCompraPage() {
 
     setLoading(true);
     try {
-      const newTotal = editData.items.reduce((sum: number, item: any) => sum + (item.quantity * (Number(item.unitCost) || 0)), 0);
+      const subtotal = editData.items.reduce((sum: number, item: any) => sum + ((Number(item.quantity) || 0) * (Number(item.unitCost) || 0)), 0);
+      const tax = Math.round(subtotal * 0.16 * 100) / 100;
+      const totalAmount = Math.round((subtotal + tax) * 100) / 100;
       const selectedLoc = locations.find(l => l.id === editData.locationId);
       const selectedAcc = accounts.find(a => a.id === editData.accountId);
 
@@ -206,7 +208,9 @@ export default function DetalleOrdenCompraPage() {
           description: i.description || "",
           lineKey: i.lineKey || ""
         })),
-        totalAmount: newTotal
+        subtotal,
+        tax,
+        totalAmount
       };
 
       await updateDoc(doc(db, "companies", companyId, "purchase_orders", orderId), updatedFields);
@@ -421,9 +425,15 @@ export default function DetalleOrdenCompraPage() {
       y += 6;
 
       // --- Totals ---
-      const pdfSubtotal = order.items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-      const pdfIva = pdfSubtotal * 0.16;
-      const pdfTotal = pdfSubtotal + pdfIva;
+      const pdfSubtotal = order.subtotal !== undefined
+        ? order.subtotal
+        : order.items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitCost) || 0)), 0);
+      const pdfIva = order.tax !== undefined
+        ? order.tax
+        : Math.round(pdfSubtotal * 0.16 * 100) / 100;
+      const pdfTotal = order.totalAmount !== undefined && order.tax !== undefined
+        ? order.totalAmount
+        : Math.round((pdfSubtotal + pdfIva) * 100) / 100;
 
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
@@ -439,7 +449,7 @@ export default function DetalleOrdenCompraPage() {
       y += 6;
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("TOTAL:", pageWidth - 55, y);
+      doc.text("TOTAL (con IVA):", pageWidth - 55, y);
       doc.text(`$${pdfTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 2, y, { align: "right" });
 
       // --- Notes ---
@@ -856,10 +866,17 @@ export default function DetalleOrdenCompraPage() {
             <div className="space-y-2 text-sm">
               {(() => {
                 const subtotal = isEditing
-                  ? editData?.items?.reduce((sum: number, item: any) => sum + (item.quantity * (Number(item.unitCost) || 0)), 0) || 0
-                  : (order.items?.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0) || order.totalAmount || 0);
-                const iva = subtotal * 0.16;
-                const total = subtotal + iva;
+                  ? (editData?.items?.reduce((sum: number, item: any) => sum + ((Number(item.quantity) || 0) * (Number(item.unitCost) || 0)), 0) || 0)
+                  : (order.subtotal !== undefined ? order.subtotal : (order.items?.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitCost) || 0)), 0) || 0));
+                const iva = isEditing
+                  ? Math.round(subtotal * 0.16 * 100) / 100
+                  : (order.tax !== undefined ? order.tax : Math.round(subtotal * 0.16 * 100) / 100);
+                const total = isEditing
+                  ? Math.round((subtotal + iva) * 100) / 100
+                  : (order.totalAmount !== undefined && order.tax !== undefined ? order.totalAmount : Math.round((subtotal + iva) * 100) / 100);
+
+                const saldoPendiente = Math.max(0, total - (order.paidAmount || 0));
+
                 return (
                   <>
                     <div className="flex justify-between text-slate-600">
@@ -871,24 +888,24 @@ export default function DetalleOrdenCompraPage() {
                       <span className="font-medium">${iva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex justify-between font-black text-xl pt-2 border-t mt-2 text-slate-900">
-                      <span>Total Requisición</span>
+                      <span>Total con Impuestos</span>
                       <span className="text-indigo-700">${total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
+                    {(order.paidAmount || 0) > 0 && (
+                      <>
+                        <div className="flex justify-between text-rose-600 font-medium pt-2">
+                          <span>Pagado (Egreso)</span>
+                          <span>${(order.paidAmount || 0).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                        </div>
+                        <div className="flex justify-between text-orange-600 font-bold border-t mt-2 pt-2">
+                          <span>Saldo Pendiente</span>
+                          <span>${saldoPendiente.toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
+                        </div>
+                      </>
+                    )}
                   </>
                 );
               })()}
-              {(order.paidAmount || 0) > 0 && (
-                <>
-                  <div className="flex justify-between text-rose-600 font-medium pt-2">
-                    <span>Pagado (Egreso)</span>
-                    <span>${(order.paidAmount || 0).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-                  </div>
-                  <div className="flex justify-between text-orange-600 font-bold border-t mt-2 pt-2">
-                    <span>Saldo Pendiente</span>
-                    <span>${Math.max(0, ((order.items?.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0) || order.totalAmount) * 1.16) - (order.paidAmount || 0)).toLocaleString('es-MX', {minimumFractionDigits:2})}</span>
-                  </div>
-                </>
-              )}
             </div>
           </div>
         </div>

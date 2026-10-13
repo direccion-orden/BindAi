@@ -708,7 +708,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
 
       await batch.commit();
       alert(`¡Gasto formalizado con éxito! Se vinculó el CFDI ${satDocNumber}.`);
-      window.location.reload();
+      router.push(isManual ? "/compras/gastos" : "/gastos");
     } catch (err: any) {
       console.error("Error al formalizar gasto con SAT:", err);
       setFormalizeError(`Error: ${err.message || "No se pudo vincular la factura."}`);
@@ -812,7 +812,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
 
       await batch.commit();
       alert("¡Gasto confirmado como Oficial No Deducible!");
-      window.location.reload();
+      router.push(isManual ? "/compras/gastos" : "/gastos");
     } catch (err: any) {
       console.error("Error al declarar gasto no deducible:", err);
       setFormalizeError(`Error: ${err.message || "No se pudo oficializar."}`);
@@ -994,7 +994,7 @@ export default function GastoDetallePage({ params: paramsPromise }: { params: Pr
       await updateDoc(doc(db, "companies", companyId, "expenses", invoice.id), expenseUpdates);
 
       alert("Gasto operativo actualizado exitosamente.");
-      window.location.reload();
+      router.push(isManual ? "/compras/gastos" : "/gastos");
     } catch (error) {
       console.error("Error updating manual expense:", error);
       alert("Hubo un error al actualizar el gasto operativo.");

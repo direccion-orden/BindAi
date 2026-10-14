@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { doc, collection, getDocs, updateDoc, addDoc, increment, setDoc, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { doc, collection, getDoc, getDocs, updateDoc, addDoc, increment, setDoc, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
@@ -349,7 +349,7 @@ export function ReconcilePanel({
     return sortedAndMatchedDocs.map(doc => {
       const isManualLabel = doc._type === "gasto_manual" ? " (Manual)" : "";
       const partnerName = doc.vendorName || doc.emisorName || doc.clientName || "Proveedor/Cliente";
-      const docNumber = doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
+      const docNumber = doc.documentNumber || doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
       const matchLabel = doc.isExactMatch ? "⭐ [SUGERIDO] " : "";
       const dateDisplay = doc.docDateStr ? ` [${doc.docDateStr}]` : "";
 
@@ -718,7 +718,7 @@ export function ReconcilePanel({
 
         let targetDocId = selectedDoc.id;
         let targetDocType = docType;
-        let targetDocNumber = selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id;
+        let targetDocNumber = selectedDoc.documentNumber || selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id;
 
         const isRecurringTemplate = isManual && selectedDoc.isRecurring === true;
         let recurringSequenceNum = "";
@@ -731,94 +731,124 @@ export function ReconcilePanel({
         }
 
         if (isCharge && selectedDoc._type === "gasto") {
-          // Create the main expense record in the "expenses" collection from XML
-          const newExpenseId = crypto.randomUUID();
-          const sequenceNum = await getNextSequence(companyId, "gastos");
-          const numericVal = parseInt(sequenceNum.split("-")[1]) || 0;
-          const locationName = locations.find(l => l.id === selectedLocationId)?.name || "";
-
           const totalAbsAmount = transactions.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-          const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
           const totalAmt = selectedDoc.docTotal || selectedDoc.total || 0;
-          const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
+          const existingExpenseId = selectedDoc.linkedExpenseId || selectedDoc.expenseId;
+          let existingExpenseDoc: any = null;
 
-          let mappedItems: any[] = [];
-          if (selectedDoc.items && selectedDoc.items.length > 0) {
-            mappedItems = selectedDoc.items.map((item: any) => ({
-              ...item,
-              accountId: selectedExpenseOrIncomeAccountId,
-              locationId: selectedLocationId,
-              costCenterId: selectedCostCenterId || null
-            }));
-          } else if (selectedDoc.xmlBase64) {
-            const parsed = parseCfdiItems(selectedDoc.xmlBase64);
-            if (parsed.length > 0) {
-              mappedItems = parsed.map((item) => ({
-                productId: null,
-                variantId: null,
-                productName: item.productName || "Partida SAT",
-                variantTitle: item.variantTitle || "",
-                quantity: item.quantity || 1,
-                unitCost: item.unitCost || 0,
-                amount: item.amount || ((item.quantity || 1) * (item.unitCost || 0)),
-                lineKey: "",
-                costCenterId: selectedCostCenterId || null,
-                accountId: selectedExpenseOrIncomeAccountId,
-                locationId: selectedLocationId,
-                claveProdServ: item.claveProdServ || "",
-                unit: item.unidad || item.claveUnidad || "PZA"
-              }));
+          if (existingExpenseId) {
+            try {
+              const expSnap = await getDoc(doc(db, "companies", companyId, "expenses", existingExpenseId));
+              if (expSnap.exists()) {
+                existingExpenseDoc = expSnap.data();
+              }
+            } catch (e) {
+              console.warn("Could not fetch existing expense for inbox invoice:", e);
             }
           }
 
-          if (mappedItems.length === 0) {
-            mappedItems = [
-              {
-                productId: null,
-                variantId: null,
-                productName: selectedDoc.concept || "Gasto desde XML",
-                variantTitle: "",
-                quantity: 1,
-                unitCost: totalAmt,
-                amount: totalAmt,
-                lineKey: "",
-                costCenterId: selectedCostCenterId || null,
+          if (existingExpenseDoc && existingExpenseId) {
+            targetDocId = existingExpenseId;
+            targetDocType = "gasto_manual";
+            targetDocNumber = existingExpenseDoc.documentNumber || targetDocId;
+
+            const currentPaid = (existingExpenseDoc.paidAmount !== undefined ? existingExpenseDoc.paidAmount : selectedDoc.paidAmount) || 0;
+            const newPaid = currentPaid + totalAbsAmount;
+            const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
+
+            await updateDoc(doc(db, "companies", companyId, "expenses", existingExpenseId), {
+              paidAmount: increment(totalAbsAmount),
+              status: status,
+              updatedAt: new Date().toISOString()
+            });
+          } else {
+            // Create the main expense record in the "expenses" collection from XML
+            const newExpenseId = crypto.randomUUID();
+            const sequenceNum = await getNextSequence(companyId, "gastos");
+            const numericVal = parseInt(sequenceNum.split("-")[1]) || 0;
+            const locationName = locations.find(l => l.id === selectedLocationId)?.name || "";
+
+            const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
+            const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
+
+            let mappedItems: any[] = [];
+            if (selectedDoc.items && selectedDoc.items.length > 0) {
+              mappedItems = selectedDoc.items.map((item: any) => ({
+                ...item,
                 accountId: selectedExpenseOrIncomeAccountId,
-                locationId: selectedLocationId
+                locationId: selectedLocationId,
+                costCenterId: selectedCostCenterId || null
+              }));
+            } else if (selectedDoc.xmlBase64) {
+              const parsed = parseCfdiItems(selectedDoc.xmlBase64);
+              if (parsed.length > 0) {
+                mappedItems = parsed.map((item) => ({
+                  productId: null,
+                  variantId: null,
+                  productName: item.productName || "Partida SAT",
+                  variantTitle: item.variantTitle || "",
+                  quantity: item.quantity || 1,
+                  unitCost: item.unitCost || 0,
+                  amount: item.amount || ((item.quantity || 1) * (item.unitCost || 0)),
+                  lineKey: "",
+                  costCenterId: selectedCostCenterId || null,
+                  accountId: selectedExpenseOrIncomeAccountId,
+                  locationId: selectedLocationId,
+                  claveProdServ: item.claveProdServ || "",
+                  unit: item.unidad || item.claveUnidad || "PZA"
+                }));
               }
-            ];
+            }
+
+            if (mappedItems.length === 0) {
+              mappedItems = [
+                {
+                  productId: null,
+                  variantId: null,
+                  productName: selectedDoc.concept || "Gasto desde XML",
+                  variantTitle: "",
+                  quantity: 1,
+                  unitCost: totalAmt,
+                  amount: totalAmt,
+                  lineKey: "",
+                  costCenterId: selectedCostCenterId || null,
+                  accountId: selectedExpenseOrIncomeAccountId,
+                  locationId: selectedLocationId
+                }
+              ];
+            }
+
+            const expenseDoc = {
+              id: newExpenseId,
+              number: numericVal,
+              documentNumber: sequenceNum,
+              date: expenseDate || selectedDoc.date || new Date().toISOString().split("T")[0],
+              vendorId: selectedDoc.vendorId || null,
+              vendorName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
+              concept: selectedDoc.concept || "Gasto desde XML " + (selectedDoc.invoiceNumber || selectedDoc.uuid || ""),
+              amount: totalAmt,
+              vatRate: vatRate !== undefined ? vatRate : (selectedDoc.vatRate || 0.16),
+              locationId: selectedLocationId,
+              locationName,
+              accountId: selectedExpenseOrIncomeAccountId,
+              accountCode: selectedAccount?.code || "",
+              accountName: selectedAccount?.name || "",
+              paidAmount: totalAbsAmount,
+              status: status,
+              items: mappedItems,
+              satInvoiceId: selectedDoc.id,
+              xmlBase64: selectedDoc.xmlBase64 || null,
+              createdAt: new Date().toISOString(),
+              createdBy: user?.email || "Sistema (Conciliación)",
+              _type: "gasto_manual"
+            };
+
+            await setDoc(doc(db, "companies", companyId, "expenses", newExpenseId), expenseDoc);
+
+            targetDocId = newExpenseId;
+            targetDocType = "gasto_manual";
+            targetDocNumber = sequenceNum;
           }
-
-          const expenseDoc = {
-            id: newExpenseId,
-            number: numericVal,
-            documentNumber: sequenceNum,
-            date: expenseDate || selectedDoc.date || new Date().toISOString().split("T")[0],
-            vendorId: selectedDoc.vendorId || null,
-            vendorName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
-            concept: selectedDoc.concept || "Gasto desde XML " + (selectedDoc.invoiceNumber || selectedDoc.uuid || ""),
-            amount: totalAmt,
-            vatRate: vatRate !== undefined ? vatRate : (selectedDoc.vatRate || 0.16),
-            locationId: selectedLocationId,
-            locationName,
-            accountId: selectedExpenseOrIncomeAccountId,
-            accountCode: selectedAccount?.code || "",
-            accountName: selectedAccount?.name || "",
-            paidAmount: totalAbsAmount,
-            status: status,
-            items: mappedItems,
-            satInvoiceId: selectedDoc.id,
-            xmlBase64: selectedDoc.xmlBase64 || null,
-            createdAt: new Date().toISOString(),
-            createdBy: user?.email || "Sistema (Conciliación)",
-            _type: "gasto_manual"
-          };
-
-          await setDoc(doc(db, "companies", companyId, "expenses", newExpenseId), expenseDoc);
-
-          targetDocId = newExpenseId;
-          targetDocType = "gasto_manual";
-          targetDocNumber = sequenceNum;
         }
 
         // Loop and reconcile each transaction
@@ -1016,6 +1046,22 @@ export function ReconcilePanel({
             updates.status = docCollection === "facturas" ? "cobrada" : "paid";
           }
           await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
+
+          if (selectedDoc._type === "gasto_manual" && selectedDoc.satInvoiceId) {
+            try {
+              const totalAmt = selectedDoc.amount || selectedDoc.total || 0;
+              const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
+              await updateDoc(doc(db, "companies", companyId, "expenses_inbox", selectedDoc.satInvoiceId), {
+                paidAmount: increment(totalAbsAmount),
+                status: newPaid >= totalAmt - 0.01 ? "paid" : "pending",
+                reconciled: newPaid >= totalAmt - 0.01,
+                expenseId: selectedDoc.id,
+                linkedExpenseId: selectedDoc.id
+              });
+            } catch (err) {
+              console.warn("Could not sync linked expenses_inbox doc:", err);
+            }
+          }
         }
 
       } else if (reconcileMode === "direct") {

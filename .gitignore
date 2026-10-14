@@ -48,3 +48,4 @@ scratch/temp_token.txt
 # custom ignores
 /legacy-worktree
 /scratch
+/backups

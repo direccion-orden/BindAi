@@ -516,65 +516,90 @@ export function EditReconciliationModal({
           let targetDocId = selectedDoc.id;
 
           if (!isManual) {
-            const newExpenseId = crypto.randomUUID();
-            const sequenceNum = await getNextSequence(companyId, "gastos");
-            const numericVal = parseInt(sequenceNum.split("-")[1]) || 0;
-            const totalAmt = selectedDoc.total || 0;
-            const newPaid = (selectedDoc.paidAmount || 0) + absAmount;
-            const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
+            const existingExpenseId = selectedDoc.linkedExpenseId || selectedDoc.expenseId;
+            let existingExpenseDoc: any = null;
 
-            let mappedItems: any[] = [];
-            if (selectedDoc.items && selectedDoc.items.length > 0) {
-              mappedItems = selectedDoc.items;
-            } else if (selectedDoc.xmlBase64) {
-              const parsed = parseCfdiItems(selectedDoc.xmlBase64);
-              if (parsed.length > 0) {
-                mappedItems = parsed.map((item) => ({
-                  productId: null,
-                  variantId: null,
-                  productName: item.productName || "Partida SAT",
-                  quantity: item.quantity || 1,
-                  unitCost: item.unitCost || 0,
-                  amount: item.amount || (item.quantity || 1) * (item.unitCost || 0),
-                  claveProdServ: item.claveProdServ || "",
-                  unit: item.unidad || item.claveUnidad || "PZA",
-                }));
+            if (existingExpenseId) {
+              try {
+                const expSnap = await getDoc(doc(db, "companies", companyId, "expenses", existingExpenseId));
+                if (expSnap.exists()) {
+                  existingExpenseDoc = expSnap.data();
+                }
+              } catch (e) {
+                console.warn("Could not fetch existing expense in EditReconciliationModal:", e);
               }
             }
 
-            if (mappedItems.length === 0) {
-              mappedItems = [
-                {
-                  productName: selectedDoc.concept || "Gasto desde XML",
-                  quantity: 1,
-                  unitCost: totalAmt,
-                  amount: totalAmt,
-                },
-              ];
+            const totalAmt = selectedDoc.total || (existingExpenseDoc ? existingExpenseDoc.amount : 0);
+            const currentPaid = (existingExpenseDoc ? existingExpenseDoc.paidAmount : (selectedDoc.paidAmount || 0)) || 0;
+            const newPaid = currentPaid + absAmount;
+            const status = newPaid >= totalAmt - 0.01 ? "paid" : "pending";
+
+            if (existingExpenseDoc && existingExpenseId) {
+              targetDocId = existingExpenseId;
+              await updateDoc(doc(db, "companies", companyId, "expenses", existingExpenseId), {
+                paidAmount: increment(absAmount),
+                status: status,
+                updatedAt: new Date().toISOString()
+              });
+            } else {
+              const newExpenseId = crypto.randomUUID();
+              const sequenceNum = await getNextSequence(companyId, "gastos");
+              const numericVal = parseInt(sequenceNum.split("-")[1]) || 0;
+
+              let mappedItems: any[] = [];
+              if (selectedDoc.items && selectedDoc.items.length > 0) {
+                mappedItems = selectedDoc.items;
+              } else if (selectedDoc.xmlBase64) {
+                const parsed = parseCfdiItems(selectedDoc.xmlBase64);
+                if (parsed.length > 0) {
+                  mappedItems = parsed.map((item) => ({
+                    productId: null,
+                    variantId: null,
+                    productName: item.productName || "Partida SAT",
+                    quantity: item.quantity || 1,
+                    unitCost: item.unitCost || 0,
+                    amount: item.amount || (item.quantity || 1) * (item.unitCost || 0),
+                    claveProdServ: item.claveProdServ || "",
+                    unit: item.unidad || item.claveUnidad || "PZA",
+                  }));
+                }
+              }
+
+              if (mappedItems.length === 0) {
+                mappedItems = [
+                  {
+                    productName: selectedDoc.concept || "Gasto desde XML",
+                    quantity: 1,
+                    unitCost: totalAmt,
+                    amount: totalAmt,
+                  },
+                ];
+              }
+
+              const expenseDoc = {
+                id: newExpenseId,
+                number: numericVal,
+                documentNumber: sequenceNum,
+                date: selectedDoc.date || transaction.date || new Date().toISOString().split("T")[0],
+                vendorId: selectedDoc.vendorId || null,
+                vendorName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
+                concept: selectedDoc.concept || "Gasto desde XML " + (selectedDoc.invoiceNumber || selectedDoc.uuid || ""),
+                amount: totalAmt,
+                vatRate: selectedDoc.vatRate !== undefined ? selectedDoc.vatRate : 0.16,
+                paidAmount: absAmount,
+                status: status,
+                items: mappedItems,
+                satInvoiceId: selectedDoc.id,
+                xmlBase64: selectedDoc.xmlBase64 || null,
+                createdAt: new Date().toISOString(),
+                createdBy: user?.email || "Sistema (Conciliación)",
+                _type: "gasto_manual",
+              };
+
+              await setDoc(doc(db, "companies", companyId, "expenses", newExpenseId), expenseDoc);
+              targetDocId = newExpenseId;
             }
-
-            const expenseDoc = {
-              id: newExpenseId,
-              number: numericVal,
-              documentNumber: sequenceNum,
-              date: selectedDoc.date || transaction.date || new Date().toISOString().split("T")[0],
-              vendorId: selectedDoc.vendorId || null,
-              vendorName: selectedDoc.emisorName || selectedDoc.vendorName || "Proveedor",
-              concept: selectedDoc.concept || "Gasto desde XML " + (selectedDoc.invoiceNumber || selectedDoc.uuid || ""),
-              amount: totalAmt,
-              vatRate: selectedDoc.vatRate !== undefined ? selectedDoc.vatRate : 0.16,
-              paidAmount: absAmount,
-              status: status,
-              items: mappedItems,
-              satInvoiceId: selectedDoc.id,
-              xmlBase64: selectedDoc.xmlBase64 || null,
-              createdAt: new Date().toISOString(),
-              createdBy: user?.email || "Sistema (Conciliación)",
-              _type: "gasto_manual",
-            };
-
-            await setDoc(doc(db, "companies", companyId, "expenses", newExpenseId), expenseDoc);
-            targetDocId = newExpenseId;
           }
 
           // Update invoice / inbox paidAmount

@@ -290,15 +290,41 @@ export async function runClientAiReconciliation(
 
       if (isBankCharge) {
         const cleanBankName = bankName || "Institución Bancaria";
+        const bNameUpper = cleanBankName.toUpperCase().trim();
+
+        // Buscar estrictamente al proveedor oficial que corresponda a la institución de la cuenta actual
         const matchedBank = officialVendors.find(v => {
-          const vName = v.name.toUpperCase();
-          return vName.includes(cleanBankName.toUpperCase()) || 
-                 cleanBankName.toUpperCase().includes(vName) || 
-                 vName.includes("BBVA") || 
-                 vName.includes("BANREGIO") || 
-                 vName.includes("SANTANDER") || 
-                 vName.includes("BANORTE") || 
-                 vName.includes("CITIBANAMEX");
+          const vName = (v.name || "").toUpperCase().trim();
+          const vLegal = (v.legalName || "").toUpperCase().trim();
+          const combined = `${vName} ${vLegal}`;
+
+          if (bNameUpper.includes("BBVA") || bNameUpper.includes("BANCOMER")) {
+            return combined.includes("BBVA") || combined.includes("BANCOMER");
+          }
+          if (bNameUpper.includes("BANREGIO") || bNameUpper.includes("REGIONAL")) {
+            return combined.includes("BANREGIO") || combined.includes("BANCO REGIONAL");
+          }
+          if (bNameUpper.includes("BAJIO") || bNameUpper.includes("BANBAJIO")) {
+            return combined.includes("BAJIO") || combined.includes("BANBAJIO");
+          }
+          if (bNameUpper.includes("INBURSA")) {
+            return combined.includes("INBURSA");
+          }
+          if (bNameUpper.includes("SANTANDER")) {
+            return combined.includes("SANTANDER");
+          }
+          if (bNameUpper.includes("BANORTE")) {
+            return combined.includes("BANORTE");
+          }
+          if (bNameUpper.includes("CITIBANAMEX") || bNameUpper.includes("BANAMEX")) {
+            return combined.includes("CITIBANAMEX") || combined.includes("BANAMEX");
+          }
+          if (bNameUpper.includes("AMEX") || bNameUpper.includes("AMERICAN EXPRESS")) {
+            return combined.includes("AMERICAN EXPRESS") || combined.includes("AMEX");
+          }
+
+          return (bNameUpper.length >= 4 && combined.includes(bNameUpper)) ||
+                 (vName.length >= 4 && bNameUpper.includes(vName));
         });
 
         let cleanConceptDesc = "Comisiones y servicios bancarios";
@@ -322,7 +348,7 @@ export async function runClientAiReconciliation(
 
         return {
           vendorId: matchedBank ? matchedBank.id : "",
-          vendorName: matchedBank ? matchedBank.name : cleanBankName,
+          vendorName: matchedBank ? (matchedBank.name || matchedBank.legalName || cleanBankName) : cleanBankName,
           vendorRfc: matchedBank ? matchedBank.rfc : "",
           concept: cleanConceptDesc
         };

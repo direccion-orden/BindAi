@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { doc, getDoc, updateDoc, collection, getDocs, setDoc, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Package, ArrowLeft, Save, Edit2, Trash2, Search, Truck, FileText, CheckCircle2, XCircle, DollarSign, Percent, MessageSquare, ChevronDown, Receipt, X } from "lucide-react";
+import { Loader2, Package, ArrowLeft, Save, Edit2, Trash2, Search, Truck, FileText, CheckCircle2, XCircle, DollarSign, Percent, MessageSquare, ChevronDown, Receipt, X, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -382,6 +382,102 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
   const displayTax = round2(isEditing || isItemsModified ? calcTotals.tax : (order.tax !== undefined ? order.tax : calcTotals.tax));
   const displayTotal = round2(isEditing || isItemsModified ? calcTotals.total : (order.totalAmount !== undefined ? order.totalAmount : calcTotals.total));
 
+  const handleExportItemsToExcel = () => {
+    if (!order || !order.items || order.items.length === 0) {
+      alert("Este pedido no contiene partidas para exportar.");
+      return;
+    }
+
+    try {
+      const escapeCSVField = (val: any) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val);
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return `"${str}"`;
+      };
+
+      const folio = order.orderNumber || order.id || "pedido";
+      const cliente = order.clientName || "N/A";
+      const fecha = order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' }) : "N/A";
+      const sucursal = order.locationName || locations.find(l => l.id === order.locationId)?.name || "N/A";
+
+      const headers = [
+        "# Partida",
+        "SKU / Código",
+        "Producto / Concepto",
+        "Variante",
+        "Descripción",
+        "Cantidad",
+        "Precio Unitario",
+        "Descuento (%)",
+        "Descuento ($)",
+        "Importe",
+        "Notas / Comentarios"
+      ];
+
+      const rows = order.items.map((item: any, idx: number) => {
+        const qty = Number(item.quantity) || 0;
+        const price = Number(item.unitPrice) || 0;
+        const discPct = Number(item.discountPercentage) || 0;
+        const discAmt = qty * price * (discPct / 100);
+        const subtotal = qty * price * (1 - discPct / 100);
+
+        return [
+          idx + 1,
+          escapeCSVField(item.sku || ""),
+          escapeCSVField(item.productName || item.description || "Sin descripción"),
+          escapeCSVField(item.variantTitle || ""),
+          escapeCSVField(item.description || ""),
+          qty,
+          price.toFixed(2),
+          discPct.toFixed(2),
+          discAmt.toFixed(2),
+          subtotal.toFixed(2),
+          escapeCSVField(item.comment || "")
+        ].join(",");
+      });
+
+      const metadataRows = [
+        ["No. Pedido:", escapeCSVField(folio)].join(","),
+        ["Cliente:", escapeCSVField(cliente)].join(","),
+        ["Sucursal:", escapeCSVField(sucursal)].join(","),
+        ["Fecha:", escapeCSVField(fecha)].join(","),
+        ["Estatus:", escapeCSVField(order.status || "")].join(","),
+        ""
+      ];
+
+      const totalsRows = [
+        "",
+        ["", "", "", "", "", "", "", "", "Subtotal:", displaySubtotal.toFixed(2), ""].join(","),
+        ["", "", "", "", "", "", "", "", "Descuento Total:", displayDiscount.toFixed(2), ""].join(","),
+        ["", "", "", "", "", "", "", "", "IVA / Impuestos:", displayTax.toFixed(2), ""].join(","),
+        ["", "", "", "", "", "", "", "", "Total:", displayTotal.toFixed(2), ""].join(",")
+      ];
+
+      const csvContent = "\uFEFF" + [
+        ...metadataRows,
+        headers.join(","),
+        ...rows,
+        ...totalsRows
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `partidas_pedido_${folio}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Error exporting order items to CSV:", error);
+      alert("Hubo un error al exportar las partidas.");
+    }
+  };
+
   return (
     <div className="flex flex-col space-y-6 max-w-5xl mx-auto pb-10">
       <div className="flex justify-between items-start">
@@ -432,6 +528,14 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
                         Ver PDF
                       </span>
                     </Link>
+
+                    <button 
+                      onClick={() => { setIsActionsOpen(false); handleExportItemsToExcel(); }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm font-medium text-slate-700 flex items-center gap-2 cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                      Exportar a Excel
+                    </button>
                     
                     {(order.status === 'por_surtir' || order.status === 'pagado') && (
                       <>
@@ -749,7 +853,21 @@ export default function PedidoDetallePage({ params: paramsPromise }: { params: P
               <h3 className="font-semibold text-lg flex items-center gap-2 text-slate-800">
                 <Package className="w-5 h-5 text-indigo-600" /> Partidas del Pedido
               </h3>
-              <span className="text-sm text-slate-500 font-medium">{(order.items || []).length} partidas</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-500 font-medium">{(order.items || []).length} partidas</span>
+                {(order.items || []).length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportItemsToExcel}
+                    className="h-8 gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-200"
+                    title="Exportar partidas a Excel"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    Excel
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 p-5 overflow-y-auto space-y-3">

@@ -10,7 +10,6 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
-  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   const [openCategories, setOpenCategories] = useState<string[]>([]);
 
   const effectiveCollapsed = isCollapsed && !isHovered;
@@ -18,16 +17,10 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
   const toggleCategory = (title: string) => {
     if (isCollapsed) {
       setIsCollapsed(false);
-      if (!openCategories.includes(title)) {
-         setOpenCategories([...openCategories, title]);
-      }
-      return;
     }
-    if (openCategories.includes(title)) {
-      setOpenCategories(openCategories.filter(t => t !== title));
-    } else {
-      setOpenCategories([...openCategories, title]);
-    }
+    setOpenCategories(prev => 
+      prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]
+    );
   };
 
   const categories = [
@@ -142,11 +135,6 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
     }
   ];
 
-  // Reset hover state when pathname changes
-  useEffect(() => {
-    setHoveredCategory(null);
-  }, [pathname]);
-
   return (
     <>
       {isMobileOpen && (
@@ -157,10 +145,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
       )}
       <aside 
         onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => {
-          setIsHovered(false);
-          setHoveredCategory(null);
-        }}
+        onMouseLeave={() => setIsHovered(false)}
         className={`fixed top-16 z-[60] md:z-[100] border-r bg-card/70 backdrop-blur-lg shadow-xl h-[calc(100vh-4rem)] md:translate-x-0 md:flex flex-col overflow-y-auto no-scrollbar transition-all duration-300 ease-in-out ${
         isMobileOpen ? "translate-x-0 w-64" : (effectiveCollapsed ? "w-16 -translate-x-full md:translate-x-0" : "w-64 -translate-x-full md:translate-x-0")
       }`}>
@@ -220,26 +205,16 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
 
           {categories.map((cat, idx) => {
           const isOpen = openCategories.includes(cat.title);
-          const isExpanded = isOpen || hoveredCategory === cat.title;
           const isCategoryActive = cat.items.some((item: any) => 
             item.exact ? pathname === item.href : pathname === item.href || pathname?.startsWith(item.href + "/")
           );
           return (
-            <div 
-              key={idx} 
-              className="space-y-1 transition-all duration-200"
-              onMouseEnter={() => setHoveredCategory(cat.title)}
-              onMouseLeave={() => {
-                if (hoveredCategory === cat.title) {
-                  setHoveredCategory(null);
-                }
-              }}
-            >
+            <div key={idx} className="space-y-1 transition-all duration-200">
               <div 
                 className={`flex items-center gap-2 py-2 px-3 text-xs font-bold uppercase tracking-wider cursor-pointer transition-colors rounded-md ${
                   isCategoryActive
                     ? "bg-accent/15 text-accent shadow-sm font-bold"
-                    : (hoveredCategory === cat.title ? "bg-muted text-foreground" : "text-foreground hover:bg-muted/50")
+                    : "text-foreground hover:bg-muted/50"
                 } ${effectiveCollapsed ? 'justify-center px-0' : 'justify-between'}`}
                 onClick={() => toggleCategory(cat.title)}
                 title={effectiveCollapsed ? cat.title : undefined}
@@ -253,11 +228,11 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
                   )}
                 </div>
                 {!effectiveCollapsed && (
-                  isExpanded ? <ChevronDown className="w-4 h-4 opacity-50 shrink-0" /> : <ChevronRight className="w-4 h-4 opacity-50 shrink-0" />
+                  isOpen ? <ChevronDown className="w-4 h-4 opacity-50 shrink-0" /> : <ChevronRight className="w-4 h-4 opacity-50 shrink-0" />
                 )}
               </div>
               
-              {isExpanded && !effectiveCollapsed && (
+              {isOpen && !effectiveCollapsed && (
                 cat.items.length > 0 ? (
                   <nav className="space-y-1 pl-3 transition-all duration-150">
                     {cat.items.map((item: any) => {
@@ -269,7 +244,6 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
                           onCloseMobile?.();
                           setIsCollapsed(true);
                           setIsHovered(false);
-                          setHoveredCategory(null);
                         }}>
                           <div className={`flex items-center px-3 py-2 rounded-md text-sm transition-colors ${
                             isActive 

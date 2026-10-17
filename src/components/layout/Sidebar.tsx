@@ -37,6 +37,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
       icon: Target,
       items: [
         { href: "/planeacion-estrategica", label: "Planeación Estratégica", icon: TrendingUp },
+        { href: "/planeacion-estrategica/simulador", label: "Simulador de Crecimiento", icon: LineChart },
         { href: "/ventas/metas", label: "Metas", icon: Target },
       ]
     },
@@ -48,8 +49,8 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/proveedores", label: "Proveedores", icon: Truck },
         { href: "/compras/ordenes", label: "Órdenes de Compra", icon: FileText },
         { href: "/compras/recepciones", label: "Recepción de Mercancía", icon: Truck },
-        { href: "/gastos", label: "Gastos (SAT)", icon: Receipt },
-        { href: "/compras/gastos", label: "Crear Gastos", icon: PlusCircle },
+        { href: "/gastos", label: "Facturas de Gastos", icon: Receipt },
+        { href: "/compras/gastos", label: "Gastos", icon: PlusCircle },
         { href: "/gastos/pendientes", label: "Gastos Pendientes", icon: ClipboardList },
       ]
     },
@@ -189,20 +190,6 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
             </Link>
           </div>
 
-          {/* Top-Level Vista Móvil Link */}
-          <div className="space-y-1">
-            <Link href="/movil" onClick={onCloseMobile}>
-              <div className={`flex items-center px-3 py-2 rounded-md text-sm transition-colors ${
-                pathname?.startsWith("/movil")
-                  ? "bg-accent/15 text-accent font-medium shadow-sm"
-                  : "text-foreground hover:bg-muted"
-              } ${effectiveCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={effectiveCollapsed ? "Vista Móvil" : undefined}>
-                <Smartphone className={`h-5 w-5 ${pathname?.startsWith("/movil") ? 'text-accent' : 'text-muted-foreground'}`} />
-                {!effectiveCollapsed && <span>Vista Móvil</span>}
-              </div>
-            </Link>
-          </div>
-
           {categories.map((cat, idx) => {
           const isOpen = openCategories.includes(cat.title);
           const isCategoryActive = cat.items.some((item: any) => 
@@ -268,6 +255,20 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
             </div>
           );
         })}
+
+        {/* Vista Móvil Link at bottom */}
+        <div className="space-y-1 pt-4 border-t">
+          <Link href="/movil" onClick={onCloseMobile}>
+            <div className={`flex items-center px-3 py-2 rounded-md text-sm transition-colors ${
+              pathname?.startsWith("/movil")
+                ? "bg-accent/15 text-accent font-medium shadow-sm"
+                : "text-foreground hover:bg-muted"
+            } ${effectiveCollapsed ? 'justify-center px-0' : 'gap-3'}`} title={effectiveCollapsed ? "Vista Móvil" : undefined}>
+              <Smartphone className={`h-5 w-5 ${pathname?.startsWith("/movil") ? 'text-accent' : 'text-muted-foreground'}`} />
+              {!effectiveCollapsed && <span>Vista Móvil</span>}
+            </div>
+          </Link>
+        </div>
       </div>
       </aside>
     </>

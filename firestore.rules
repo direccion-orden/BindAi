@@ -252,6 +252,9 @@ service cloud.firestore {
       match /strategic_comments/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /strategic_scenarios/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
     }
     
     // Por seguridad, cualquier otra colecciÃƒÆ’Ã‚Â³n global queda bloqueada

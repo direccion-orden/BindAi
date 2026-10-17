@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, getDoc, writeBatch, getDocs, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X, ShieldCheck, CheckSquare, Square, Receipt, Layers, Package, RefreshCw, Sparkles, Landmark } from "lucide-react";
+import { Loader2, DollarSign, PlusCircle, Search, Calendar, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Clock, Eye, X, ShieldCheck, CheckSquare, Square, Receipt, Layers, Package, RefreshCw, Sparkles, Landmark, Check, Save, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 import { FormalizeProvisionalModal } from "./components/FormalizeProvisionalModal";
 import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
+import { TableSearchSelect, TableSearchSelectItem } from "@/components/ui/table-search-select";
 import Link from "next/link";
 
 interface ExpenseItemPreview {
@@ -68,6 +69,9 @@ function ExpenseFolioWithPreview({
 
   // Base synchronous items extraction
   const syncItems: ExpenseItemPreview[] = React.useMemo(() => {
+    // Si el popover no está abierto, no hacer nada de trabajo ni parseo XML
+    if (!isOpen) return [];
+
     // 1. Si es un gasto provisional sin vínculo SAT, sus partidas son inmediatamente las de exp.items o su concepto bancario
     if (isProv && !hasPotentialSatLink) {
       if (Array.isArray(exp.items) && exp.items.length > 0) {
@@ -130,7 +134,7 @@ function ExpenseFolioWithPreview({
     }
 
     return [];
-  }, [exp, isProv, hasPotentialSatLink]);
+  }, [isOpen, exp, isProv, hasPotentialSatLink]);
 
   // Si no tiene partidas ni XML local, pero tiene vínculo SAT y el usuario abre el popup, buscar en expenses_inbox
   useEffect(() => {
@@ -234,6 +238,7 @@ function ExpenseFolioWithPreview({
   }, [isOpen, syncItems.length, asyncItems, exp, companyId, hasPotentialSatLink, isProv]);
 
   const items: ExpenseItemPreview[] = useMemo(() => {
+    if (!isOpen) return [];
     if (syncItems.length > 0) return syncItems;
     if (asyncItems && asyncItems.length > 0) return asyncItems;
     return [
@@ -245,7 +250,7 @@ function ExpenseFolioWithPreview({
         importe: Number(exp.amount || 0)
       }
     ];
-  }, [syncItems, asyncItems, exp, isProv]);
+  }, [isOpen, syncItems, asyncItems, exp, isProv]);
 
   return (
     <div 
@@ -345,6 +350,296 @@ function ExpenseFolioWithPreview({
   );
 }
 
+interface ExpenseTableRowProps {
+  exp: any;
+  isSelected: boolean;
+  effective: {
+    locationId: string;
+    accountId: string;
+    costCenterId: string;
+    isNonDeductible: boolean;
+    isDirty: boolean;
+  };
+  isSaving: boolean;
+  pendingBalance: number;
+  outflowInfo?: { bankIds: Set<string>; bankNames: Set<string> };
+  locations: any[];
+  accountItems: TableSearchSelectItem[];
+  costCenterItems: TableSearchSelectItem[];
+  bankAccounts: any[];
+  formatMoney: (amount: number) => string;
+  companyId?: string | null;
+  onToggleSelect: (id: string) => void;
+  onFieldChange: (id: string, field: string, val: any) => void;
+  onSave: (exp: any) => void;
+  onPay: (exp: any) => void;
+  onCancel: (id: string, status: string) => void;
+}
+
+const ExpenseTableRow = React.memo(function ExpenseTableRow({
+  exp,
+  isSelected,
+  effective,
+  isSaving,
+  pendingBalance,
+  outflowInfo,
+  locations,
+  accountItems,
+  costCenterItems,
+  bankAccounts,
+  formatMoney,
+  companyId,
+  onToggleSelect,
+  onFieldChange,
+  onSave,
+  onPay,
+  onCancel,
+}: ExpenseTableRowProps) {
+  const isProv = Boolean(
+    exp.isProvisional || 
+    exp.isPendingFiscalInvoice || 
+    (exp.documentNumber && exp.documentNumber.startsWith("PROV-"))
+  );
+  const isDirty = effective.isDirty;
+  const displayDate = exp.date ? exp.date.split("T")[0] : "-";
+  const rawDocNum = exp.documentNumber || "-";
+  const displayDocNum = rawDocNum.length > 15 ? `${rawDocNum.substring(0, 15)}...` : rawDocNum;
+
+  // Banks names derivation
+  const bankDisplay = React.useMemo(() => {
+    const names = new Set<string>();
+    if (outflowInfo) {
+      outflowInfo.bankIds.forEach(id => {
+        const b = bankAccounts.find(acc => acc.id === id);
+        if (b?.Name || b?.name) names.add(b.Name || b.name);
+      });
+      outflowInfo.bankNames.forEach(n => { if (n) names.add(n); });
+    }
+    if (names.size === 0 && exp.bankAccountId) {
+      const directBank = bankAccounts.find(b => b.id === exp.bankAccountId);
+      if (directBank?.Name || directBank?.name) names.add(directBank.Name || directBank.name);
+    }
+    return Array.from(names);
+  }, [outflowInfo, exp.bankAccountId, bankAccounts]);
+
+  return (
+    <tr className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-indigo-50/40' : isDirty ? 'bg-amber-50/30' : ''}`}>
+      <td className="px-3 py-2.5 text-center">
+        {exp.status !== "cancelado" ? (
+          <button
+            type="button"
+            onClick={() => onToggleSelect(exp.id)}
+            className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+            title={isSelected ? "Deseleccionar gasto" : "Seleccionar gasto"}
+          >
+            {isSelected ? (
+              <CheckSquare className="w-4 h-4 text-indigo-600" />
+            ) : (
+              <Square className="w-4 h-4 text-slate-300" />
+            )}
+          </button>
+        ) : null}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap text-slate-600 text-xs font-medium">
+        {displayDate}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap font-medium text-slate-700 text-xs">
+        <ExpenseFolioWithPreview 
+          exp={exp}
+          rawDocNum={rawDocNum}
+          displayDocNum={displayDocNum}
+          formatMoney={formatMoney}
+          companyId={companyId}
+        />
+      </td>
+      <td className="px-3 py-2.5 font-medium text-slate-900 max-w-[180px] truncate text-xs" title={exp.vendorName}>
+        {exp.vendorName}
+      </td>
+
+      {/* Columna Sucursal */}
+      <td className="px-2 py-2.5">
+        <select
+          value={effective.locationId}
+          onChange={(e) => onFieldChange(exp.id, "locationId", e.target.value)}
+          className={`h-8 w-full text-xs rounded-md border px-2 py-1 outline-none font-medium transition-colors ${
+            isDirty && effective.locationId !== (exp.locationId || "")
+              ? "bg-amber-50 border-amber-300 text-amber-950 font-semibold"
+              : "bg-white border-slate-200 text-slate-800 hover:border-slate-300"
+          }`}
+        >
+          <option value="">(Sin asignar)</option>
+          {locations.map(loc => (
+            <option key={loc.id} value={loc.id}>
+              {loc.name || loc.Name || loc.id}
+            </option>
+          ))}
+        </select>
+      </td>
+
+      {/* Columna Cuenta Contable con buscador */}
+      <td className="px-2 py-2.5">
+        <TableSearchSelect
+          value={effective.accountId}
+          onChange={(id) => onFieldChange(exp.id, "accountId", id)}
+          items={accountItems}
+          placeholder="Seleccionar cuenta..."
+          emptyLabel="(Sin cuenta contable)"
+          highlightChanged={isDirty && effective.accountId !== (exp.accountId || "")}
+          minWidth={280}
+        />
+      </td>
+
+      {/* Columna Centro de Costos con buscador */}
+      <td className="px-2 py-2.5">
+        <TableSearchSelect
+          value={effective.costCenterId}
+          onChange={(id) => onFieldChange(exp.id, "costCenterId", id)}
+          items={costCenterItems}
+          placeholder="Centro de costos..."
+          emptyLabel="(Sin centro de costos)"
+          highlightChanged={isDirty && effective.costCenterId !== (exp.costCenterId || "")}
+          minWidth={240}
+        />
+      </td>
+
+      {/* Columna Tipo Fiscal (Deducibilidad) */}
+      <td className="px-2 py-2.5">
+        <select
+          value={effective.isNonDeductible ? "no_deducible" : "deducible"}
+          onChange={(e) => onFieldChange(exp.id, "isNonDeductible", e.target.value === "no_deducible")}
+          className={`h-8 w-full text-xs rounded-md border px-2 py-1 outline-none font-bold transition-colors ${
+            effective.isNonDeductible
+              ? "bg-slate-100 border-slate-300 text-slate-700"
+              : "bg-emerald-50 border-emerald-300 text-emerald-800"
+          }`}
+        >
+          <option value="deducible">Deducible</option>
+          <option value="no_deducible">No Deducible</option>
+        </select>
+      </td>
+
+      {/* Columna Cuenta Bancaria */}
+      <td className="px-2 py-2.5 text-xs">
+        {bankDisplay.length === 0 ? (
+          <span className="text-slate-400 font-mono text-[11px]">-</span>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {bankDisplay.map((name, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full max-w-[130px] truncate" title={name}>
+                <Landmark className="w-2.5 h-2.5 shrink-0 text-indigo-600" />
+                <span className="truncate">{name}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </td>
+
+      {/* Columna Estatus */}
+      <td className="px-2 py-2.5 text-center">
+        {effective.isNonDeductible ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-300">
+            No Deducible
+          </span>
+        ) : isProv ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold border border-amber-300 animate-pulse">
+            Provisional
+          </span>
+        ) : exp.isRecurring ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold border border-purple-200">
+            Recurrente
+          </span>
+        ) : exp.status === "paid" ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+            Pagado
+          </span>
+        ) : exp.status === "cancelado" ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-200">
+            Cancelado
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200">
+            Pendiente
+          </span>
+        )}
+      </td>
+
+      {/* Montos */}
+      <td className="px-3 py-2.5 text-right font-bold text-slate-900 text-xs">
+        {formatMoney(exp.amount)}
+      </td>
+      <td className="px-2 py-2.5 text-right text-emerald-600 font-semibold text-xs">
+        {formatMoney(exp.paidAmount || 0)}
+      </td>
+      <td className={`px-2 py-2.5 text-right font-bold text-xs ${pendingBalance > 0.01 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
+        {formatMoney(pendingBalance)}
+      </td>
+
+      {/* Acciones */}
+      <td className="px-3 py-2.5 text-center whitespace-nowrap">
+        <div className="flex items-center justify-center gap-1.5 flex-nowrap min-w-max">
+          {/* Botón Guardar individual */}
+          <Button 
+            type="button" 
+            size="sm"
+            disabled={isSaving}
+            onClick={() => onSave(exp)}
+            className={`h-8 px-2.5 text-xs font-bold gap-1 transition-all shadow-xs ${
+              isDirty
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse"
+                : isProv
+                ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+            }`}
+            title="Guardar asignaciones de este gasto"
+          >
+            {isSaving ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Check className="w-3.5 h-3.5" />
+            )}
+            <span>Guardar</span>
+          </Button>
+
+          <Link href={`/gastos/${exp.id}`} target="_blank">
+            <Button 
+              variant="outline" 
+              size="icon"
+              className="h-8 w-8 bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-800 shrink-0"
+              title="Ver Detalle"
+            >
+              <Eye className="w-4 h-4 text-indigo-600" />
+            </Button>
+          </Link>
+
+          {pendingBalance > 0.01 && exp.status !== "cancelado" && (
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={() => onPay(exp)}
+              className="h-8 w-8 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 shrink-0"
+              title="Registrar Pago"
+            >
+              <DollarSign className="w-4 h-4 font-bold" />
+            </Button>
+          )}
+
+          {exp.status !== "cancelado" && (
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={() => onCancel(exp.id, exp.status)}
+              className="h-8 w-8 bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 hover:text-rose-800 shrink-0"
+              title="Cancelar Gasto"
+            >
+              <X className="w-4 h-4 font-bold" />
+            </Button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+});
+
 export default function GastosManualesPage() {
   const { companyId, user } = useAuth();
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -360,6 +655,34 @@ export default function GastosManualesPage() {
 
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [outflowsByExpense, setOutflowsByExpense] = useState<Map<string, { bankIds: Set<string>; bankNames: Set<string> }>>(new Map());
+
+  // Catalogs for inline assignment
+  const [locations, setLocations] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [costCenters, setCostCenters] = useState<any[]>([]);
+
+  // Inline row edits: { [expenseId]: { locationId?, accountId?, costCenterId?, isNonDeductible?, isDirty? } }
+  const [rowEdits, setRowEdits] = useState<Record<string, {
+    locationId?: string;
+    accountId?: string;
+    costCenterId?: string;
+    isNonDeductible?: boolean;
+    isDirty?: boolean;
+  }>>({});
+
+  const [savingRowId, setSavingRowId] = useState<string | null>(null);
+  const [savingBatch, setSavingBatch] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
+  // Batch assignment inputs
+  const [batchLocationId, setBatchLocationId] = useState<string>("");
+  const [batchAccountId, setBatchAccountId] = useState<string>("");
+  const [batchCostCenterId, setBatchCostCenterId] = useState<string>("");
+  const [batchNonDeductible, setBatchNonDeductible] = useState<string>("keep");
 
   // Modals State
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -599,12 +922,298 @@ export default function GastosManualesPage() {
       }
     );
 
+    const unsubscribeLocations = onSnapshot(
+      query(collection(db, "companies", companyId, "locations")),
+      (snapshot) => {
+        setLocations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    );
+
+    const unsubscribeAccounts = onSnapshot(
+      query(collection(db, "companies", companyId, "accounts")),
+      (snapshot) => {
+        setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    );
+
+    const unsubscribeCostCenters = onSnapshot(
+      query(collection(db, "companies", companyId, "cost_centers")),
+      (snapshot) => {
+        setCostCenters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    );
+
     return () => {
       unsubscribeExpenses();
       unsubscribeBanks();
       unsubscribeOutflows();
+      unsubscribeLocations();
+      unsubscribeAccounts();
+      unsubscribeCostCenters();
     };
   }, [companyId]);
+
+  // Items for dropdowns & search selects
+  const locationItems: TableSearchSelectItem[] = useMemo(() => {
+    return locations.map(l => ({ id: l.id, name: l.name || l.Name || l.id }));
+  }, [locations]);
+
+  const costCenterItems: TableSearchSelectItem[] = useMemo(() => {
+    return costCenters.map(c => ({
+      id: c.id,
+      name: `${c.code ? c.code + " - " : ""}${c.name || c.Name || c.id}`,
+      code: c.code || "",
+      subtitle: c.description || ""
+    }));
+  }, [costCenters]);
+
+  const accountItems: TableSearchSelectItem[] = useMemo(() => {
+    return [...accounts]
+      .sort((a, b) => {
+        const aIsExp = a.type === "GASTOS" || a.type === "COSTOS" || (a.code && (a.code.startsWith("60") || a.code.startsWith("50")));
+        const bIsExp = b.type === "GASTOS" || b.type === "COSTOS" || (b.code && (b.code.startsWith("60") || b.code.startsWith("50")));
+        if (aIsExp && !bIsExp) return -1;
+        if (!aIsExp && bIsExp) return 1;
+        return (a.code || "").localeCompare(b.code || "");
+      })
+      .map(a => ({
+        id: a.id,
+        name: `${a.code ? a.code + " - " : ""}${a.name || a.Name || a.id}`,
+        code: a.code || "",
+        subtitle: a.type || ""
+      }));
+  }, [accounts]);
+
+  // Helper to get active editable values for a row
+  const getEffectiveRow = useCallback((exp: any) => {
+    const edit = rowEdits[exp.id] || {};
+    return {
+      locationId: edit.locationId !== undefined ? edit.locationId : (exp.locationId || ""),
+      accountId: edit.accountId !== undefined ? edit.accountId : (exp.accountId || ""),
+      costCenterId: edit.costCenterId !== undefined ? edit.costCenterId : (exp.costCenterId || ""),
+      isNonDeductible: edit.isNonDeductible !== undefined ? edit.isNonDeductible : Boolean(exp.isNonDeductible),
+      isDirty: Boolean(edit.isDirty)
+    };
+  }, [rowEdits]);
+
+  const handleRowFieldChange = useCallback((expenseId: string, field: string, val: any) => {
+    setRowEdits(prev => {
+      const existing = prev[expenseId] || {};
+      return {
+        ...prev,
+        [expenseId]: {
+          ...existing,
+          [field]: val,
+          isDirty: true
+        }
+      };
+    });
+  }, []);
+
+  const dirtyExpenseIds = useMemo(() => {
+    return Object.keys(rowEdits).filter(id => rowEdits[id]?.isDirty);
+  }, [rowEdits]);
+
+  // Guardar un gasto individual
+  const handleSaveSingleRow = async (exp: any) => {
+    if (!companyId) return;
+    const effective = getEffectiveRow(exp);
+
+    setSavingRowId(exp.id);
+    try {
+      const selectedLoc = locations.find(l => l.id === effective.locationId);
+      const selectedCC = costCenters.find(c => c.id === effective.costCenterId);
+      const selectedAcc = accounts.find(a => a.id === effective.accountId);
+
+      const now = new Date().toISOString();
+      const batch = writeBatch(db);
+      const expRef = doc(db, "companies", companyId, "expenses", exp.id);
+
+      const updatePayload: any = {
+        locationId: effective.locationId || "",
+        locationName: selectedLoc?.name || selectedLoc?.Name || exp.locationName || "",
+        accountId: effective.accountId || "",
+        accountCode: selectedAcc?.code || exp.accountCode || "",
+        accountName: selectedAcc?.name || exp.accountName || "",
+        costCenterId: effective.costCenterId || null,
+        costCenterName: selectedCC?.name || selectedCC?.Name || "",
+        isNonDeductible: Boolean(effective.isNonDeductible),
+        isProvisional: false,
+        isPendingFiscalInvoice: false,
+        reviewedBy: user?.email || "Guardado en Tabla",
+        reviewedAt: now,
+        updatedAt: now
+      };
+
+      batch.update(expRef, updatePayload);
+
+      // Actualizar póliza contable asociada si existe
+      if (effective.accountId && selectedAcc) {
+        try {
+          const qJournal = query(
+            collection(db, "companies", companyId, "journal_entries"),
+            where("documentId", "==", exp.id)
+          );
+          const snapJournal = await getDocs(qJournal);
+          snapJournal.forEach(jDoc => {
+            const jData = jDoc.data();
+            const entries = Array.isArray(jData.entries) ? [...jData.entries] : [];
+            let changed = false;
+            entries.forEach(entry => {
+              if (entry.debit > 0) {
+                entry.accountCode = selectedAcc.code || entry.accountCode;
+                entry.accountName = selectedAcc.name || entry.accountName;
+                changed = true;
+              }
+            });
+            if (changed) {
+              batch.update(jDoc.ref, {
+                entries,
+                updatedAt: now
+              });
+            }
+          });
+        } catch (jErr) {
+          console.warn("Could not update journal entry:", jErr);
+        }
+      }
+
+      await batch.commit();
+
+      setRowEdits(prev => {
+        const copy = { ...prev };
+        delete copy[exp.id];
+        return copy;
+      });
+
+      setActionFeedback(`¡Gasto ${exp.documentNumber || exp.id} guardado con éxito!`);
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err: any) {
+      console.error("Error al guardar gasto:", err);
+      alert(`Error al guardar: ${err.message || "Error desconocido"}`);
+    } finally {
+      setSavingRowId(null);
+    }
+  };
+
+  // Guardar en lote los seleccionados (aplicando valores comunes si se especificaron)
+  const handleSaveBatch = async (applyCommonValues: boolean = false) => {
+    if (!companyId || selectedExpenseIds.length === 0) return;
+    setSavingBatch(true);
+    try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      const commonLoc = locations.find(l => l.id === batchLocationId);
+      const commonCC = costCenters.find(c => c.id === batchCostCenterId);
+      const commonAcc = accounts.find(a => a.id === batchAccountId);
+
+      for (const expId of selectedExpenseIds) {
+        const exp = expenses.find(e => e.id === expId);
+        if (!exp) continue;
+
+        const effective = getEffectiveRow(exp);
+        const expRef = doc(db, "companies", companyId, "expenses", expId);
+
+        const finalLocationId = applyCommonValues && batchLocationId ? batchLocationId : effective.locationId;
+        const finalLoc = locations.find(l => l.id === finalLocationId);
+
+        const finalAccountId = applyCommonValues && batchAccountId ? batchAccountId : effective.accountId;
+        const finalAcc = accounts.find(a => a.id === finalAccountId);
+
+        const finalCostCenterId = applyCommonValues && batchCostCenterId !== "" ? batchCostCenterId : effective.costCenterId;
+        const finalCC = costCenters.find(c => c.id === finalCostCenterId);
+
+        let finalNonDeductible = effective.isNonDeductible;
+        if (applyCommonValues && batchNonDeductible !== "keep") {
+          finalNonDeductible = batchNonDeductible === "no_deducible";
+        }
+
+        const updatePayload: any = {
+          locationId: finalLocationId || "",
+          locationName: finalLoc?.name || finalLoc?.Name || exp.locationName || "",
+          accountId: finalAccountId || "",
+          accountCode: finalAcc?.code || exp.accountCode || "",
+          accountName: finalAcc?.name || exp.accountName || "",
+          costCenterId: finalCostCenterId || null,
+          costCenterName: finalCC?.name || finalCC?.Name || "",
+          isNonDeductible: Boolean(finalNonDeductible),
+          isProvisional: false,
+          isPendingFiscalInvoice: false,
+          reviewedBy: user?.email || "Guardado en Lote",
+          reviewedAt: now,
+          updatedAt: now
+        };
+
+        batch.update(expRef, updatePayload);
+      }
+
+      await batch.commit();
+
+      setRowEdits(prev => {
+        const copy = { ...prev };
+        selectedExpenseIds.forEach(id => delete copy[id]);
+        return copy;
+      });
+
+      setActionFeedback(`¡${selectedExpenseIds.length} gastos guardados con éxito!`);
+      setTimeout(() => setActionFeedback(null), 3500);
+      setSelectedExpenseIds([]);
+    } catch (err: any) {
+      console.error("Error al guardar en lote:", err);
+      alert(`Error al guardar en lote: ${err.message || "Error desconocido"}`);
+    } finally {
+      setSavingBatch(false);
+    }
+  };
+
+  // Guardar todas las filas que tengan cambios pendientes
+  const handleSaveAllDirtyRows = async () => {
+    if (!companyId || dirtyExpenseIds.length === 0) return;
+    setSavingBatch(true);
+    try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      for (const expId of dirtyExpenseIds) {
+        const exp = expenses.find(e => e.id === expId);
+        if (!exp) continue;
+        const effective = getEffectiveRow(exp);
+        const selectedLoc = locations.find(l => l.id === effective.locationId);
+        const selectedCC = costCenters.find(c => c.id === effective.costCenterId);
+        const selectedAcc = accounts.find(a => a.id === effective.accountId);
+
+        const expRef = doc(db, "companies", companyId, "expenses", expId);
+        const updatePayload: any = {
+          locationId: effective.locationId || "",
+          locationName: selectedLoc?.name || selectedLoc?.Name || exp.locationName || "",
+          accountId: effective.accountId || "",
+          accountCode: selectedAcc?.code || exp.accountCode || "",
+          accountName: selectedAcc?.name || exp.accountName || "",
+          costCenterId: effective.costCenterId || null,
+          costCenterName: selectedCC?.name || selectedCC?.Name || "",
+          isNonDeductible: Boolean(effective.isNonDeductible),
+          isProvisional: false,
+          isPendingFiscalInvoice: false,
+          reviewedBy: user?.email || "Guardado en Lote",
+          reviewedAt: now,
+          updatedAt: now
+        };
+        batch.update(expRef, updatePayload);
+      }
+
+      await batch.commit();
+
+      setRowEdits({});
+      setActionFeedback(`¡${dirtyExpenseIds.length} gastos modificados guardados con éxito!`);
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err: any) {
+      console.error("Error al guardar modificaciones:", err);
+      alert(`Error: ${err.message || "Error al guardar"}`);
+    } finally {
+      setSavingBatch(false);
+    }
+  };
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -674,117 +1283,145 @@ export default function GastosManualesPage() {
     );
   };
 
-  // Helper to calculate pending balance of any expense, factoring in recurring parent templates
-  const getPendingBalance = (exp: any) => {
+  // Set indexado de tuplas `${parentExpenseId}_${YYYY-MM}` para resolver gastos recurrentes en O(1)
+  const recurringChildrenSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const exp of expenses) {
+      if (exp.parentExpenseId && exp.date) {
+        set.add(`${exp.parentExpenseId}_${exp.date.substring(0, 7)}`);
+      }
+    }
+    return set;
+  }, [expenses]);
+
+  // Helper para calcular saldo pendiente de cualquier gasto en O(1)
+  const getPendingBalance = useCallback((exp: any) => {
     if (exp.isRecurring) {
       const parentYearMonth = (exp.date || "").substring(0, 7);
-      const hasChildInSameMonth = expenses.some(child => 
-        child.parentExpenseId === exp.id && 
-        child.date && 
-        child.date.substring(0, 7) === parentYearMonth
-      );
-      return hasChildInSameMonth ? 0 : exp.amount;
+      const key = `${exp.id}_${parentYearMonth}`;
+      return recurringChildrenSet.has(key) ? 0 : (exp.amount || 0);
     }
-    return Math.max(0, exp.amount - (exp.paidAmount || 0));
-  };
+    return Math.max(0, (exp.amount || 0) - (exp.paidAmount || 0));
+  }, [recurringChildrenSet]);
 
-  // Filter logic
-  const filteredExpenses = expenses.filter(exp => {
-    // 1. Search term (provider, concept or folio)
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      const matchProvider = (exp.vendorName || "").toLowerCase().includes(term);
-      const matchConcept = (exp.concept || "").toLowerCase().includes(term);
-      const matchFolio = (exp.documentNumber || "").toLowerCase().includes(term);
-      if (!matchProvider && !matchConcept && !matchFolio) return false;
-    }
-    // 2. Status filter
-    if (statusFilter !== "all") {
-      if (statusFilter === "paid" && exp.status !== "paid") return false;
-      if (statusFilter === "pending") {
-        if (exp.status !== "pending") return false;
-        // Hide recurring parent templates from the pending filter if they've already been paid for their month
-        if (exp.isRecurring && getPendingBalance(exp) < 0.01) return false;
+  // Filtro memoizado
+  const filteredExpenses = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return expenses.filter(exp => {
+      // 1. Search term (provider, concept or folio)
+      if (term) {
+        const matchProvider = (exp.vendorName || "").toLowerCase().includes(term);
+        const matchConcept = (exp.concept || "").toLowerCase().includes(term);
+        const matchFolio = (exp.documentNumber || "").toLowerCase().includes(term);
+        if (!matchProvider && !matchConcept && !matchFolio) return false;
       }
-      if (statusFilter === "cancelado" && exp.status !== "cancelado") return false;
-      if (statusFilter === "provisionales") {
-        const isProv = exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"));
-        if (!isProv) return false;
+      // 2. Status filter
+      if (statusFilter !== "all") {
+        if (statusFilter === "paid" && exp.status !== "paid") return false;
+        if (statusFilter === "pending") {
+          if (exp.status !== "pending") return false;
+          // Ocultar plantillas padre recurrentes que ya están pagadas
+          if (exp.isRecurring && getPendingBalance(exp) < 0.01) return false;
+        }
+        if (statusFilter === "cancelado" && exp.status !== "cancelado") return false;
+        if (statusFilter === "provisionales") {
+          const isProv = exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"));
+          if (!isProv) return false;
+        }
+        if (statusFilter === "no_deducibles") {
+          if (!exp.isNonDeductible) return false;
+        }
       }
-      if (statusFilter === "no_deducibles") {
-        if (!exp.isNonDeductible) return false;
-      }
-    }
-    // 3. Bank Account filter
-    if (bankAccountFilter !== "all") {
-      const outflowInfo = outflowsByExpense.get(exp.id);
-      const directBankId = exp.bankAccountId || exp.linkedBankAccountId;
+      // 3. Bank Account filter
+      if (bankAccountFilter !== "all") {
+        const outflowInfo = outflowsByExpense.get(exp.id);
+        const directBankId = exp.bankAccountId || exp.linkedBankAccountId;
 
-      if (bankAccountFilter === "no_account") {
-        const hasOutflow = outflowInfo && outflowInfo.bankIds.size > 0;
-        if (hasOutflow || directBankId) return false;
+        if (bankAccountFilter === "no_account") {
+          const hasOutflow = outflowInfo && outflowInfo.bankIds.size > 0;
+          if (hasOutflow || directBankId) return false;
+        } else {
+          const matchesOutflow = outflowInfo && outflowInfo.bankIds.has(bankAccountFilter);
+          const matchesDirect = directBankId === bankAccountFilter;
+          if (!matchesOutflow && !matchesDirect) return false;
+        }
+      }
+      // 4. Date range filter
+      if (dateFrom || dateTo) {
+        if (dateFrom && exp.date < dateFrom) return false;
+        if (dateTo && exp.date > dateTo) return false;
+      }
+      return true;
+    });
+  }, [expenses, searchTerm, statusFilter, bankAccountFilter, outflowsByExpense, dateFrom, dateTo, getPendingBalance]);
+
+  // Ordenamiento memoizado
+  const sortedExpenses = useMemo(() => {
+    return [...filteredExpenses].sort((a, b) => {
+      let aVal = a[sortField] || "";
+      let bVal = b[sortField] || "";
+
+      if (sortField === "amount") {
+        const aNum = parseFloat(aVal) || 0;
+        const bNum = parseFloat(bVal) || 0;
+        return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      }
+
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return sortDirection === "asc"
+          ? aVal.localeCompare(bVal, "es")
+          : bVal.localeCompare(aVal, "es");
+      }
+
+      return 0;
+    });
+  }, [filteredExpenses, sortField, sortDirection]);
+
+  // Cálculo de páginas y slice paginado
+  const totalPages = Math.max(1, Math.ceil(sortedExpenses.length / pageSize));
+  const paginatedExpenses = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedExpenses.slice(startIndex, startIndex + pageSize);
+  }, [sortedExpenses, currentPage, pageSize]);
+
+  // Reset de página al cambiar filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, bankAccountFilter, dateFilterOption, dateFrom, dateTo, pageSize]);
+
+  // Métricas financieras calculadas en un solo pase O(N)
+  const { totalGastado, totalPagado, totalPendiente } = useMemo(() => {
+    let gastado = 0;
+    let pagado = 0;
+    let pendiente = 0;
+
+    for (const e of filteredExpenses) {
+      if (e.isRecurring) {
+        const key = `${e.id}_${(e.date || "").substring(0, 7)}`;
+        const hasChildInSameMonth = recurringChildrenSet.has(key);
+        if (!hasChildInSameMonth) {
+          gastado += (e.amount || 0);
+          pagado += (e.paidAmount || 0);
+        }
       } else {
-        const matchesOutflow = outflowInfo && outflowInfo.bankIds.has(bankAccountFilter);
-        const matchesDirect = directBankId === bankAccountFilter;
-        if (!matchesOutflow && !matchesDirect) return false;
+        gastado += (e.amount || 0);
+        pagado += (e.paidAmount || 0);
       }
-    }
-    // 4. Date range filter
-    if (dateFrom || dateTo) {
-      if (dateFrom && exp.date < dateFrom) return false;
-      if (dateTo && exp.date > dateTo) return false;
-    }
-    return true;
-  });
-
-  // Sort logic
-  const sortedExpenses = [...filteredExpenses].sort((a, b) => {
-    let aVal = a[sortField] || "";
-    let bVal = b[sortField] || "";
-
-    if (sortField === "amount") {
-      const aNum = parseFloat(aVal) || 0;
-      const bNum = parseFloat(bVal) || 0;
-      return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+      pendiente += getPendingBalance(e);
     }
 
-    if (typeof aVal === "string" && typeof bVal === "string") {
-      return sortDirection === "asc"
-        ? aVal.localeCompare(bVal, "es")
-        : bVal.localeCompare(aVal, "es");
-    }
+    return { totalGastado: gastado, totalPagado: pagado, totalPendiente: pendiente };
+  }, [filteredExpenses, recurringChildrenSet, getPendingBalance]);
 
-    return 0;
-  });
+  // Callbacks para ExpenseTableRow
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedExpenseIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }, []);
 
-  // Financial Metrics with duplicate child/parent handling
-  const totalGastado = filteredExpenses.reduce((sum, e) => {
-    if (e.isRecurring) {
-      const parentYearMonth = (e.date || "").substring(0, 7);
-      const hasChildInSameMonth = expenses.some(child => 
-        child.parentExpenseId === e.id && 
-        child.date && 
-        child.date.substring(0, 7) === parentYearMonth
-      );
-      return sum + (hasChildInSameMonth ? 0 : (e.amount || 0));
-    }
-    return sum + (e.amount || 0);
-  }, 0);
-
-  const totalPagado = filteredExpenses.reduce((sum, e) => {
-    if (e.isRecurring) {
-      const parentYearMonth = (e.date || "").substring(0, 7);
-      const hasChildInSameMonth = expenses.some(child => 
-        child.parentExpenseId === e.id && 
-        child.date && 
-        child.date.substring(0, 7) === parentYearMonth
-      );
-      return sum + (hasChildInSameMonth ? 0 : (e.paidAmount || 0));
-    }
-    return sum + (e.paidAmount || 0);
-  }, 0);
-
-  const totalPendiente = filteredExpenses.reduce((sum, e) => sum + getPendingBalance(e), 0);
+  const handlePayExpense = useCallback((exp: any) => {
+    setSelectedExpense(exp);
+    setIsPaymentModalOpen(true);
+  }, []);
 
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(amount);
@@ -984,52 +1621,146 @@ export default function GastosManualesPage() {
         </div>
       </div>
 
+      {/* Feedback Banner */}
+      {actionFeedback && (
+        <div className="bg-emerald-600 text-white text-xs px-4 py-2.5 rounded-xl flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 gap-2 font-semibold">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+            <span>{actionFeedback}</span>
+          </div>
+          <button onClick={() => setActionFeedback(null)} className="text-emerald-200 hover:text-white">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Floating reminder for in-table edits */}
+      {dirtyExpenseIds.length > 0 && selectedExpenseIds.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between shadow-xs animate-in fade-in gap-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
+            <span className="text-xs font-semibold">
+              Tienes {dirtyExpenseIds.length} {dirtyExpenseIds.length === 1 ? "gasto modificado" : "gastos modificados"} en la tabla sin guardar.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            disabled={savingBatch}
+            onClick={handleSaveAllDirtyRows}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-7 px-3.5 gap-1.5 shadow-xs"
+          >
+            {savingBatch ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+            <span>Guardar Todas las Modificaciones ({dirtyExpenseIds.length})</span>
+          </Button>
+        </div>
+      )}
+
       {/* Batch Action Banner for Expenses */}
       {selectedExpenseIds.length > 0 && (
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white px-5 py-3 rounded-xl shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-600/30 rounded-lg border border-indigo-400/40 text-indigo-300">
-              <ShieldCheck className="w-5 h-5" />
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white p-4 rounded-xl shadow-lg space-y-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/40 pb-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-indigo-600/40 rounded-lg border border-indigo-400/30 text-indigo-200">
+                <CheckSquare className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-white">
+                  {selectedExpenseIds.length} {selectedExpenseIds.length === 1 ? "gasto seleccionado" : "gastos seleccionados"}
+                  <span className="text-indigo-200 font-normal ml-2">
+                    (Total: {formatMoney(expenses.filter(e => selectedExpenseIds.includes(e.id)).reduce((s, e) => s + (Number(e.amount) || 0), 0))})
+                  </span>
+                </p>
+                <p className="text-[11px] text-slate-300">
+                  Asigna valores comunes para aplicarlos a todos los seleccionados o guárdalos con los valores de cada fila.
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-bold">
-                {selectedExpenseIds.length} {selectedExpenseIds.length === 1 ? "gasto seleccionado" : "gastos seleccionados"} para clasificar/formalizar
-              </p>
-              <p className="text-xs text-slate-300">
-                Suma total: {formatMoney(
-                  expenses
-                    .filter(e => selectedExpenseIds.includes(e.id))
-                    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedExpenseIds([])}
+                className="text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border-white/20 h-8"
+              >
+                Deseleccionar
+              </Button>
+              <Button
+                size="sm"
+                disabled={savingBatch}
+                onClick={() => handleSaveBatch(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-4 gap-1.5 shadow-sm"
+              >
+                {savingBatch ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Guardar Seleccionados</span>
+                  </>
                 )}
-                {(() => {
-                  const selExpenses = expenses.filter(e => selectedExpenseIds.includes(e.id));
-                  const provCount = selExpenses.filter(e => e.isProvisional || e.isPendingFiscalInvoice || (e.documentNumber && e.documentNumber.startsWith("PROV-"))).length;
-                  return provCount > 0 ? ` • ${provCount} provisional(es)` : "";
-                })()}
-              </p>
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectedExpenseIds([])}
-              className="text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border-white/20 h-8"
-            >
-              Deseleccionar
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => {
-                const targetList = expenses.filter(e => selectedExpenseIds.includes(e.id));
-                setFormalizeTargetExpenses(targetList);
-                setIsFormalizeModalOpen(true);
-              }}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-8 px-4 gap-2 shadow-sm"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              Formalizar / Clasificar en Lote
-            </Button>
+
+          {/* Quick batch selectors */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-1 text-slate-800">
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block">Sucursal en Lote</span>
+              <select
+                value={batchLocationId}
+                onChange={(e) => setBatchLocationId(e.target.value)}
+                className="h-8 w-full text-xs rounded-md border border-slate-600 bg-slate-800 text-white px-2 py-1 outline-none font-medium focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">(Mantener individual)</option>
+                {locations.map(loc => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name || loc.Name || loc.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block">Cuenta Contable en Lote</span>
+              <TableSearchSelect
+                value={batchAccountId}
+                onChange={(id) => setBatchAccountId(id)}
+                items={accountItems}
+                placeholder="(Mantener individual)"
+                emptyLabel="(Sin cuenta contable)"
+                minWidth={280}
+                className="bg-slate-800 border-slate-600 text-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block">Centro de Costos en Lote</span>
+              <TableSearchSelect
+                value={batchCostCenterId}
+                onChange={(id) => setBatchCostCenterId(id)}
+                items={costCenterItems}
+                placeholder="(Mantener individual)"
+                emptyLabel="(Sin centro de costos)"
+                minWidth={250}
+                className="bg-slate-800 border-slate-600 text-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block">Tipo Fiscal en Lote</span>
+              <select
+                value={batchNonDeductible}
+                onChange={(e) => setBatchNonDeductible(e.target.value)}
+                className="h-8 w-full text-xs rounded-md border border-slate-600 bg-slate-800 text-white px-2 py-1 outline-none font-medium focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="keep">(Mantener individual)</option>
+                <option value="deducible">Marcar como Deducible</option>
+                <option value="no_deducible">Marcar como No Deducible</option>
+              </select>
+            </div>
           </div>
         </div>
       )}
@@ -1037,12 +1768,12 @@ export default function GastosManualesPage() {
       {/* Main Expenses Table */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1250px] text-sm text-left">
+          <table className="w-full min-w-[1680px] text-sm text-left">
             <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
                 <th className="px-3 py-3 w-10 text-center">
                   {(() => {
-                    const selectableExpenses = sortedExpenses.filter(e => e.status !== "cancelado");
+                    const selectableExpenses = paginatedExpenses.filter(e => e.status !== "cancelado");
                     const allSelected = selectableExpenses.length > 0 && selectableExpenses.every(e => selectedExpenseIds.includes(e.id));
                     if (selectableExpenses.length === 0) return null;
                     return (
@@ -1057,7 +1788,7 @@ export default function GastosManualesPage() {
                           }
                         }}
                         className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
-                        title={allSelected ? "Deseleccionar todos los visibles" : "Seleccionar todos los visibles"}
+                        title={allSelected ? "Deseleccionar visibles en esta página" : "Seleccionar visibles en esta página"}
                       >
                         {allSelected ? (
                           <CheckSquare className="w-4 h-4 text-indigo-600" />
@@ -1068,196 +1799,138 @@ export default function GastosManualesPage() {
                     );
                   })()}
                 </th>
-                <th className="px-3 py-3 w-28 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
+                <th className="px-3 py-3 w-24 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
                   <div className="flex items-center">Fecha {renderSortIcon("date")}</div>
                 </th>
-                <th className="px-3 py-3 w-32 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
+                <th className="px-3 py-3 w-28 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
                   <div className="flex items-center">Folio {renderSortIcon("documentNumber")}</div>
                 </th>
-                <th className="px-3 py-3 min-w-[140px] max-w-[200px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
+                <th className="px-3 py-3 min-w-[140px] max-w-[180px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
                   <div className="flex items-center">Proveedor {renderSortIcon("vendorName")}</div>
                 </th>
-                <th className="px-3 py-3 w-28 whitespace-nowrap">Sucursal</th>
-                <th className="px-3 py-3 min-w-[130px] whitespace-nowrap">Cuenta Bancaria</th>
-                <th className="px-3 py-3 w-24 text-center whitespace-nowrap">Estatus</th>
-                <th className="px-3 py-3 w-28 text-right whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
+                <th className="px-2 py-3 min-w-[140px] whitespace-nowrap">Sucursal</th>
+                <th className="px-2 py-3 min-w-[210px] whitespace-nowrap">Cuenta Contable</th>
+                <th className="px-2 py-3 min-w-[180px] whitespace-nowrap">Centro de Costos</th>
+                <th className="px-2 py-3 min-w-[125px] whitespace-nowrap">Tipo Fiscal</th>
+                <th className="px-2 py-3 min-w-[110px] whitespace-nowrap">Cuenta Bancaria</th>
+                <th className="px-2 py-3 w-20 text-center whitespace-nowrap">Estatus</th>
+                <th className="px-3 py-3 w-24 text-right whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
                   <div className="flex items-center justify-end">Monto {renderSortIcon("amount")}</div>
                 </th>
-                <th className="px-3 py-3 w-24 text-right whitespace-nowrap">Pagado</th>
-                <th className="px-3 py-3 w-24 text-right whitespace-nowrap">Pendiente</th>
-                <th className="px-3 py-3 min-w-[120px] text-center whitespace-nowrap">Acciones</th>
+                <th className="px-2 py-3 w-20 text-right whitespace-nowrap">Pagado</th>
+                <th className="px-2 py-3 w-20 text-right whitespace-nowrap">Pendiente</th>
+                <th className="px-3 py-3 min-w-[140px] text-center whitespace-nowrap">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {sortedExpenses.length === 0 ? (
+              {paginatedExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={14} className="px-4 py-8 text-center text-muted-foreground">
                     No se encontraron gastos operativos registrados.
                   </td>
                 </tr>
               ) : (
-                sortedExpenses.map((exp) => {
-                  const isProv = exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"));
-                  const isSelected = selectedExpenseIds.includes(exp.id);
-
-                  // Extract date only (YYYY-MM-DD)
-                  const displayDate = exp.date ? exp.date.split("T")[0] : "-";
-                  const rawDocNum = exp.documentNumber || "-";
-                  const displayDocNum = rawDocNum.length > 15 ? `${rawDocNum.substring(0, 15)}...` : rawDocNum;
-
-                  return (
-                     <tr key={exp.id} className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
-                       <td className="px-3 py-3 text-center">
-                         {exp.status !== "cancelado" ? (
-                           <button
-                             type="button"
-                             onClick={() => {
-                               if (isSelected) {
-                                 setSelectedExpenseIds(prev => prev.filter(id => id !== exp.id));
-                               } else {
-                                 setSelectedExpenseIds(prev => [...prev, exp.id]);
-                               }
-                             }}
-                             className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
-                             title={isSelected ? "Deseleccionar gasto" : "Seleccionar gasto"}
-                           >
-                             {isSelected ? (
-                               <CheckSquare className="w-4 h-4 text-indigo-600" />
-                             ) : (
-                               <Square className="w-4 h-4 text-slate-300" />
-                             )}
-                           </button>
-                         ) : null}
-                       </td>
-                       <td className="px-3 py-3 whitespace-nowrap text-slate-600 text-xs font-medium">
-                         {displayDate}
-                       </td>
-                        <td className="px-3 py-3 whitespace-nowrap font-medium text-slate-700 text-xs">
-                          <ExpenseFolioWithPreview 
-                            exp={exp}
-                            rawDocNum={rawDocNum}
-                            displayDocNum={displayDocNum}
-                            formatMoney={formatMoney}
-                            companyId={companyId}
-                          />
-                        </td>
-                       <td className="px-3 py-3 font-medium text-slate-900 max-w-[200px] truncate text-xs" title={exp.vendorName}>
-                         {exp.vendorName}
-                       </td>
-                       <td className="px-3 py-3 text-slate-500 font-medium text-xs truncate max-w-[120px]" title={exp.locationName}>
-                         {exp.locationName || "-"}
-                       </td>
-                       <td className="px-3 py-3 text-xs">
-                         {(() => {
-                           const outflowInfo = outflowsByExpense.get(exp.id);
-                           const names = new Set<string>();
-                           if (outflowInfo) {
-                             outflowInfo.bankIds.forEach(id => {
-                               const b = bankAccounts.find(acc => acc.id === id);
-                               if (b?.Name || b?.name) names.add(b.Name || b.name);
-                             });
-                             outflowInfo.bankNames.forEach(n => { if (n) names.add(n); });
-                           }
-                           if (names.size === 0 && exp.bankAccountId) {
-                             const directBank = bankAccounts.find(b => b.id === exp.bankAccountId);
-                             if (directBank?.Name || directBank?.name) names.add(directBank.Name || directBank.name);
-                           }
-                           if (names.size === 0) {
-                             return <span className="text-slate-400 font-mono text-[11px]">-</span>;
-                           }
-                           return (
-                             <div className="flex flex-col gap-1">
-                               {Array.from(names).map((name, i) => (
-                                 <span key={i} className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full max-w-[130px] truncate" title={name}>
-                                   <Landmark className="w-2.5 h-2.5 shrink-0 text-indigo-600" />
-                                   <span className="truncate">{name}</span>
-                                 </span>
-                               ))}
-                             </div>
-                           );
-                         })()}
-                       </td>
-                       <td className="px-3 py-3 text-center">
-                         {exp.isNonDeductible ? (
-                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-300">
-                             No Deducible
-                           </span>
-                         ) : isProv ? (
-                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold border border-amber-300 animate-pulse">
-                             Provisional
-                           </span>
-                         ) : exp.isRecurring ? (
-                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold border border-purple-200">
-                             Recurrente
-                           </span>
-                         ) : exp.status === "paid" ? (
-                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
-                             Pagado
-                           </span>
-                         ) : exp.status === "cancelado" ? (
-                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-200">
-                             Cancelado
-                           </span>
-                         ) : (
-                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200">
-                             Pendiente
-                           </span>
-                         )}
-                       </td>
-                       <td className="px-3 py-3 text-right font-bold text-slate-900 text-xs">
-                         {formatMoney(exp.amount)}
-                       </td>
-                       <td className="px-3 py-3 text-right text-emerald-600 font-semibold text-xs">
-                         {formatMoney(exp.paidAmount || 0)}
-                       </td>
-                       <td className={`px-3 py-3 text-right font-bold text-xs ${getPendingBalance(exp) > 0.01 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
-                         {formatMoney(getPendingBalance(exp))}
-                       </td>
-                       <td className="px-3 py-3 text-center whitespace-nowrap">
-                         <div className="flex items-center justify-center gap-1.5 flex-nowrap min-w-max">
-                           <Link href={`/gastos/${exp.id}`} target="_blank">
-                             <Button 
-                               variant="outline" 
-                               size="icon"
-                               className="h-8 w-8 bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-800 shrink-0"
-                               title="Ver Detalle"
-                             >
-                               <Eye className="w-4 h-4 text-indigo-600" />
-                             </Button>
-                           </Link>
-                           {getPendingBalance(exp) > 0.01 && exp.status !== "cancelado" && (
-                             <Button 
-                               variant="outline" 
-                               size="icon" 
-                               onClick={() => {
-                                   setSelectedExpense(exp);
-                                   setIsPaymentModalOpen(true);
-                               }}
-                               className="h-8 w-8 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 shrink-0"
-                               title="Registrar Pago"
-                             >
-                               <DollarSign className="w-4 h-4 font-bold" />
-                             </Button>
-                           )}
-                           {exp.status !== "cancelado" && (
-                             <Button 
-                               variant="outline" 
-                               size="icon" 
-                               onClick={() => handleCancelExpense(exp.id, exp.status)}
-                               className="h-8 w-8 bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 hover:text-rose-800 shrink-0"
-                               title="Cancelar Gasto"
-                             >
-                               <X className="w-4 h-4 font-bold" />
-                             </Button>
-                           )}
-                         </div>
-                       </td>
-                     </tr>
-                  );
-                })
+                paginatedExpenses.map((exp) => (
+                  <ExpenseTableRow
+                    key={exp.id}
+                    exp={exp}
+                    isSelected={selectedExpenseIds.includes(exp.id)}
+                    effective={getEffectiveRow(exp)}
+                    isSaving={savingRowId === exp.id}
+                    pendingBalance={getPendingBalance(exp)}
+                    outflowInfo={outflowsByExpense.get(exp.id)}
+                    locations={locations}
+                    accountItems={accountItems}
+                    costCenterItems={costCenterItems}
+                    bankAccounts={bankAccounts}
+                    formatMoney={formatMoney}
+                    companyId={companyId}
+                    onToggleSelect={handleToggleSelect}
+                    onFieldChange={handleRowFieldChange}
+                    onSave={handleSaveSingleRow}
+                    onPay={handlePayExpense}
+                    onCancel={handleCancelExpense}
+                  />
+                ))
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="bg-white border rounded-xl p-3 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+        <div className="flex items-center gap-2">
+          <span>Mostrar</span>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="h-8 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold outline-none focus:border-indigo-500"
+          >
+            <option value={25}>25 filas</option>
+            <option value={50}>50 filas</option>
+            <option value={100}>100 filas</option>
+            <option value={200}>200 filas</option>
+          </select>
+          <span className="text-slate-400">|</span>
+          <span>
+            Mostrando <span className="font-semibold text-slate-900">{sortedExpenses.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}</span> a{" "}
+            <span className="font-semibold text-slate-900">{Math.min(currentPage * pageSize, sortedExpenses.length)}</span> de{" "}
+            <span className="font-semibold text-slate-900">{sortedExpenses.length}</span> gastos
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage(1)}
+            className="h-8 w-8 p-0"
+            title="Primera página"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            className="h-8 px-2.5 gap-1"
+            title="Página anterior"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Anterior</span>
+          </Button>
+
+          <span className="px-2 font-medium text-slate-700">
+            Página <span className="font-bold text-indigo-600">{currentPage}</span> de <span className="font-bold">{totalPages}</span>
+          </span>
+
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= totalPages}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            className="h-8 px-2.5 gap-1"
+            title="Página siguiente"
+          >
+            <span className="hidden sm:inline">Siguiente</span>
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= totalPages}
+            onClick={() => setCurrentPage(totalPages)}
+            className="h-8 w-8 p-0"
+            title="Última página"
+          >
+            <ChevronsRight className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 

@@ -24,8 +24,10 @@ import {
   Loader2,
   GitBranch,
   MapPin,
-  Trophy
+  Trophy,
+  Sparkles
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
@@ -212,21 +214,29 @@ export default function PlaneacionEstrategicaPage() {
             Define la Visión y Estrategias globales, asigna OKRs a tus divisiones y sucursales y mide el desempeño con KPIs.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link href="/planeacion-estrategica/simulador">
+            <Button 
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold shadow-md shadow-indigo-100"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Simulador de Crecimiento
+            </Button>
+          </Link>
           <Button 
             variant="outline"
             className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 bg-white font-semibold"
             onClick={() => setIsVisionModalOpen(true)}
           >
             <Target className="w-4 h-4 mr-2" />
-            Nueva Visión (Empresa)
+            Nueva Visión
           </Button>
           <Button 
-            className="bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 font-bold"
+            className="bg-indigo-600 hover:bg-indigo-700 shadow-md font-bold"
             onClick={() => setIsStrategyModalOpen(true)}
           >
             <Plus className="w-4 h-4 mr-2" />
-            Nueva Estrategia (Empresa)
+            Nueva Estrategia
           </Button>
         </div>
       </div>

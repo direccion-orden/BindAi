@@ -433,11 +433,62 @@ export async function runClientAiReconciliation(
 
     const reconciledTransferTxIds = new Set<string>();
 
-    // Helper para extraer secuencias numéricas de folios o referencias SPEI / BNET (de 6 a 14 dígitos)
+    // Helper para detectar la institución bancaria a partir del nombre de la cuenta o del concepto
+    const detectBankInstitution = (nameOrConcept: string): string | null => {
+      const t = (nameOrConcept || "").toLowerCase();
+      if (t.includes("banregio")) return "banregio";
+      if (t.includes("bbva") || t.includes("bancomer")) return "bbva";
+      if (t.includes("bajio") || t.includes("del bajio") || t.includes("banbajio")) return "bajio";
+      if (t.includes("santander")) return "santander";
+      if (t.includes("banorte")) return "banorte";
+      if (t.includes("citibanamex") || t.includes("banamex")) return "citibanamex";
+      if (t.includes("inbursa")) return "inbursa";
+      if (t.includes("scotiabank")) return "scotiabank";
+      if (t.includes("compartamos")) return "compartamos";
+      if (t.includes("hsbc")) return "hsbc";
+      if (t.includes("azteca")) return "azteca";
+      return null;
+    };
+
+    // Helper para verificar si un egreso de cuenta de cheques/débito tiene evidencia inequívoca de pago a tarjeta de crédito
+    const hasExplicitCardPaymentEvidence = (debitText: string, creditAccountName: string): boolean => {
+      const text = (debitText || "").toLowerCase();
+      if (
+        text.includes("tarjeta") ||
+        text.includes("tarj") ||
+        /\btdc\b/.test(text) ||
+        /\btc\b/.test(text) ||
+        text.includes("t.c.") ||
+        text.includes("pago de tarjeta") ||
+        text.includes("pago tarjeta") ||
+        text.includes("pago servicio: tarjeta") ||
+        text.includes("pago tc")
+      ) {
+        return true;
+      }
+      const accName = (creditAccountName || "").toLowerCase().trim();
+      if (accName && accName.length >= 4 && text.includes(accName)) {
+        return true;
+      }
+      return false;
+    };
+
+    // Helper para extraer secuencias numéricas de folios o referencias SPEI / BNET (de 6 a 24 dígitos)
     const extractNumericTokens = (text: string): string[] => {
       if (!text) return [];
-      const matches = text.match(/\d{6,14}/g) || [];
-      return Array.from(new Set(matches.filter(m => !/^0+$/.test(m))));
+      const matches = text.match(/\d{6,24}/g) || [];
+      const tokens: string[] = [];
+      for (const m of matches) {
+        if (/^0+$/.test(m)) continue;
+        tokens.push(m);
+        // Si es una referencia compuesta larga (ej. BNET01002610080025160590),
+        // extraer también los últimos 10 y 7 dígitos que corresponden al folio o rastreo original
+        if (m.length >= 14) {
+          tokens.push(m.slice(-10));
+          tokens.push(m.slice(-7));
+        }
+      }
+      return Array.from(new Set(tokens.filter(t => t.length >= 6 && !/^0+$/.test(t))));
     };
 
     if (otherBankAccounts.length > 0 && allCurrentPendingTxs.length > 0) {
@@ -491,6 +542,7 @@ export async function runClientAiReconciliation(
           score: number;
           hasTransferKeyword: boolean;
           hasExactRefMatch: boolean;
+          isCreditCardPayment: boolean;
         }> = [];
 
         for (const item of otherPendingTxs) {
@@ -499,9 +551,40 @@ export async function runClientAiReconciliation(
           if (Math.abs(Math.abs(item.tx.amount) - cAbs) >= 0.01) continue;
 
           const isOtherCredit = isCreditAccount(item.bankAccount);
-          const isCreditCardPayment = 
-            (isCurrentCredit && !isOtherCredit && cTx.amount > 0 && item.tx.amount < 0) ||
-            (!isCurrentCredit && isOtherCredit && cTx.amount < 0 && item.tx.amount > 0);
+          const isRelationshipWithCreditCard = isCurrentCredit || isOtherCredit;
+
+          // Dos tarjetas de crédito no se transfieren entre sí
+          if (isCurrentCredit && isOtherCredit) continue;
+
+          let isCreditCardPayment = false;
+          let isCheckingTransfer = false;
+
+          if (isRelationshipWithCreditCard) {
+            const debitTx = !isCurrentCredit ? cTx : item.tx;
+            const creditTx = isCurrentCredit ? cTx : item.tx;
+            const creditAccount = isCurrentCredit ? currentBankAccount : item.bankAccount;
+
+            // En un pago a tarjeta, la cuenta bancaria/débito DEBE ser la salida (< 0)
+            // y la tarjeta de crédito DEBE ser el abono (> 0).
+            if (debitTx.amount > 0 || creditTx.amount < 0) {
+              continue;
+            }
+
+            const debitText = ((debitTx.concept || "") + " " + (debitTx.reference || "")).toLowerCase();
+            const hasCardEvidence = hasExplicitCardPaymentEvidence(debitText, creditAccount.name || creditAccount.Name || "");
+
+            // REGLA CRÍTICA:
+            // Si la salida de la cuenta bancaria NO menciona tarjeta de crédito / TDC / etc.
+            // (ej. dice "SPEI ENVIADO BANREGIO", "TRASPASO", "PAGO CUENTA DE TERCERO", "NOMINA"),
+            // NO debe emparejarse con la tarjeta de crédito. Es un traspaso a cuentas de cheques o pago a terceros.
+            if (!hasCardEvidence) {
+              continue;
+            }
+
+            isCreditCardPayment = true;
+          } else {
+            isCheckingTransfer = true;
+          }
 
           const oDateStr = normalizeDateToISO(item.tx.date || "");
           const oDate = new Date(oDateStr + "T00:00:00");
@@ -513,7 +596,7 @@ export async function runClientAiReconciliation(
           const oRef = (item.tx.reference || "").toLowerCase();
           const oCombined = oConcept + " " + oRef;
 
-          // Cruce de folio o número de rastreo SPEI / BNET
+          // Cruce bidireccional de folios o números de rastreo SPEI / BNET
           let hasExactRefMatch = false;
           for (const tok of cTokens) {
             if (oCombined.includes(tok)) {
@@ -521,76 +604,96 @@ export async function runClientAiReconciliation(
               break;
             }
           }
-
-          let score = 50 - (diffDays * 5);
-          if (hasExactRefMatch) score += 50;
-
-          const isCardPaymentTerm = (concept: string) => {
-            return (
-              concept.includes("tarjeta") ||
-              concept.includes("tc") ||
-              concept.includes("tdc") ||
-              concept.includes("su pago") ||
-              concept.includes("pago recibido") ||
-              concept.includes("abono") ||
-              concept.includes("pago bnet") ||
-              concept.includes("pago spei") ||
-              concept.includes("pago interbancario") ||
-              concept.includes("pago electronico") ||
-              concept.includes("pago movil") ||
-              concept.includes("pago en sucursal") ||
-              concept.includes("liquidacion") ||
-              concept.includes("pago servicio") ||
-              concept.includes("pago de servicio") ||
-              concept.includes("pago cuenta terceros") ||
-              concept.includes("traspas") ||
-              concept.includes("transferencia")
-            );
-          };
-
-          const hasTransferKeyword = 
-            cConcept.includes("traspas") || oConcept.includes("traspas") ||
-            cConcept.includes("pago servicio") || oConcept.includes("su pago") ||
-            cConcept.includes("tarjeta") || oConcept.includes("tarjeta") ||
-            cConcept.includes("tc") || oConcept.includes("tc") ||
-            cConcept.includes("tdc") || oConcept.includes("tdc") ||
-            cConcept.includes("abono") || oConcept.includes("abono") ||
-            cConcept.includes("pago recibido") || oConcept.includes("pago recibido") ||
-            cConcept.includes("bbva") || oConcept.includes("bbva") ||
-            cConcept.includes("banregio") || oConcept.includes("banregio") ||
-            cConcept.includes("santander") || oConcept.includes("santander") ||
-            cConcept.includes("bajio") || oConcept.includes("bajio") ||
-            cConcept.includes("inbursa") || oConcept.includes("inbursa") ||
-            cConcept.includes("banorte") || oConcept.includes("banorte") ||
-            cConcept.includes("citibanamex") || oConcept.includes("citibanamex") ||
-            cConcept.includes("dmg capital") || oConcept.includes("dmg capital") ||
-            cConcept.includes("humberto vargas") || oConcept.includes("humberto vargas");
-
-          if (hasTransferKeyword) score += 30;
-
-          if (isCreditCardPayment) {
-            score += 35; // Alta confianza natural por ser relación Cuenta Bancaria <-> Tarjeta de Crédito con montos invertidos
-            if (isCardPaymentTerm(cConcept) || isCardPaymentTerm(oConcept)) {
-              score += 25;
+          if (!hasExactRefMatch) {
+            const oTokens = extractNumericTokens(oCombined);
+            const cCombined = cConcept + " " + cRef;
+            for (const tok of oTokens) {
+              if (cCombined.includes(tok)) {
+                hasExactRefMatch = true;
+                break;
+              }
             }
           }
 
-          candidates.push({ item, diffDays, score, hasTransferKeyword: hasTransferKeyword || isCreditCardPayment, hasExactRefMatch });
+          // Detección de afinidad o conflicto institucional
+          const currentBankInst = detectBankInstitution((currentBankAccount.name || "") + " " + (currentBankAccount.Name || ""));
+          const targetBankInst = detectBankInstitution((item.bankAccount.name || "") + " " + (item.bankAccount.Name || ""));
+
+          const cConceptBank = detectBankInstitution(cConcept);
+          const oConceptBank = detectBankInstitution(oConcept);
+
+          // Si el concepto menciona un banco destino diferente al del candidato, descartar conflicto
+          if (cConceptBank && targetBankInst && cConceptBank !== targetBankInst) {
+            continue;
+          }
+          if (oConceptBank && currentBankInst && oConceptBank !== currentBankInst) {
+            continue;
+          }
+
+          let score = 50 - (diffDays * 5);
+
+          // Bonificaciones institucionales
+          if (cConceptBank && targetBankInst && cConceptBank === targetBankInst) {
+            score += 60; // Ej: BBVA dice "SPEI ENVIADO BANREGIO" y la cuenta candidata es Banregio
+          }
+          if (oConceptBank && currentBankInst && oConceptBank === currentBankInst) {
+            score += 40; // Ej: Banregio dice "SPEI. BBVA MEXICO" y la cuenta actual es BBVA
+          }
+
+          if (hasExactRefMatch) {
+            score += 70; // Coincidencia de rastreo SPEI / BNET
+          }
+
+          const transferKeywords = ["traspas", "spei", "transferencia", "transfer", "bnet", "pago servicio"];
+          const hasTransferKeyword = 
+            transferKeywords.some(kw => cConcept.includes(kw)) ||
+            transferKeywords.some(kw => oConcept.includes(kw));
+
+          if (hasTransferKeyword) {
+            score += 30;
+          }
+
+          if (isCreditCardPayment) {
+            score += 50; // Abono a tarjeta de crédito con evidencia explícita en el débito
+            if (currentBankInst && targetBankInst && currentBankInst === targetBankInst) {
+              score += 40; // Misma institución (ej. Cheques Banregio pagando Tarjeta Banregio)
+            }
+          } else if (isCheckingTransfer) {
+            score += 30; // Traspaso entre cuentas bancarias de cheques
+          }
+
+          candidates.push({
+            item,
+            diffDays,
+            score,
+            hasTransferKeyword,
+            hasExactRefMatch,
+            isCreditCardPayment
+          });
         }
 
         if (candidates.length > 0) {
           candidates.sort((a, b) => b.score - a.score);
           const best = candidates[0];
 
-          if (best.hasExactRefMatch || best.hasTransferKeyword || (candidates.length === 1 && best.diffDays <= 3)) {
+          // Validación estricta: umbral mínimo de 75 puntos y evidencia inequívoca
+          const isConfidentMatch = best.score >= 75 && (
+            best.hasExactRefMatch ||
+            (best.hasTransferKeyword && best.score >= 100) ||
+            best.isCreditCardPayment
+          );
+
+          if (isConfidentMatch) {
             const targetItem = best.item;
             matchedTargetIds.add(targetItem.tx.id);
             reconciledTransferTxIds.add(cTx.id);
 
+            const matchTypeLabel = best.isCreditCardPayment ? "Pago de tarjeta de crédito" : "Traspaso propio";
+
             control?.onProgress?.(
               processedCount + 1,
               allCurrentPendingTxs.length,
-              `Traspaso propio emparejado ($${cAbs.toFixed(2)}): ${currentBankAccount.name || currentBankAccount.Name || "Cuenta"} <-> ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "Cuenta"}`
+              `${matchTypeLabel} emparejado ($${cAbs.toFixed(2)}): ${currentBankAccount.name || currentBankAccount.Name || "Cuenta"} <-> ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "Cuenta"}`
             );
 
             try {
@@ -608,7 +711,7 @@ export async function runClientAiReconciliation(
                 matchedDocumentId: targetItem.tx.id,
                 matchedAccountId: targetItem.bankAccountId,
                 reconciledBy: "AI_AGENT (Determinista)",
-                aiMatchReason: `Traspaso propio emparejado con ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "otra cuenta bancaria"}`
+                aiMatchReason: `${matchTypeLabel} emparejado con ${targetItem.bankAccount.name || targetItem.bankAccount.Name || "otra cuenta bancaria"}`
               });
 
               // Actualizar transacción destino
@@ -619,7 +722,7 @@ export async function runClientAiReconciliation(
                 matchedDocumentId: cTx.id,
                 matchedAccountId: bankAccountId,
                 reconciledBy: "AI_AGENT (Determinista)",
-                aiMatchReason: `Traspaso propio emparejado con ${currentBankAccount.name || currentBankAccount.Name || "otra cuenta bancaria"}`
+                aiMatchReason: `${matchTypeLabel} emparejado con ${currentBankAccount.name || currentBankAccount.Name || "otra cuenta bancaria"}`
               });
 
               const isCurrentOutflow = cTx.amount < 0;
@@ -664,7 +767,7 @@ export async function runClientAiReconciliation(
                   await addDoc(collection(db, "companies", companyId, "journal_entries"), {
                     type: "diario",
                     date: cTx.date || new Date().toISOString().split("T")[0],
-                    description: `Traspaso propio: ${cTx.concept || "Salida"} -> ${targetItem.tx.concept || "Entrada"}`,
+                    description: `${matchTypeLabel}: ${cTx.concept || "Salida"} -> ${targetItem.tx.concept || "Entrada"}`,
                     referenceId: cTx.id,
                     referenceType: "bank_transfer_reconciliation",
                     createdAt: new Date().toISOString(),
@@ -712,7 +815,7 @@ export async function runClientAiReconciliation(
                   await addDoc(collection(db, "companies", companyId, "journal_entries"), {
                     type: "diario",
                     date: cTx.date || new Date().toISOString().split("T")[0],
-                    description: `Traspaso propio: ${targetItem.tx.concept || "Salida"} -> ${cTx.concept || "Entrada"}`,
+                    description: `${matchTypeLabel}: ${targetItem.tx.concept || "Salida"} -> ${cTx.concept || "Entrada"}`,
                     referenceId: cTx.id,
                     referenceType: "bank_transfer_reconciliation",
                     createdAt: new Date().toISOString(),
@@ -727,7 +830,7 @@ export async function runClientAiReconciliation(
                 txId: cTx.id,
                 action: "TRANSFER",
                 documentNumber: `TRASPASO-${targetItem.bankAccount.name || targetItem.bankAccount.Name || "BANCO"}`,
-                reasoning: `Conciliación determinista de traspaso propio ($0.00 IA): Monto $${cAbs.toFixed(2)} con cuenta ${targetItem.bankAccount.name || targetItem.bankAccount.Name}`
+                reasoning: `Conciliación determinista de ${matchTypeLabel.toLowerCase()} ($0.00 IA): Monto $${cAbs.toFixed(2)} con cuenta ${targetItem.bankAccount.name || targetItem.bankAccount.Name}`
               });
             } catch (txErr) {
               console.error(`Error procesando traspaso ${cTx.id}:`, txErr);

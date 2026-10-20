@@ -422,10 +422,12 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
     return Array.from(names);
   }, [outflowInfo, exp.bankAccountId, bankAccounts]);
 
+  const isCancelled = exp.status === "cancelado";
+
   return (
-    <tr className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-indigo-50/40' : isDirty ? 'bg-amber-50/30' : ''}`}>
+    <tr className={`hover:bg-slate-50 transition-colors ${isCancelled ? 'bg-slate-100/70 opacity-60 text-slate-500' : isSelected ? 'bg-indigo-50/40' : isDirty ? 'bg-amber-50/30' : ''}`}>
       <td className="px-3 py-2.5 text-center">
-        {exp.status !== "cancelado" ? (
+        {!isCancelled ? (
           <button
             type="button"
             onClick={() => onToggleSelect(exp.id)}
@@ -460,9 +462,12 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       <td className="px-2 py-2.5">
         <select
           value={effective.locationId}
+          disabled={isCancelled}
           onChange={(e) => onFieldChange(exp.id, "locationId", e.target.value)}
           className={`h-8 w-full text-xs rounded-md border px-2 py-1 outline-none font-medium transition-colors ${
-            isDirty && effective.locationId !== (exp.locationId || "")
+            isCancelled
+              ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+              : isDirty && effective.locationId !== (exp.locationId || "")
               ? "bg-amber-50 border-amber-300 text-amber-950 font-semibold"
               : "bg-white border-slate-200 text-slate-800 hover:border-slate-300"
           }`}
@@ -480,6 +485,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       <td className="px-2 py-2.5">
         <TableSearchSelect
           value={effective.accountId}
+          disabled={isCancelled}
           onChange={(id) => onFieldChange(exp.id, "accountId", id)}
           items={accountItems}
           placeholder="Seleccionar cuenta..."
@@ -493,6 +499,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       <td className="px-2 py-2.5">
         <TableSearchSelect
           value={effective.costCenterId}
+          disabled={isCancelled}
           onChange={(id) => onFieldChange(exp.id, "costCenterId", id)}
           items={costCenterItems}
           placeholder="Centro de costos..."
@@ -506,9 +513,12 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       <td className="px-2 py-2.5">
         <select
           value={effective.isNonDeductible ? "no_deducible" : "deducible"}
+          disabled={isCancelled}
           onChange={(e) => onFieldChange(exp.id, "isNonDeductible", e.target.value === "no_deducible")}
           className={`h-8 w-full text-xs rounded-md border px-2 py-1 outline-none font-bold transition-colors ${
-            effective.isNonDeductible
+            isCancelled
+              ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+              : effective.isNonDeductible
               ? "bg-slate-100 border-slate-300 text-slate-700"
               : "bg-emerald-50 border-emerald-300 text-emerald-800"
           }`}
@@ -534,9 +544,13 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
         )}
       </td>
 
-      {/* Columna Estatus */}
+      {/* Columna Estatus - Cancelado tiene MÁXIMA prioridad */}
       <td className="px-2 py-2.5 text-center">
-        {effective.isNonDeductible ? (
+        {isCancelled ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-200">
+            Cancelado
+          </span>
+        ) : effective.isNonDeductible ? (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-300">
             No Deducible
           </span>
@@ -551,10 +565,6 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
         ) : exp.status === "paid" ? (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
             Pagado
-          </span>
-        ) : exp.status === "cancelado" ? (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-200">
-            Cancelado
           </span>
         ) : (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200">
@@ -581,7 +591,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
           <Button 
             type="button" 
             size="sm"
-            disabled={isSaving}
+            disabled={isSaving || isCancelled}
             onClick={() => onSave(exp)}
             className={`h-8 px-2.5 text-xs font-bold gap-1 transition-all shadow-xs ${
               isDirty
@@ -1224,51 +1234,204 @@ export default function GastosManualesPage() {
     }
   };
 
+  const cancelExpenseInternal = async (expenseId: string) => {
+    if (!companyId) return;
+    const now = new Date().toISOString();
+    const expenseRef = doc(db, "companies", companyId, "expenses", expenseId);
+    const expenseSnap = await getDoc(expenseRef);
+    if (!expenseSnap.exists()) return;
+    const expenseData = expenseSnap.data();
+
+    // 1. Cancel expense document
+    await updateDoc(expenseRef, {
+      status: "cancelado",
+      cancelledAt: now,
+      cancelledBy: user?.email || "Usuario",
+      updatedAt: now
+    });
+
+    // 2. Desconciliar movimiento(s) bancario(s) vinculados
+    const linkedTxId = expenseData?.linkedBankTransactionId;
+    const directBankId = expenseData?.bankAccountId || expenseData?.linkedBankAccountId;
+
+    const unreconcileTxPayload: any = {
+      reconciled: false,
+      reconcileType: null,
+      reconciledType: null,
+      reconciledDocId: null,
+      matchedDocumentId: null,
+      matchedAccountId: null,
+      accountingAccountId: null,
+      reconciledBy: null,
+      aiMatchReason: null,
+      confidenceScore: null,
+      matchedAt: null,
+      reconciledAt: null,
+      unreconciledAt: now,
+      unreconciledBy: user?.email || "Cancelación de Gasto"
+    };
+
+    if (linkedTxId) {
+      const candidateBankAccounts = directBankId 
+        ? bankAccounts.filter(b => b.id === directBankId) 
+        : bankAccounts;
+
+      for (const b of candidateBankAccounts) {
+        try {
+          const txRef = doc(db, "companies", companyId, "bankAccounts", b.id, "transactions", linkedTxId);
+          const txSnap = await getDoc(txRef);
+          if (txSnap.exists()) {
+            await updateDoc(txRef, unreconcileTxPayload);
+            break;
+          }
+        } catch (errTx) {
+          console.warn(`Error updating tx ${linkedTxId} in bank ${b.id}:`, errTx);
+        }
+      }
+    }
+
+    // Desconciliar cualquier transacción en bankAccounts que tenga este expenseId como reconciledDocId o matchedDocumentId
+    for (const b of bankAccounts) {
+      try {
+        const qDoc = query(
+          collection(db, "companies", companyId, "bankAccounts", b.id, "transactions"),
+          where("reconciledDocId", "==", expenseId)
+        );
+        const snapDoc = await getDocs(qDoc);
+        for (const d of snapDoc.docs) {
+          await updateDoc(d.ref, unreconcileTxPayload);
+        }
+
+        const qMatched = query(
+          collection(db, "companies", companyId, "bankAccounts", b.id, "transactions"),
+          where("matchedDocumentId", "==", expenseId)
+        );
+        const snapMatched = await getDocs(qMatched);
+        for (const d of snapMatched.docs) {
+          await updateDoc(d.ref, unreconcileTxPayload);
+        }
+      } catch (errB) {
+        console.warn(`Error querying transactions in bank ${b.id}:`, errB);
+      }
+    }
+
+    // 3. Anular egresos (outflows) vinculados
+    try {
+      const qOutflows = query(
+        collection(db, "companies", companyId, "outflows"),
+        where("documentId", "==", expenseId)
+      );
+      const snapOutflows = await getDocs(qOutflows);
+      for (const oDoc of snapOutflows.docs) {
+        await updateDoc(oDoc.ref, {
+          status: "cancelado",
+          cancelledAt: now,
+          cancelledBy: user?.email || "Usuario",
+          updatedAt: now
+        });
+      }
+    } catch (errOut) {
+      console.warn("Error cancelling outflows for expense:", errOut);
+    }
+
+    // 4. Anular pólizas contables vinculadas
+    try {
+      const qJournal = query(
+        collection(db, "companies", companyId, "journal_entries"),
+        where("documentId", "==", expenseId)
+      );
+      const snapJournal = await getDocs(qJournal);
+      for (const jDoc of snapJournal.docs) {
+        await updateDoc(jDoc.ref, {
+          status: "cancelada",
+          cancelledAt: now,
+          cancelledBy: user?.email || "Usuario",
+          updatedAt: now
+        });
+      }
+    } catch (errJ) {
+      console.warn("Error cancelling journal entries for expense:", errJ);
+    }
+
+    // 5. Revertir factura SAT si aplicaba
+    if (expenseData?.satInvoiceId) {
+      const satId = expenseData.satInvoiceId;
+      const idToCheck = [satId, satId.toLowerCase(), satId.toUpperCase()];
+      for (const testId of idToCheck) {
+        try {
+          const satRef = doc(db, "companies", companyId, "expenses_inbox", testId);
+          const snap = await getDoc(satRef);
+          if (snap.exists()) {
+            await updateDoc(satRef, {
+              status: null, // Reset to Pending
+              paidAmount: 0,
+              expenseId: null
+            });
+          }
+        } catch (e) {
+          console.error(`Error reverting SAT invoice ${testId}:`, e);
+        }
+      }
+    }
+  };
+
   const handleCancelExpense = async (expenseId: string, currentStatus: string) => {
     if (!companyId) return;
 
     const confirmCancel = window.confirm(
       currentStatus === "paid"
-        ? "¿Estás seguro de que deseas cancelar este gasto? Ya tiene egresos registrados."
+        ? "¿Estás seguro de que deseas cancelar este gasto? Se cancelará el gasto, se anularán sus egresos/pólizas y el movimiento bancario vinculado volverá a quedar pendiente (desconciliado)."
         : "¿Estás seguro de que deseas cancelar este gasto operativo?"
     );
 
     if (!confirmCancel) return;
 
     try {
-      const expenseRef = doc(db, "companies", companyId, "expenses", expenseId);
-      const expenseSnap = await getDoc(expenseRef);
-      const expenseData = expenseSnap.data();
+      await cancelExpenseInternal(expenseId);
 
-      await updateDoc(expenseRef, {
-        status: "cancelado"
+      setRowEdits(prev => {
+        const copy = { ...prev };
+        delete copy[expenseId];
+        return copy;
       });
+      setSelectedExpenseIds(prev => prev.filter(id => id !== expenseId));
 
-      // If linked to a SAT Invoice, revert it to pending
-      if (expenseData?.satInvoiceId) {
-        const satId = expenseData.satInvoiceId;
-        const idToCheck = [satId, satId.toLowerCase(), satId.toUpperCase()];
-        for (const testId of idToCheck) {
-          try {
-            const satRef = doc(db, "companies", companyId, "expenses_inbox", testId);
-            const snap = await getDoc(satRef);
-            if (snap.exists()) {
-              await updateDoc(satRef, {
-                status: null, // Reset to Pending
-                paidAmount: 0,
-                expenseId: null
-              });
-            }
-          } catch (e) {
-            console.error(`Error reverting SAT invoice ${testId}:`, e);
-          }
-        }
+      setActionFeedback("Gasto cancelado y movimiento bancario desconciliado exitosamente.");
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (error: any) {
+      console.error("Error canceling expense:", error);
+      alert(`Hubo un error al cancelar el gasto: ${error.message || "Error desconocido"}`);
+    }
+  };
+
+  const handleCancelBatch = async () => {
+    if (!companyId || selectedExpenseIds.length === 0) return;
+    const count = selectedExpenseIds.length;
+    const confirmCancel = window.confirm(
+      `¿Estás seguro de cancelar ${count} ${count === 1 ? "gasto seleccionado" : "gastos seleccionados"}?\n\nSe cancelarán los gastos, se anularán sus egresos y pólizas contables, y todos los movimientos bancarios vinculados volverán a quedar pendientes (desconciliados) en Bancos.`
+    );
+    if (!confirmCancel) return;
+
+    setSavingBatch(true);
+    try {
+      for (const expId of selectedExpenseIds) {
+        await cancelExpenseInternal(expId);
       }
 
-      alert("Gasto cancelado exitosamente.");
-    } catch (error) {
-      console.error("Error canceling expense:", error);
-      alert("Hubo un error al cancelar el gasto.");
+      setRowEdits(prev => {
+        const copy = { ...prev };
+        selectedExpenseIds.forEach(id => delete copy[id]);
+        return copy;
+      });
+      setSelectedExpenseIds([]);
+
+      setActionFeedback(`¡${count} ${count === 1 ? "gasto cancelado" : "gastos cancelados"} y movimientos bancarios desconciliados exitosamente!`);
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err: any) {
+      console.error("Error al cancelar en lote:", err);
+      alert(`Error al cancelar en lote: ${err.message || "Error desconocido"}`);
+    } finally {
+      setSavingBatch(false);
     }
   };
 
@@ -1325,11 +1488,11 @@ export default function GastosManualesPage() {
         }
         if (statusFilter === "cancelado" && exp.status !== "cancelado") return false;
         if (statusFilter === "provisionales") {
-          const isProv = exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"));
+          const isProv = (exp.isProvisional || exp.isPendingFiscalInvoice || (exp.documentNumber && exp.documentNumber.startsWith("PROV-"))) && exp.status !== "cancelado";
           if (!isProv) return false;
         }
         if (statusFilter === "no_deducibles") {
-          if (!exp.isNonDeductible) return false;
+          if (!exp.isNonDeductible || exp.status === "cancelado") return false;
         }
       }
       // 3. Bank Account filter
@@ -1683,6 +1846,17 @@ export default function GastosManualesPage() {
                 className="text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border-white/20 h-8"
               >
                 Deseleccionar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={savingBatch}
+                onClick={handleCancelBatch}
+                className="bg-rose-500/20 hover:bg-rose-600 text-rose-200 hover:text-white border-rose-500/40 text-xs font-bold h-8 px-3 gap-1.5 transition-colors"
+                title="Cancelar todos los gastos seleccionados y desconciliar sus movimientos bancarios"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Cancelar Seleccionados</span>
               </Button>
               <Button
                 size="sm"

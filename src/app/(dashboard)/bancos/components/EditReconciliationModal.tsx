@@ -34,6 +34,7 @@ import {
   Building2,
   RefreshCw,
   Search,
+  Scissors,
 } from "lucide-react";
 import { BankTransaction, BankAccount, isCreditAccount } from "@/types/bank";
 import { getNextSequence } from "@/lib/firebase/counters";
@@ -756,6 +757,15 @@ export function EditReconciliationModal({
               {formatMoney(absAmount)}
             </span>
           </div>
+
+          {transaction.isSplitPart && (
+            <div className="mt-2 text-xs bg-amber-50 text-amber-800 p-2.5 rounded-lg border border-amber-200 flex items-center gap-2">
+              <Scissors className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span>
+                Movimiento dividido de original: <strong>{transaction.splitParentConcept || "Sin concepto"}</strong> ({formatMoney(Math.abs(transaction.splitParentAmount || 0))})
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Content Body */}

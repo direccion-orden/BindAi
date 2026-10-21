@@ -16,6 +16,11 @@ export interface BankTransaction {
   syncProvider?: string;
   syncfyAccountId?: string;
   syncfyTransactionId?: string;
+  isSplitPart?: boolean;
+  splitParentId?: string;
+  splitParentConcept?: string;
+  splitParentAmount?: number;
+  splitParentData?: any;
 }
 
 export interface BankAccount {

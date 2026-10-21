@@ -5,7 +5,7 @@ import { collection, query, onSnapshot, orderBy, doc, getDoc, getDocs, where, de
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2, Pause, Play, Square, ArrowUpDown, ArrowUp, ArrowDown, Pencil } from "lucide-react";
+import { Building2, UploadCloud, ArrowRightLeft, Settings2, Loader2, Search, FileText, RefreshCw, Sparkles, Landmark, Trash2, Pause, Play, Square, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Scissors } from "lucide-react";
 import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { BankImportModal } from "./components/BankImportModal";
 import { TransferModal } from "./components/TransferModal";
@@ -13,6 +13,7 @@ import { AdjustmentModal } from "./components/AdjustmentModal";
 import { ReconcilePanel } from "./components/ReconcilePanel";
 import { SyncfyConnectModal } from "./components/SyncfyConnectModal";
 import { EditReconciliationModal } from "./components/EditReconciliationModal";
+import { SplitTransactionModal } from "./components/SplitTransactionModal";
 import { Input } from "@/components/ui/input";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 
@@ -140,6 +141,13 @@ export default function BancosPage() {
   const [selectedTxs, setSelectedTxs] = useState<BankTransaction[]>([]);
   const [selectedTxForEdit, setSelectedTxForEdit] = useState<BankTransaction | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [txForSplit, setTxForSplit] = useState<BankTransaction | null>(null);
+
+  const handleOpenSplitModal = (tx: BankTransaction) => {
+    setTxForSplit(tx);
+    setIsSplitModalOpen(true);
+  };
 
   const handleQuickSyncfySync = async () => {
     if (!selectedAccountId || !companyId) return;
@@ -946,6 +954,12 @@ export default function BancosPage() {
                                                     Pendiente
                                                   </span>
                                                 )}
+                                                {tx.isSplitPart && (
+                                                  <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1" title={`Parte de movimiento dividido: ${tx.splitParentConcept || ''}`}>
+                                                    <Scissors className="w-2.5 h-2.5 text-amber-600" />
+                                                    Dividido
+                                                  </span>
+                                                )}
                                               </p>
                                               {tx.reference && <p className="text-xs text-muted-foreground">Ref: {tx.reference}</p>}
                                           </td>
@@ -1063,14 +1077,35 @@ export default function BancosPage() {
                                                   
                                                   <p className="text-xs font-bold text-slate-700 leading-tight line-clamp-2">{tx.concept}</p>
                                                   
-                                                  <div className="flex justify-between items-center pt-1">
-                                                      <span className="text-[10px] text-slate-400 font-mono">Ref: {tx.reference || "S/R"}</span>
-                                                      {matches > 0 && (
-                                                          <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-0.5 border border-emerald-200">
-                                                              <Sparkles className="w-2.5 h-2.5 text-emerald-700" />
-                                                              Coincidencia
-                                                          </span>
-                                                      )}
+                                                  <div className="flex justify-between items-center pt-1 gap-1">
+                                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                                          <span className="text-[10px] text-slate-400 font-mono">Ref: {tx.reference || "S/R"}</span>
+                                                          {tx.isSplitPart && (
+                                                              <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1" title={`Parte de movimiento dividido: ${tx.splitParentConcept || ''}`}>
+                                                                  <Scissors className="w-2.5 h-2.5 text-amber-600" />
+                                                                  Dividido
+                                                              </span>
+                                                          )}
+                                                      </div>
+                                                      <div className="flex items-center gap-1">
+                                                          {matches > 0 && (
+                                                              <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-0.5 border border-emerald-200">
+                                                                  <Sparkles className="w-2.5 h-2.5 text-emerald-700" />
+                                                                  Coincidencia
+                                                              </span>
+                                                          )}
+                                                          <button
+                                                              type="button"
+                                                              onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  handleOpenSplitModal(tx);
+                                                              }}
+                                                              className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-100/60 transition-colors"
+                                                              title="Dividir este movimiento en 2 o más partes"
+                                                          >
+                                                              <Scissors className="w-3.5 h-3.5" />
+                                                          </button>
+                                                      </div>
                                                   </div>
                                               </div>
                                           </div>
@@ -1093,6 +1128,7 @@ export default function BancosPage() {
                                       }
                                       accountingAccountsAll={accountingAccountsAll}
                                       onDeselect={() => setSelectedTxs([])}
+                                      onOpenSplitModal={handleOpenSplitModal}
                                       onSuccess={() => {
                                           // 1. Trigger state reload for invoices/expenses
                                           setReconcileTrigger(prev => prev + 1);
@@ -1177,6 +1213,20 @@ export default function BancosPage() {
           onOpenReconcilePanel={(tx) => {
             setActiveTab("reconcile");
             setSelectedTxs([tx]);
+          }}
+      />
+
+      <SplitTransactionModal
+          isOpen={isSplitModalOpen}
+          transaction={txForSplit}
+          bankAccount={selectedAccount || null}
+          onClose={() => {
+            setIsSplitModalOpen(false);
+            setTxForSplit(null);
+          }}
+          onSuccess={() => {
+            setReconcileTrigger(prev => prev + 1);
+            setSelectedTxs([]);
           }}
       />
     </div>

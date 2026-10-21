@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft, ChevronDown } from "lucide-react";
+import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft, ChevronDown, Scissors } from "lucide-react";
 import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
@@ -19,6 +19,7 @@ interface ReconcilePanelProps {
   accountingAccountsAll: any[]; // All accounting accounts
   onSuccess: () => void;
   onDeselect: () => void;
+  onOpenSplitModal?: (tx: BankTransaction) => void;
 }
 
 interface SearchableSelectProps {
@@ -203,7 +204,8 @@ export function ReconcilePanel({
   accountingAccounts,
   accountingAccountsAll,
   onSuccess,
-  onDeselect
+  onDeselect,
+  onOpenSplitModal
 }: ReconcilePanelProps) {
   const { companyId, user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -1494,18 +1496,39 @@ export function ReconcilePanel({
           <>
             <div className="flex justify-between items-start z-10 relative">
               <div>
-                <span className="px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase rounded bg-white/20 text-white">
-                  {isCharge ? "Egreso / Cargo" : "Ingreso / Abono"}
-                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase rounded bg-white/20 text-white">
+                    {isCharge ? "Egreso / Cargo" : "Ingreso / Abono"}
+                  </span>
+                  {transaction.isSplitPart && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase rounded bg-amber-400/20 text-amber-200 border border-amber-400/30 flex items-center gap-1">
+                      <Scissors className="w-2.5 h-2.5 text-amber-300" />
+                      Parte Dividida
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-300 font-mono mt-1">{transaction.date}</p>
               </div>
-              <button 
-                type="button"
-                onClick={onDeselect} 
-                className="text-xs font-semibold text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded transition-colors"
-              >
-                Deseleccionar
-              </button>
+              <div className="flex items-center gap-2">
+                {onOpenSplitModal && !transaction.reconciled && (
+                  <button 
+                    type="button"
+                    onClick={() => onOpenSplitModal(transaction)} 
+                    className="text-xs font-semibold text-amber-200 hover:text-white bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 shadow-sm"
+                    title="Dividir este movimiento en 2 o más partes"
+                  >
+                    <Scissors className="w-3.5 h-3.5" />
+                    Dividir
+                  </button>
+                )}
+                <button 
+                  type="button"
+                  onClick={onDeselect} 
+                  className="text-xs font-semibold text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded transition-colors"
+                >
+                  Deseleccionar
+                </button>
+              </div>
             </div>
 
             <h3 className="font-extrabold text-lg leading-tight z-10 relative line-clamp-2">

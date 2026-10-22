@@ -24,6 +24,12 @@ export interface BankTransaction {
   splitParentConcept?: string;
   splitParentAmount?: number;
   splitParentData?: any;
+  aiConfidenceScore?: number;
+  aiReasoning?: string;
+  aiMatchReason?: string;
+  aiSuggestedAction?: string;
+  aiSuggestedDocId?: string | null;
+  requiresHumanReview?: boolean;
 }
 
 export interface BankAccount {

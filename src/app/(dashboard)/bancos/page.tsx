@@ -14,6 +14,7 @@ import { ReconcilePanel } from "./components/ReconcilePanel";
 import { SyncfyConnectModal } from "./components/SyncfyConnectModal";
 import { EditReconciliationModal } from "./components/EditReconciliationModal";
 import { SplitTransactionModal } from "./components/SplitTransactionModal";
+import { ReconciliationAuditView } from "./components/ReconciliationAuditView";
 import { Input } from "@/components/ui/input";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 
@@ -135,7 +136,7 @@ export default function BancosPage() {
   const [isSyncfyModalOpen, setIsSyncfyModalOpen] = useState(false);
   const [syncingSyncfy, setSyncingSyncfy] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"history" | "reconcile">("history");
+  const [activeTab, setActiveTab] = useState<"history" | "reconcile" | "audit">("history");
   const [reconcileTypeFilter, setReconcileTypeFilter] = useState<"all" | "inflow" | "outflow">("all");
   const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | "pending" | "reconciled">("all");
   const [selectedTxs, setSelectedTxs] = useState<BankTransaction[]>([]);
@@ -178,7 +179,7 @@ export default function BancosPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const tab = params.get("tab") as "history" | "reconcile";
+      const tab = params.get("tab") as "history" | "reconcile" | "audit";
       const account = params.get("account");
       if (tab) setActiveTab(tab);
       if (account) setSelectedAccountId(account);
@@ -777,6 +778,25 @@ export default function BancosPage() {
                             </span>
                           )}
                       </button>
+                      <button
+                          onClick={() => setActiveTab("audit")}
+                          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                            activeTab === 'audit' 
+                              ? 'bg-purple-600 text-white font-extrabold shadow-sm' 
+                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
+                          }`}
+                      >
+                          Auditoría de Conciliaciones
+                          {filteredTransactions.filter(t => t.reconciled).length > 0 && (
+                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-full transition-colors ${
+                              activeTab === 'audit'
+                                ? 'bg-purple-800 text-purple-100'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {filteredTransactions.filter(t => t.reconciled).length}
+                            </span>
+                          )}
+                      </button>
                       <Button
                         onClick={handleRunAiReconciliation}
                         disabled={runningAiReconcile || !selectedAccountId}
@@ -924,6 +944,21 @@ export default function BancosPage() {
 
               {loadingTransactions ? (
                       <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
+                  ) : activeTab === "audit" ? (
+                      companyId ? (
+                        <ReconciliationAuditView
+                            companyId={companyId}
+                            transactions={filteredTransactions}
+                            bankAccounts={accounts}
+                            currentAccountId={selectedAccountId}
+                            accountingAccountsAll={accountingAccountsAll}
+                            onReconciliationChanged={() => {
+                                setReconcileTrigger(prev => prev + 1);
+                            }}
+                        />
+                      ) : (
+                        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
+                      )
                   ) : displayedTransactions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground opacity-60 flex-1">
                           <FileText className="w-12 h-12 mb-3 opacity-20" />

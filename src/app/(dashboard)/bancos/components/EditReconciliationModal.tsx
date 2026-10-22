@@ -212,6 +212,65 @@ export function EditReconciliationModal({
           }
         }
 
+        // 3.5 Check remisiones (sales remissions)
+        if (!found && docId) {
+          try {
+            const rSnap = await getDoc(doc(db, "companies", companyId, "remisiones", docId));
+            if (rSnap.exists()) {
+              const rData = rSnap.data();
+              const folio = rData.remissionNumber || rData.number || docId.slice(0, 8);
+
+              setMatchedDocInfo({
+                title: `Remisión de Venta: ${folio}`,
+                subtitle: `Cliente: ${rData.clientName || "Cliente"}`,
+                folio: folio,
+                link: `/ventas/remisiones/${docId}`,
+                details: rData.orderNumber ? `Pedido: #${rData.orderNumber}` : undefined,
+                amount: rData.totalAmount || rData.total || absAmount,
+                type: "remision",
+                isAiReconciled,
+                aiMatchReason,
+              });
+              found = true;
+            }
+          } catch (e) {
+            console.warn("Could not fetch remision", e);
+          }
+        }
+
+        // 3.6 Check TPV batch (liquidación de tarjetas)
+        if (!found && (type === "tpv_batch" || (transaction as any).matchedDocumentIds?.length > 0)) {
+          const mIds: string[] = (transaction as any).matchedDocumentIds || (docId ? [docId] : []);
+          const mNums: string[] = (transaction as any).matchedDocumentNumbers || [];
+          let docsDetails: string[] = [];
+          let totalBatch = 0;
+          for (const mId of mIds) {
+            try {
+              const rSnap = await getDoc(doc(db, "companies", companyId, "remisiones", mId));
+              if (rSnap.exists()) {
+                const rData = rSnap.data();
+                const folio = rData.remissionNumber || rData.number || mId.slice(0, 8);
+                const amt = rData.cardAmount || rData.totalAmount || rData.total || 0;
+                totalBatch += amt;
+                docsDetails.push(`#${folio} ($${amt.toLocaleString('es-MX', { minimumFractionDigits: 2 })})`);
+              }
+            } catch (e) {
+              console.warn("Error fetching remision for tpv_batch", e);
+            }
+          }
+
+          setMatchedDocInfo({
+            title: `Lote de Liquidación TPV (${mIds.length} remisiones)`,
+            subtitle: docsDetails.length > 0 ? docsDetails.join(" • ") : (mNums.length > 0 ? mNums.join(", ") : "Remisiones TPV"),
+            details: "Liquidación bancaria de ventas con tarjeta en mostrador",
+            amount: totalBatch || absAmount,
+            type: "tpv_batch",
+            isAiReconciled,
+            aiMatchReason,
+          });
+          found = true;
+        }
+
         // 4. Check transfer
         if (!found && type === "transfer") {
           let targetAccountName = "Otra cuenta bancaria";
@@ -329,7 +388,48 @@ export function EditReconciliationModal({
           const listSales = salesSnap.docs
             .map((d) => ({ id: d.id, _type: "factura", ...d.data() } as any))
             .filter((inv) => !inv.paidAmount || inv.paidAmount < (inv.totalAmount || inv.total || 0) - 0.01);
-          setUnpaidDocs(listSales);
+
+          let listRemisiones: any[] = [];
+          try {
+            const isCardMethod = (m: any) => {
+              if (!m || typeof m !== "string") return false;
+              const clean = m.toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+              return clean.includes("tarjeta") || clean.includes("debito") || clean.includes("débito") || 
+                     clean.includes("credito") || clean.includes("crédito") || clean.includes("terminal") || 
+                     clean.includes("amex") || clean.includes("american express") || clean.includes("tpv");
+            };
+
+            const remSnap = await getDocs(collection(db, "companies", companyId, "remisiones"));
+            listRemisiones = remSnap.docs
+              .map((d) => ({ id: d.id, _type: "remision", ...d.data() } as any))
+              .filter((rem) => {
+                const status = String(rem.status || "").trim().toLowerCase();
+                if (status === "cancelada" || status === "cancelado") return false;
+                if (rem.bankReconciled === true) return false;
+
+                const total = Number(rem.totalAmount || rem.total || 0);
+                const paid = Number(rem.paidAmount || 0);
+
+                const isUnpaidCredit = status !== "facturada" && status !== "pagada" && (!rem.paidAmount || paid < total - 0.01);
+                if (isUnpaidCredit) {
+                  rem.isTpvSale = false;
+                  return true;
+                }
+
+                const payments = Array.isArray(rem.payments) ? rem.payments : [];
+                const hasCardPayment = payments.some((p: any) => isCardMethod(p?.method)) || isCardMethod(rem.paymentMethod);
+                if (hasCardPayment) {
+                  rem.isTpvSale = true;
+                  return true;
+                }
+
+                return false;
+              });
+          } catch (e) {
+            console.warn("Could not fetch remisiones in EditReconciliationModal:", e);
+          }
+
+          setUnpaidDocs([...listSales, ...listRemisiones]);
         }
       } catch (err) {
         console.error("Error loading reconciliation options:", err);
@@ -352,8 +452,35 @@ export function EditReconciliationModal({
       const docId = (transaction as any).reconciledDocId || transaction.matchedDocumentId;
       const type = (transaction as any).reconciledType || transaction.reconcileType || "match";
 
+      // A.0. Revert TPV batch / multi-remisiones if applicable
+      const matchedIds: string[] = (transaction as any).matchedDocumentIds && (transaction as any).matchedDocumentIds.length > 0
+        ? (transaction as any).matchedDocumentIds
+        : (docId ? [docId] : []);
+
+      if (type === "tpv_batch" || (!isCharge && matchedIds.length > 0)) {
+        for (const mId of matchedIds) {
+          try {
+            const remRef = doc(db, "companies", companyId, "remisiones", mId);
+            const remSnap = await getDoc(remRef);
+            if (remSnap.exists()) {
+              const remData = remSnap.data();
+              if (remData.bankReconciled || remData.isTpvSale) {
+                await updateDoc(remRef, {
+                  bankReconciled: false,
+                  reconciledBankTxId: null,
+                  reconciledBankAccountId: null,
+                  reconciledAt: null,
+                });
+              }
+            }
+          } catch (e) {
+            console.warn("Could not revert remision bankReconciled:", mId, e);
+          }
+        }
+      }
+
       // A. Revert invoice/expense paidAmount if matched or provisional
-      if (docId) {
+      if (docId && type !== "tpv_batch") {
         if (isCharge) {
           // Check expenses
           try {
@@ -388,6 +515,7 @@ export function EditReconciliationModal({
           }
         } else {
           // Check facturas
+          let revertedSale = false;
           try {
             const fRef = doc(db, "companies", companyId, "facturas", docId);
             const fSnap = await getDoc(fRef);
@@ -398,9 +526,45 @@ export function EditReconciliationModal({
                 paidAmount: newPaid,
                 status: "por_cobrar",
               });
+              revertedSale = true;
             }
           } catch (e) {
             console.warn("Could not revert factura paidAmount", e);
+          }
+
+          // Check remisiones if not a factura
+          if (!revertedSale) {
+            try {
+              const remRef = doc(db, "companies", companyId, "remisiones", docId);
+              const remSnap = await getDoc(remRef);
+              if (remSnap.exists()) {
+                const remData = remSnap.data();
+                const currentPaid = remData.paidAmount || 0;
+                const newPaid = Math.max(0, currentPaid - absAmount);
+                await updateDoc(remRef, {
+                  paidAmount: newPaid,
+                  status: "activa",
+                });
+
+                if (remData.orderId) {
+                  try {
+                    const orderRef = doc(db, "companies", companyId, "pedidos", remData.orderId);
+                    const orderSnap = await getDoc(orderRef);
+                    if (orderSnap.exists()) {
+                      const orderPaid = orderSnap.data().paidAmount || 0;
+                      await updateDoc(orderRef, {
+                        paidAmount: Math.max(0, orderPaid - absAmount),
+                        status: "por_surtir",
+                      });
+                    }
+                  } catch (err) {
+                    console.error("Error reverting parent order paidAmount:", err);
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("Could not revert remision paidAmount", e);
+            }
           }
         }
       } else if (type === "transfer" && docId && (transaction as any).matchedAccountId) {
@@ -447,6 +611,10 @@ export function EditReconciliationModal({
         reconcileType: null,
         reconciledType: null,
         matchedDocumentId: null,
+        matchedDocumentIds: null,
+        matchedDocumentNumbers: null,
+        matchedDocumentType: null,
+        reconcileNotes: null,
         reconciledDocId: null,
         matchedAccountId: null,
         accountingAccountId: null,
@@ -499,11 +667,21 @@ export function EditReconciliationModal({
                 await updateDoc(expRef, { paidAmount: Math.max(0, prev - absAmount), status: "pending" });
               }
             } else {
+              let reverted = false;
               const fRef = doc(db, "companies", companyId, "facturas", oldId);
               const fSnap = await getDoc(fRef);
               if (fSnap.exists()) {
                 const prev = fSnap.data().paidAmount || 0;
                 await updateDoc(fRef, { paidAmount: Math.max(0, prev - absAmount), status: "por_cobrar" });
+                reverted = true;
+              }
+              if (!reverted) {
+                const rRef = doc(db, "companies", companyId, "remisiones", oldId);
+                const rSnap = await getDoc(rRef);
+                if (rSnap.exists()) {
+                  const prev = rSnap.data().paidAmount || 0;
+                  await updateDoc(rRef, { paidAmount: Math.max(0, prev - absAmount), status: "activa" });
+                }
               }
             }
           } catch (e) {
@@ -629,16 +807,39 @@ export function EditReconciliationModal({
             }
           );
         } else {
-          // Inflow: update sales invoice
+          // Inflow: update sales invoice or remission
+          const isRemision = selectedDoc._type === "remision";
+          const docCollection = isRemision ? "remisiones" : "facturas";
           const updates: any = {
             paidAmount: increment(absAmount),
           };
           const totalAmt = selectedDoc.totalAmount || selectedDoc.total || 0;
           const newPaid = (selectedDoc.paidAmount || 0) + absAmount;
           if (newPaid >= totalAmt - 0.01) {
-            updates.status = "cobrada";
+            updates.status = isRemision ? "pagada" : "cobrada";
           }
-          await updateDoc(doc(db, "companies", companyId, "facturas", selectedDoc.id), updates);
+          await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
+
+          if (isRemision && selectedDoc.orderId) {
+            try {
+              const orderRef = doc(db, "companies", companyId, "pedidos", selectedDoc.orderId);
+              const orderSnap = await getDoc(orderRef);
+              if (orderSnap.exists()) {
+                const orderData = orderSnap.data();
+                const orderPaid = (orderData.paidAmount || 0) + absAmount;
+                const orderUpdates: any = {
+                  paidAmount: increment(absAmount),
+                  updatedAt: new Date().toISOString()
+                };
+                if (orderPaid >= (orderData.totalAmount || 0) - 0.01) {
+                  orderUpdates.status = "pagado";
+                }
+                await updateDoc(orderRef, orderUpdates);
+              }
+            } catch (err) {
+              console.error("Error updating parent order paidAmount:", err);
+            }
+          }
 
           await updateDoc(
             doc(db, "companies", companyId, "bankAccounts", bankAccount.id, "transactions", transaction.id),
@@ -944,7 +1145,7 @@ export function EditReconciliationModal({
                       : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  {isCharge ? "Factura / Gasto SAT" : "Factura de Venta"}
+                  {isCharge ? "Factura / Gasto SAT" : "Factura / Remisión"}
                 </button>
                 <button
                   type="button"
@@ -983,7 +1184,8 @@ export function EditReconciliationModal({
                         const docTotal = docItem.total || docItem.totalAmount || docItem.amount || 0;
                         const pendingAmt = docTotal - (docItem.paidAmount || 0);
                         const docName = docItem.emisorName || docItem.vendorName || docItem.clientName || "Comprobante";
-                        const docFolio = docItem.invoiceNumber || docItem.folio || docItem.uuid?.slice(0, 8) || "S/F";
+                        const docFolio = docItem.remissionNumber || docItem.invoiceNumber || docItem.folio || docItem.uuid?.slice(0, 8) || "S/F";
+                        const typeTag = docItem._type === "remision" ? " [Remisión]" : "";
 
                         return (
                           <div
@@ -994,7 +1196,7 @@ export function EditReconciliationModal({
                             }`}
                           >
                             <div className="flex-1 pr-2 min-w-0">
-                              <p className="font-bold text-slate-800 truncate">{docName}</p>
+                              <p className="font-bold text-slate-800 truncate">{typeTag}{typeTag ? " " : ""}{docName}</p>
                               <p className="text-[11px] text-slate-400 font-mono">
                                 Folio: {docFolio} • Fecha: {docItem.date || "N/A"}
                               </p>

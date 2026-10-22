@@ -331,7 +331,7 @@ export default function BancosPage() {
         const allAcc = accountsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
         setAccountingAccountsAll(allAcc);
 
-        // 2. Fetch sales invoices
+        // 2. Fetch sales invoices & remisiones
         const salesQuery = query(
           collection(db, "companies", companyId, "facturas"),
           where("status", "==", "por_cobrar")
@@ -339,7 +339,55 @@ export default function BancosPage() {
         const salesSnap = await getDocs(salesQuery);
         const salesList = salesSnap.docs.map(d => ({ id: d.id, _type: "factura", ...d.data() } as any));
         const unpaidSalesFiltered = salesList.filter(inv => !inv.paidAmount || inv.paidAmount < (inv.totalAmount || inv.total || 0) - 0.01);
-        setUnpaidSales(unpaidSalesFiltered);
+
+        // 2.1 Fetch active unpaid remisiones + TPV/card remisiones pending bank reconciliation
+        let unpaidRemisionesFiltered: any[] = [];
+        try {
+          const remisionesSnap = await getDocs(collection(db, "companies", companyId, "remisiones"));
+          const remisionesList = remisionesSnap.docs.map(d => ({ id: d.id, _type: "remision", ...d.data() } as any));
+          
+          const isCardMethod = (m: any) => {
+            if (!m || typeof m !== "string") return false;
+            const clean = m.toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+            return clean.includes("tarjeta") || clean.includes("debito") || clean.includes("débito") || 
+                   clean.includes("credito") || clean.includes("crédito") || clean.includes("terminal") || 
+                   clean.includes("amex") || clean.includes("american express") || clean.includes("tpv");
+          };
+
+          unpaidRemisionesFiltered = remisionesList.filter(rem => {
+            const status = String(rem.status || "").trim().toLowerCase();
+            if (status === "cancelada" || status === "cancelado") return false;
+            if (rem.bankReconciled === true) return false;
+
+            const total = Number(rem.totalAmount || rem.total || 0);
+            const paid = Number(rem.paidAmount || 0);
+
+            // Case A: Sales on credit pending payment
+            const isUnpaidCredit = status !== "facturada" && status !== "pagada" && (!rem.paidAmount || paid < total - 0.01);
+            if (isUnpaidCredit) {
+              rem.isTpvSale = false;
+              return true;
+            }
+
+            // Case B: POS sales paid via card/terminal (eligible for TPV batch liquidation)
+            const payments = Array.isArray(rem.payments) ? rem.payments : [];
+            const cardPayments = payments.filter((p: any) => isCardMethod(p?.method));
+            const hasCardPayment = cardPayments.length > 0 || isCardMethod(rem.paymentMethod);
+
+            if (hasCardPayment) {
+              rem.isTpvSale = true;
+              const cardTotal = cardPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+              rem.cardAmount = cardTotal > 0 ? cardTotal : total;
+              return true;
+            }
+
+            return false;
+          });
+        } catch (e) {
+          console.warn("Could not fetch remisiones for reconciliation:", e);
+        }
+
+        setUnpaidSales([...unpaidSalesFiltered, ...unpaidRemisionesFiltered]);
 
         // 3. Fetch inbox/received expenses
         const expInboxQuery = query(

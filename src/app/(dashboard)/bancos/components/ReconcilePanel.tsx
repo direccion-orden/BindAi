@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase/client";
 import { getNextSequence } from "@/lib/firebase/counters";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft, ChevronDown, Scissors } from "lucide-react";
+import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt, FileCheck, ArrowRightLeft, ChevronDown, Scissors, Check, X, Plus } from "lucide-react";
 import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
@@ -197,6 +197,123 @@ export const findBankAccountingAccount = (physicalBankAccount: any, accountingAc
   return null;
 };
 
+export interface TpvBatchSuggestion {
+  docs: any[];
+  total: number;
+  matchType: "exact_single" | "exact_combo";
+  diffDaysMax: number;
+}
+
+export function findTpvBatchMatch(
+  targetAmount: number,
+  txDate: string,
+  candidateDocs: any[]
+): TpvBatchSuggestion | null {
+  if (targetAmount <= 0) return null;
+
+  // Filter only TPV/card sales that are not yet bank reconciled
+  const tpvCandidates = candidateDocs.filter(d => d._type === "remision" && d.isTpvSale && !d.bankReconciled);
+  if (tpvCandidates.length === 0) return null;
+
+  // Window: 7 days before txDate up to 1 day after
+  const txTime = txDate ? new Date(txDate + "T23:59:59").getTime() : Date.now();
+  
+  const windowCandidates = tpvCandidates.filter(d => {
+    const dDateStr = d.docDateStr || (d.createdAt ? String(d.createdAt).substring(0, 10) : "") || (d.date ? String(d.date).substring(0, 10) : "");
+    if (!dDateStr) return true;
+    const dTime = new Date(dDateStr + "T00:00:00").getTime();
+    const diffDays = (txTime - dTime) / (1000 * 60 * 60 * 24);
+    return diffDays >= -1 && diffDays <= 7;
+  });
+
+  // Sort by date proximity
+  windowCandidates.sort((a, b) => {
+    const diffA = Math.abs(a.diffDays ?? 0);
+    const diffB = Math.abs(b.diffDays ?? 0);
+    return diffA - diffB;
+  });
+
+  // 1. Single exact match
+  const single = windowCandidates.find(d => Math.abs((d.cardAmount || d.docOutstanding || d.docTotal) - targetAmount) < 0.02);
+  if (single) {
+    return {
+      docs: [single],
+      total: single.cardAmount || single.docOutstanding || single.docTotal,
+      matchType: "exact_single",
+      diffDaysMax: single.diffDays ?? 0
+    };
+  }
+
+  // 2. Combinations of 2 to 4 documents
+  const n = Math.min(windowCandidates.length, 30);
+  const pool = windowCandidates.slice(0, n);
+
+  // Check pairs
+  for (let i = 0; i < pool.length; i++) {
+    const valI = pool[i].cardAmount || pool[i].docOutstanding || pool[i].docTotal || 0;
+    if (valI > targetAmount + 0.05) continue;
+    for (let j = i + 1; j < pool.length; j++) {
+      const valJ = pool[j].cardAmount || pool[j].docOutstanding || pool[j].docTotal || 0;
+      if (Math.abs(valI + valJ - targetAmount) < 0.02) {
+        return {
+          docs: [pool[i], pool[j]],
+          total: valI + valJ,
+          matchType: "exact_combo",
+          diffDaysMax: Math.max(pool[i].diffDays ?? 0, pool[j].diffDays ?? 0)
+        };
+      }
+    }
+  }
+
+  // Check triplets
+  for (let i = 0; i < pool.length; i++) {
+    const valI = pool[i].cardAmount || pool[i].docOutstanding || pool[i].docTotal || 0;
+    if (valI > targetAmount) continue;
+    for (let j = i + 1; j < pool.length; j++) {
+      const valJ = pool[j].cardAmount || pool[j].docOutstanding || pool[j].docTotal || 0;
+      if (valI + valJ > targetAmount) continue;
+      for (let k = j + 1; k < pool.length; k++) {
+        const valK = pool[k].cardAmount || pool[k].docOutstanding || pool[k].docTotal || 0;
+        if (Math.abs(valI + valJ + valK - targetAmount) < 0.02) {
+          return {
+            docs: [pool[i], pool[j], pool[k]],
+            total: valI + valJ + valK,
+            matchType: "exact_combo",
+            diffDaysMax: Math.max(pool[i].diffDays ?? 0, pool[j].diffDays ?? 0, pool[k].diffDays ?? 0)
+          };
+        }
+      }
+    }
+  }
+
+  // Check quadruplets
+  for (let i = 0; i < pool.length; i++) {
+    const valI = pool[i].cardAmount || pool[i].docOutstanding || pool[i].docTotal || 0;
+    if (valI > targetAmount) continue;
+    for (let j = i + 1; j < pool.length; j++) {
+      const valJ = pool[j].cardAmount || pool[j].docOutstanding || pool[j].docTotal || 0;
+      if (valI + valJ > targetAmount) continue;
+      for (let k = j + 1; k < pool.length; k++) {
+        const valK = pool[k].cardAmount || pool[k].docOutstanding || pool[k].docTotal || 0;
+        if (valI + valJ + valK > targetAmount) continue;
+        for (let l = k + 1; l < pool.length; l++) {
+          const valL = pool[l].cardAmount || pool[l].docOutstanding || pool[l].docTotal || 0;
+          if (Math.abs(valI + valJ + valK + valL - targetAmount) < 0.02) {
+            return {
+              docs: [pool[i], pool[j], pool[k], pool[l]],
+              total: valI + valJ + valK + valL,
+              matchType: "exact_combo",
+              diffDaysMax: Math.max(pool[i].diffDays ?? 0, pool[j].diffDays ?? 0, pool[k].diffDays ?? 0, pool[l].diffDays ?? 0)
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
 export function ReconcilePanel({
   transactions,
   accountId,
@@ -218,8 +335,23 @@ export function ReconcilePanel({
 
   // Form selections
   const [selectedDocId, setSelectedDocId] = useState("");
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [selectedExpenseOrIncomeAccountId, setSelectedExpenseOrIncomeAccountId] = useState("");
   const [vatRate, setVatRate] = useState<number>(0.16);
+
+  const handleSelectDoc = (id: string) => {
+    if (!id) return;
+    setSelectedDocId(id);
+    setSelectedDocIds(prev => prev.includes(id) ? prev : [...prev, id]);
+  };
+
+  const handleRemoveDoc = (id: string) => {
+    setSelectedDocIds(prev => {
+      const next = prev.filter(dId => dId !== id);
+      setSelectedDocId(next[0] || "");
+      return next;
+    });
+  };
 
   // New fields for direct classification of charges (gasto + egreso)
   const [selectedVendorId, setSelectedVendorId] = useState("");
@@ -289,7 +421,7 @@ export function ReconcilePanel({
     return unpaidDocs.map(doc => {
       const docTotal = doc._type === "gasto_manual" ? (doc.amount || 0) : (doc.totalAmount || doc.total || 0);
       const docPaid = doc.paidAmount || 0;
-      const docOutstanding = docTotal - docPaid;
+      const docOutstanding = doc.isTpvSale ? (doc.cardAmount || docTotal) : (docTotal - docPaid);
       // Is exact match within 1 cent (tolerance for float precision)
       const isExactMatch = Math.abs(docOutstanding - absAmount) < 0.01;
 
@@ -332,15 +464,47 @@ export function ReconcilePanel({
     });
   }, [unpaidDocs, absAmount, transaction.date]);
 
-  // Auto-select exact match if found
+  // Auto-detect TPV batch suggestion (when inflow / deposit)
+  const tpvBatchSuggestion = useMemo(() => {
+    if (isCharge || absAmount <= 0) return null;
+    return findTpvBatchMatch(absAmount, transaction?.date, sortedAndMatchedDocs);
+  }, [isCharge, absAmount, transaction?.date, sortedAndMatchedDocs]);
+
+  // Auto-select exact match or suggested TPV batch if found
   useEffect(() => {
     const exactMatch = sortedAndMatchedDocs.find(d => d.isExactMatch);
     if (exactMatch) {
       setSelectedDocId(exactMatch.id);
+      setSelectedDocIds([exactMatch.id]);
+    } else if (tpvBatchSuggestion && tpvBatchSuggestion.docs.length > 0) {
+      setSelectedDocId(tpvBatchSuggestion.docs[0].id);
+      setSelectedDocIds(tpvBatchSuggestion.docs.map(d => d.id));
     } else {
       setSelectedDocId("");
+      setSelectedDocIds([]);
     }
-  }, [sortedAndMatchedDocs]);
+  }, [sortedAndMatchedDocs, tpvBatchSuggestion]);
+
+  const selectedDocsList = useMemo(() => {
+    if (selectedDocIds.length === 0) {
+      if (selectedDocId) {
+        const single = sortedAndMatchedDocs.find(d => d.id === selectedDocId);
+        return single ? [single] : [];
+      }
+      return [];
+    }
+    return sortedAndMatchedDocs.filter(d => selectedDocIds.includes(d.id));
+  }, [selectedDocIds, selectedDocId, sortedAndMatchedDocs]);
+
+  const selectedDocsTotal = useMemo(() => {
+    return selectedDocsList.reduce((sum, d) => sum + (d.cardAmount || d.docOutstanding || d.docTotal || 0), 0);
+  }, [selectedDocsList]);
+
+  const docsDiff = useMemo(() => {
+    return Math.abs(selectedDocsTotal - absAmount);
+  }, [selectedDocsTotal, absAmount]);
+
+  const isExactCuadre = docsDiff < 0.05;
 
   const selectedDoc = useMemo(() => {
     if (!selectedDocId || reconcileMode !== "match") return null;
@@ -349,19 +513,25 @@ export function ReconcilePanel({
 
   const searchableDocs = useMemo(() => {
     return sortedAndMatchedDocs.map(doc => {
-      const isManualLabel = doc._type === "gasto_manual" ? " (Manual)" : "";
+      const isTpv = doc._type === "remision" && doc.isTpvSale;
+      const typeLabel = isTpv ? " [TPV Tarjeta]" : doc._type === "remision" ? " [Remisión]" : doc._type === "gasto_manual" ? " (Manual)" : "";
       const partnerName = doc.vendorName || doc.emisorName || doc.clientName || "Proveedor/Cliente";
-      const docNumber = doc.documentNumber || doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
+      const docNumber = doc.remissionNumber || doc.documentNumber || doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
       const matchLabel = doc.isExactMatch ? "⭐ [SUGERIDO] " : "";
       const dateDisplay = doc.docDateStr ? ` [${doc.docDateStr}]` : "";
+      const isAlreadySelected = selectedDocIds.includes(doc.id) ? " ✓ (En selección)" : "";
+
+      const subtitleText = isTpv 
+        ? `Cobro Tarjeta: $${doc.docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: $${doc.docTotal.toLocaleString('es-MX')}`
+        : `Pendiente: $${doc.docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: $${doc.docTotal.toLocaleString('es-MX')}`;
 
       return {
         id: doc.id,
-        name: `${matchLabel}${partnerName} - #${docNumber}${isManualLabel}${dateDisplay}`,
-        subtitle: `Pendiente: $${doc.docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: $${doc.docTotal.toLocaleString('es-MX')}`
+        name: `${matchLabel}${typeLabel}${typeLabel ? " " : ""}${partnerName} - #${docNumber}${dateDisplay}${isAlreadySelected}`,
+        subtitle: subtitleText
       };
     });
-  }, [sortedAndMatchedDocs]);
+  }, [sortedAndMatchedDocs, selectedDocIds]);
 
   const selectedDocConcepts = useMemo(() => {
     if (!selectedDoc) return [];
@@ -677,18 +847,21 @@ export function ReconcilePanel({
     setLoading(true);
     try {
       if (reconcileMode === "match") {
-        if (!selectedDocId) {
+        const effectiveDocIds = selectedDocIds.length > 0 ? selectedDocIds : (selectedDocId ? [selectedDocId] : []);
+        if (effectiveDocIds.length === 0) {
           alert("Por favor selecciona un documento a asociar.");
           setLoading(false);
           return;
         }
 
-        const selectedDoc = sortedAndMatchedDocs.find(d => d.id === selectedDocId);
-        if (!selectedDoc) {
-          alert("Documento no encontrado.");
+        const selectedDocs = sortedAndMatchedDocs.filter(d => effectiveDocIds.includes(d.id));
+        if (selectedDocs.length === 0) {
+          alert("Documento(s) no encontrado(s).");
           setLoading(false);
           return;
         }
+
+        const selectedDoc = selectedDocs[0];
 
         if (isCharge) {
           if (!selectedExpenseOrIncomeAccountId) {
@@ -704,8 +877,9 @@ export function ReconcilePanel({
         }
 
         const isManual = selectedDoc._type === "gasto_manual";
-        const docType = isManual ? "gasto_manual" : selectedDoc._type === "gasto" ? "gasto" : "factura";
-        const docCollection = isManual ? "expenses" : selectedDoc._type === "gasto" ? "expenses_inbox" : "facturas";
+        const isRemision = selectedDoc._type === "remision";
+        const docType = isManual ? "gasto_manual" : selectedDoc._type === "gasto" ? "gasto" : isRemision ? "remision" : "factura";
+        const docCollection = isManual ? "expenses" : selectedDoc._type === "gasto" ? "expenses_inbox" : isRemision ? "remisiones" : "facturas";
 
         const selectedAccount = accountingAccountsAll.find(a => a.id === selectedExpenseOrIncomeAccountId);
         const physicalBankAccount = bankAccounts.find(b => b.id === accountId);
@@ -720,7 +894,7 @@ export function ReconcilePanel({
 
         let targetDocId = selectedDoc.id;
         let targetDocType = docType;
-        let targetDocNumber = selectedDoc.documentNumber || selectedDoc.invoiceNumber || selectedDoc.uuid || selectedDoc.id;
+        let targetDocNumber = selectedDoc.remissionNumber || selectedDoc.documentNumber || selectedDoc.invoiceNumber || selectedDoc.folio || selectedDoc.uuid || selectedDoc.id;
 
         const isRecurringTemplate = isManual && selectedDoc.isRecurring === true;
         let recurringSequenceNum = "";
@@ -941,38 +1115,110 @@ export function ReconcilePanel({
               }
             }
           } else {
-            // 1. Create incoming payment record for each payment received
-            const paymentData = {
-              amount: txAbsAmount,
-              date: tx.date,
-              method: "Transferencia",
-              reference: tx.reference || "CONCILIACION",
-              documentId: selectedDoc.id,
-              documentType: "factura",
-              documentNumber: selectedDoc.invoiceNumber || selectedDoc.id,
-              clientName: selectedDoc.clientName || "Cliente",
-              bankAccountId: accountId,
-              createdAt: new Date().toISOString(),
-            };
-            await addDoc(collection(db, "companies", companyId, "payments"), paymentData);
+            // !isCharge: Income / TPV batch reconciliation
+            const isTpvBatch = selectedDocs.some(d => d.isTpvSale) || selectedDocs.length > 1;
+            const matchedDocNumbers = selectedDocs.map(d => d.remissionNumber || d.documentNumber || d.invoiceNumber || d.folio || d.id);
+            const matchedDocIds = selectedDocs.map(d => d.id);
+            const firstDoc = selectedDocs[0];
+
+            for (const docItem of selectedDocs) {
+              if (docItem._type === "remision" && docItem.isTpvSale) {
+                // POS sale already pagada at checkout. Reconcile with bank without duplicating revenue
+                await updateDoc(doc(db, "companies", companyId, "remisiones", docItem.id), {
+                  bankReconciled: true,
+                  reconciledBankTxId: tx.id,
+                  reconciledBankAccountId: accountId,
+                  reconciledAt: new Date().toISOString()
+                });
+              } else {
+                // Regular unpaid sale (credit remision or invoice)
+                const docAbs = docItem.docOutstanding || docItem.docTotal || txAbsAmount;
+                const isRem = docItem._type === "remision";
+                const num = docItem.remissionNumber || docItem.documentNumber || docItem.invoiceNumber || docItem.folio || docItem.id;
+                
+                const paymentData: any = {
+                  amount: docAbs,
+                  date: tx.date,
+                  method: "Transferencia",
+                  reference: tx.reference || "CONCILIACION",
+                  documentId: docItem.id,
+                  documentType: isRem ? "remision" : "factura",
+                  documentNumber: num,
+                  clientName: docItem.clientName || "Cliente",
+                  bankAccountId: accountId,
+                  createdAt: new Date().toISOString(),
+                };
+                if (isRem && docItem.orderId) {
+                  paymentData.orderId = docItem.orderId;
+                }
+                await addDoc(collection(db, "companies", companyId, "payments"), paymentData);
+
+                const newPaid = (docItem.paidAmount || 0) + docAbs;
+                const totalAmt = docItem.docTotal || 0;
+                const targetCol = isRem ? "remisiones" : "facturas";
+                const targetStatus = isRem ? "pagada" : "cobrada";
+                const docUpdates: any = {
+                  paidAmount: increment(docAbs)
+                };
+                if (newPaid >= totalAmt - 0.01) {
+                  docUpdates.status = targetStatus;
+                }
+                await updateDoc(doc(db, "companies", companyId, targetCol, docItem.id), docUpdates);
+
+                if (isRem && docItem.orderId) {
+                  try {
+                    const orderRef = doc(db, "companies", companyId, "pedidos", docItem.orderId);
+                    const orderSnap = await getDoc(orderRef);
+                    if (orderSnap.exists()) {
+                      const orderData = orderSnap.data();
+                      const orderPaid = (orderData.paidAmount || 0) + docAbs;
+                      const orderUpdates: any = {
+                        paidAmount: increment(docAbs),
+                        updatedAt: new Date().toISOString()
+                      };
+                      if (orderPaid >= (orderData.totalAmount || 0) - 0.01) {
+                        orderUpdates.status = "pagado";
+                      }
+                      await updateDoc(orderRef, orderUpdates);
+                    }
+                  } catch (err) {
+                    console.error("Error updating parent order paidAmount:", err);
+                  }
+                }
+              }
+            }
+
+            // Mark Bank Transaction as Reconciled
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", accountId, "transactions", tx.id), {
+              reconciled: true,
+              matchedAt: new Date().toISOString(),
+              reconcileType: isTpvBatch ? "tpv_batch" : reconcileMode,
+              matchedDocumentId: firstDoc.id,
+              matchedDocumentIds: matchedDocIds,
+              matchedDocumentNumbers: matchedDocNumbers,
+              matchedDocumentType: firstDoc._type,
+              reconcileNotes: isTpvBatch ? `Liquidación TPV (${matchedDocIds.length} remisiones)` : undefined
+            });
           }
 
-          // 3. Mark the Bank Transaction document as Reconciled
-          await updateDoc(doc(db, "companies", companyId, "bankAccounts", accountId, "transactions", tx.id), {
-            reconciled: true,
-            matchedAt: new Date().toISOString(),
-            reconcileType: reconcileMode,
-            matchedDocumentId: targetDocId
-          });
+          if (isCharge) {
+            // 3. Mark the Bank Transaction document as Reconciled (charges)
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", accountId, "transactions", tx.id), {
+              reconciled: true,
+              matchedAt: new Date().toISOString(),
+              reconcileType: reconcileMode,
+              matchedDocumentId: targetDocId
+            });
+          }
         }
 
-        // 4. Update document paidAmount by incrementing it with total amount and save classification
-        const totalAbsAmount = transactions.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-        const updates: any = {
-          paidAmount: increment(totalAbsAmount)
-        };
-
         if (isCharge) {
+          // 4. Update document paidAmount by incrementing it with total amount and save classification (expenses only)
+          const totalAbsAmount = transactions.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+          const updates: any = {
+            paidAmount: increment(totalAbsAmount)
+          };
+
           const locationName = locations.find(l => l.id === selectedLocationId)?.name || "";
           updates.accountId = selectedExpenseOrIncomeAccountId;
           updates.accountCode = selectedAccount?.code || "";
@@ -996,72 +1242,93 @@ export function ReconcilePanel({
             updates.expenseId = targetDocId;
             updates.linkedExpenseId = targetDocId;
           }
-        }
 
-        if (isRecurringTemplate) {
-          const numericVal = parseInt(recurringSequenceNum.split("-")[1]) || 0;
-          const locationName = locations.find(l => l.id === selectedLocationId)?.name || "";
-          
-          const childExpenseDoc = {
-            id: targetDocId,
-            number: numericVal,
-            documentNumber: targetDocNumber,
-            date: expenseDate || new Date().toISOString().split("T")[0],
-            vendorId: selectedDoc.vendorId || null,
-            vendorName: selectedDoc.vendorName || "Proveedor Gasto",
-            concept: selectedDoc.concept || "Pago recurrente",
-            amount: totalAbsAmount,
-            vatRate: vatRate !== undefined ? vatRate : (selectedDoc.vatRate || 0.16),
-            locationId: selectedLocationId,
-            locationName,
-            accountId: selectedExpenseOrIncomeAccountId,
-            accountCode: selectedAccount?.code || "",
-            accountName: selectedAccount?.name || "",
-            paidAmount: totalAbsAmount,
-            status: "paid",
-            reconciled: true,
-            parentExpenseId: selectedDoc.id,
-            items: [
-              {
-                productId: null,
-                variantId: null,
-                productName: selectedDoc.concept || "Pago recurrente",
-                variantTitle: "",
-                quantity: 1,
-                unitCost: totalAbsAmount,
-                lineKey: "",
-                costCenterId: selectedCostCenterId || null,
-                accountId: selectedExpenseOrIncomeAccountId,
-                locationId: selectedLocationId
+          if (isRecurringTemplate) {
+            const numericVal = parseInt(recurringSequenceNum.split("-")[1]) || 0;
+            const locationName = locations.find(l => l.id === selectedLocationId)?.name || "";
+            
+            const childExpenseDoc = {
+              id: targetDocId,
+              number: numericVal,
+              documentNumber: targetDocNumber,
+              date: expenseDate || new Date().toISOString().split("T")[0],
+              vendorId: selectedDoc.vendorId || null,
+              vendorName: selectedDoc.vendorName || "Proveedor Gasto",
+              concept: selectedDoc.concept || "Pago recurrente",
+              amount: totalAbsAmount,
+              vatRate: vatRate !== undefined ? vatRate : (selectedDoc.vatRate || 0.16),
+              locationId: selectedLocationId,
+              locationName,
+              accountId: selectedExpenseOrIncomeAccountId,
+              accountCode: selectedAccount?.code || "",
+              accountName: selectedAccount?.name || "",
+              paidAmount: totalAbsAmount,
+              status: "paid",
+              reconciled: true,
+              parentExpenseId: selectedDoc.id,
+              items: [
+                {
+                  productId: null,
+                  variantId: null,
+                  productName: selectedDoc.concept || "Pago recurrente",
+                  variantTitle: "",
+                  quantity: 1,
+                  unitCost: totalAbsAmount,
+                  lineKey: "",
+                  costCenterId: selectedCostCenterId || null,
+                  accountId: selectedExpenseOrIncomeAccountId,
+                  locationId: selectedLocationId
+                }
+              ],
+              createdAt: new Date().toISOString(),
+              createdBy: user?.email || "Sistema (Conciliación Recurrente)",
+              _type: "gasto_manual"
+            };
+
+            await setDoc(doc(db, "companies", companyId, "expenses", targetDocId), childExpenseDoc);
+          } else {
+            const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
+            const totalAmt = selectedDoc.docTotal;
+            if (newPaid >= totalAmt - 0.01) {
+              updates.status = docCollection === "facturas" ? "cobrada" : docCollection === "remisiones" ? "pagada" : "paid";
+            }
+            await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
+
+            if (selectedDoc._type === "remision" && selectedDoc.orderId) {
+              try {
+                const orderRef = doc(db, "companies", companyId, "pedidos", selectedDoc.orderId);
+                const orderSnap = await getDoc(orderRef);
+                if (orderSnap.exists()) {
+                  const orderData = orderSnap.data();
+                  const orderPaid = (orderData.paidAmount || 0) + totalAbsAmount;
+                  const orderUpdates: any = {
+                    paidAmount: increment(totalAbsAmount),
+                    updatedAt: new Date().toISOString()
+                  };
+                  if (orderPaid >= (orderData.totalAmount || 0) - 0.01) {
+                    orderUpdates.status = "pagado";
+                  }
+                  await updateDoc(orderRef, orderUpdates);
+                }
+              } catch (err) {
+                console.error("Error updating parent order paidAmount:", err);
               }
-            ],
-            createdAt: new Date().toISOString(),
-            createdBy: user?.email || "Sistema (Conciliación Recurrente)",
-            _type: "gasto_manual"
-          };
+            }
 
-          await setDoc(doc(db, "companies", companyId, "expenses", targetDocId), childExpenseDoc);
-        } else {
-          const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
-          const totalAmt = selectedDoc.docTotal;
-          if (newPaid >= totalAmt - 0.01) {
-            updates.status = docCollection === "facturas" ? "cobrada" : "paid";
-          }
-          await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
-
-          if (selectedDoc._type === "gasto_manual" && selectedDoc.satInvoiceId) {
-            try {
-              const totalAmt = selectedDoc.amount || selectedDoc.total || 0;
-              const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
-              await updateDoc(doc(db, "companies", companyId, "expenses_inbox", selectedDoc.satInvoiceId), {
-                paidAmount: increment(totalAbsAmount),
-                status: newPaid >= totalAmt - 0.01 ? "paid" : "pending",
-                reconciled: newPaid >= totalAmt - 0.01,
-                expenseId: selectedDoc.id,
-                linkedExpenseId: selectedDoc.id
-              });
-            } catch (err) {
-              console.warn("Could not sync linked expenses_inbox doc:", err);
+            if (selectedDoc._type === "gasto_manual" && selectedDoc.satInvoiceId) {
+              try {
+                const totalAmt = selectedDoc.amount || selectedDoc.total || 0;
+                const newPaid = (selectedDoc.paidAmount || 0) + totalAbsAmount;
+                await updateDoc(doc(db, "companies", companyId, "expenses_inbox", selectedDoc.satInvoiceId), {
+                  paidAmount: increment(totalAbsAmount),
+                  status: newPaid >= totalAmt - 0.01 ? "paid" : "pending",
+                  reconciled: newPaid >= totalAmt - 0.01,
+                  expenseId: selectedDoc.id,
+                  linkedExpenseId: selectedDoc.id
+                });
+              } catch (err) {
+                console.warn("Could not sync linked expenses_inbox doc:", err);
+              }
             }
           }
         }
@@ -1726,26 +1993,171 @@ export function ReconcilePanel({
             {sortedAndMatchedDocs.length === 0 ? (
               <div className="text-center py-10 border border-dashed rounded-lg bg-slate-50 text-slate-500 space-y-2">
                 <AlertCircle className="w-8 h-8 mx-auto text-slate-400" />
-                <p className="text-xs font-semibold">No hay facturas pendientes.</p>
+                <p className="text-xs font-semibold">No hay documentos pendientes.</p>
                 <p className="text-[11px] text-slate-400">
                   {isCharge 
                     ? "Registra egresos recibidos o manuales para poder asociar este cargo." 
-                    : "Emite facturas pendientes de cobro para asociar este abono."}
+                    : "Emite facturas o remisiones pendientes de cobro para asociar este abono."}
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
+                {/* TPV Batch Detection Banner */}
+                {tpvBatchSuggestion && (
+                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 text-purple-900 rounded-xl p-3.5 text-xs space-y-2 animate-in zoom-in-95 shadow-sm">
+                    <div className="flex items-start gap-2.5">
+                      <Sparkles className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="font-extrabold text-purple-950 flex items-center gap-1.5">
+                            ¡Lote de Tarjetas TPV Sugerido Encontrado!
+                          </p>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-800">
+                            {tpvBatchSuggestion.docs.length} {tpvBatchSuggestion.docs.length === 1 ? "Remisión" : "Remisiones"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-purple-800 mt-1 leading-relaxed">
+                          El depósito bancario de <strong>${absAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong> coincide exactamente con {tpvBatchSuggestion.docs.length === 1 ? "la remisión pagada con tarjeta en mostrador" : `la suma de ${tpvBatchSuggestion.docs.length} remisiones pagadas con tarjeta`}. Se han preseleccionado automáticamente.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Highlight exact single match (if not TPV combo) */}
+                {!tpvBatchSuggestion && sortedAndMatchedDocs.find(d => d.isExactMatch) && (
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in zoom-in-95">
+                    <Sparkles className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-extrabold flex items-center gap-1.5 text-emerald-900">
+                        ¡Coincidencia Sugerida Encontrada!
+                      </p>
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        Hemos detectado un documento pendiente con el monto exacto de ${absAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}. Se ha seleccionado automáticamente para facilitar tu conciliación.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <SearchableSelect
-                  label="Seleccionar Documento Pendiente"
+                  label={!isCharge ? "Buscar y Agregar Documentos / Remisiones al Lote" : "Seleccionar Documento Pendiente"}
                   placeholder="Busca por cliente/proveedor, folio, total..."
                   items={searchableDocs}
                   selectedId={selectedDocId}
-                  onSelect={setSelectedDocId}
-                  required
+                  onSelect={handleSelectDoc}
+                  required={selectedDocsList.length === 0}
                 />
 
-                {/* Details box of the selected invoice/document */}
-                {selectedDoc && (
+                {/* Multi-document Batch Summary & Cuadre Bar */}
+                {selectedDocsList.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 shadow-sm space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          {selectedDocsList.length > 1 ? `Lote Seleccionado (${selectedDocsList.length} docs)` : "Documento Seleccionado"}
+                        </span>
+                        {isExactCuadre ? (
+                          <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Cuadre 100%
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            Dif: ${docsDiff.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                          </span>
+                        )}
+                      </div>
+                      {selectedDocsList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDocIds([]);
+                            setSelectedDocId("");
+                          }}
+                          className="text-[10px] text-slate-400 hover:text-red-600 font-bold"
+                        >
+                          Quitar todos
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Chips / Cards for each selected doc */}
+                    <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                      {selectedDocsList.map((docItem: any) => {
+                        const isTpv = docItem._type === "remision" && docItem.isTpvSale;
+                        const docNum = docItem.remissionNumber || docItem.documentNumber || docItem.invoiceNumber || docItem.folio || docItem.id;
+                        const docVal = docItem.cardAmount || docItem.docOutstanding || docItem.docTotal || 0;
+                        const partner = docItem.clientName || docItem.vendorName || docItem.emisorName || "Cliente";
+
+                        return (
+                          <div 
+                            key={docItem.id}
+                            className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 text-xs hover:border-slate-300 transition-all"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 pr-2">
+                              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                isTpv 
+                                  ? "bg-purple-100 text-purple-800" 
+                                  : docItem._type === "remision" 
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-emerald-100 text-emerald-800"
+                              }`}>
+                                {isTpv ? "TPV" : docItem._type === "remision" ? "REM" : "FAC"}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-800 truncate text-[11px] leading-tight">
+                                  #{docNum} • {partner}
+                                </p>
+                                <p className="text-[10px] text-slate-400">
+                                  {docItem.docDateStr || docItem.date || "Fecha N/A"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-mono font-extrabold text-slate-900 text-xs">
+                                ${docVal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDoc(docItem.id)}
+                                className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                title="Quitar de la selección"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Live Cuadre Totals */}
+                    <div className="pt-2 border-t border-slate-200 space-y-1.5 text-xs">
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>Depósito Banco:</span>
+                        <span className="font-mono font-extrabold text-slate-900">
+                          ${absAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>Suma Documentos:</span>
+                        <span className="font-mono font-extrabold text-indigo-600">
+                          ${selectedDocsTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className={`flex justify-between items-center pt-1 border-t border-dashed font-bold ${
+                        isExactCuadre ? "text-emerald-700" : "text-amber-700"
+                      }`}>
+                        <span>{isExactCuadre ? "Diferencia (Cuadrado):" : "Diferencia Pendiente:"}</span>
+                        <span className="font-mono">
+                          {isExactCuadre ? "$0.00" : `$${docsDiff.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Details box for single non-TPV document (e.g. expenses with concept breakdown) */}
+                {selectedDoc && selectedDocsList.length === 1 && !selectedDoc.isTpvSale && (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 animate-in fade-in duration-200 mt-2">
                     <div className="flex justify-between items-start border-b border-slate-200 pb-2.5">
                       <div>
@@ -1756,9 +2168,11 @@ export function ReconcilePanel({
                           <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase ${
                             selectedDoc._type === "factura" 
                               ? "bg-emerald-100 text-emerald-800" 
+                              : selectedDoc._type === "remision"
+                              ? "bg-purple-100 text-purple-800"
                               : "bg-blue-100 text-blue-800"
                           }`}>
-                            {selectedDoc._type === "factura" ? "Factura emit." : "Gasto / Compra"}
+                            {selectedDoc._type === "factura" ? "Factura emit." : selectedDoc._type === "remision" ? "Remisión de Venta" : "Gasto / Compra"}
                           </span>
                         </div>
                         <p className="text-xs font-black text-slate-800 mt-0.5">
@@ -1767,7 +2181,7 @@ export function ReconcilePanel({
                       </div>
                       <div className="text-right">
                         <span className="text-xs font-mono font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg">
-                          #{selectedDoc.invoiceNumber || selectedDoc.folio || selectedDoc.uuid?.substring(0, 8) || selectedDoc.id}
+                          #{selectedDoc.remissionNumber || selectedDoc.invoiceNumber || selectedDoc.folio || selectedDoc.uuid?.substring(0, 8) || selectedDoc.id}
                         </span>
                         {(selectedDoc.docDateStr || selectedDoc.date) && (
                           <span className="block text-[10px] font-bold text-slate-500 mt-1">
@@ -1777,7 +2191,7 @@ export function ReconcilePanel({
                       </div>
                     </div>
 
-                              {/* Items list */}
+                    {/* Items list */}
                     <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                       {selectedDocConcepts.length > 0 ? (
                         selectedDocConcepts.map((item: any, idx: number) => {
@@ -1812,21 +2226,6 @@ export function ReconcilePanel({
                     <div className="border-t border-slate-200 pt-2.5 flex justify-between items-center font-bold text-slate-800 text-xs">
                       <span>Total del Documento</span>
                       <span className="font-mono text-sm text-slate-900">${(selectedDoc.docTotal || selectedDoc.amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Highlight exact match */}
-                {sortedAndMatchedDocs.find(d => d.isExactMatch) && (
-                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in zoom-in-95">
-                    <Sparkles className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-extrabold flex items-center gap-1.5 text-emerald-900">
-                        ¡Coincidencia Sugerida Encontrada!
-                      </p>
-                      <p className="text-[11px] text-emerald-700 mt-0.5">
-                        Hemos detectado una factura pendiente con el monto exacto de ${absAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}. Se ha seleccionado automáticamente para facilitar tu conciliación.
-                      </p>
                     </div>
                   </div>
                 )}
@@ -2107,7 +2506,7 @@ export function ReconcilePanel({
           <Button 
             type="submit" 
             className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2"
-            disabled={loading || (reconcileMode === "match" && sortedAndMatchedDocs.length === 0) || (reconcileMode === "transfer" && (!selectedTargetAccountId || !selectedTargetTxId))}
+            disabled={loading || (reconcileMode === "match" && (sortedAndMatchedDocs.length === 0 || selectedDocsList.length === 0)) || (reconcileMode === "transfer" && (!selectedTargetAccountId || !selectedTargetTxId))}
           >
             {loading ? (
               <>

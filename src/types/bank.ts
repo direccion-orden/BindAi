@@ -8,8 +8,11 @@ export interface BankTransaction {
   balanceAfter?: number; // optional tracking, calculated client-side mostly
   createdAt: number;
   reconciled?: boolean;
-  reconcileType?: 'match' | 'direct' | 'transfer' | 'refund' | string;
+  reconcileType?: 'match' | 'direct' | 'transfer' | 'refund' | 'tpv_batch' | string;
   matchedDocumentId?: string;
+  matchedDocumentIds?: string[];
+  matchedDocumentNumbers?: string[];
+  matchedDocumentType?: string;
   matchedAccountId?: string;
   accountingAccountId?: string;
   matchedAt?: string;

@@ -76,15 +76,55 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
 
           setUnpaidDocs([...unpaidInbox, ...unpaidManual]);
         } else {
-          // Sales invoices (ventas/facturas)
+          // Sales invoices (ventas/facturas) & remisiones
           const q = query(
             collection(db, "companies", companyId, "facturas"),
             where("status", "==", "por_cobrar") // or pending status
           );
           const snap = await getDocs(q);
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-          const unpaid = list.filter(inv => !inv.paidAmount || inv.paidAmount < inv.totalAmount - 0.01);
-          setUnpaidDocs(unpaid);
+          const list = snap.docs.map(d => ({ id: d.id, _type: "factura", ...d.data() } as any));
+          const unpaidFacturas = list.filter(inv => !inv.paidAmount || inv.paidAmount < (inv.totalAmount || inv.total || 0) - 0.01);
+
+          let unpaidRemisiones: any[] = [];
+          try {
+            const isCardMethod = (m: any) => {
+              if (!m || typeof m !== "string") return false;
+              const clean = m.toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+              return clean.includes("tarjeta") || clean.includes("debito") || clean.includes("débito") || 
+                     clean.includes("credito") || clean.includes("crédito") || clean.includes("terminal") || 
+                     clean.includes("amex") || clean.includes("american express") || clean.includes("tpv");
+            };
+
+            const remSnap = await getDocs(collection(db, "companies", companyId, "remisiones"));
+            const remList = remSnap.docs.map(d => ({ id: d.id, _type: "remision", ...d.data() } as any));
+            unpaidRemisiones = remList.filter(rem => {
+              const status = String(rem.status || "").trim().toLowerCase();
+              if (status === "cancelada" || status === "cancelado") return false;
+              if (rem.bankReconciled === true) return false;
+
+              const total = Number(rem.totalAmount || rem.total || 0);
+              const paid = Number(rem.paidAmount || 0);
+
+              const isUnpaidCredit = status !== "facturada" && status !== "pagada" && (!rem.paidAmount || paid < total - 0.01);
+              if (isUnpaidCredit) {
+                rem.isTpvSale = false;
+                return true;
+              }
+
+              const payments = Array.isArray(rem.payments) ? rem.payments : [];
+              const hasCardPayment = payments.some((p: any) => isCardMethod(p?.method)) || isCardMethod(rem.paymentMethod);
+              if (hasCardPayment) {
+                rem.isTpvSale = true;
+                return true;
+              }
+
+              return false;
+            });
+          } catch (e) {
+            console.warn("Could not fetch remisiones in QuickReconcileModal:", e);
+          }
+
+          setUnpaidDocs([...unpaidFacturas, ...unpaidRemisiones]);
         }
       } catch (err) {
         console.error("Error loading options for conciliation:", err);
@@ -100,6 +140,8 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
 
     setLoading(true);
     try {
+      const selectedDoc = reconcileMode === "match" ? unpaidDocs.find(d => d.id === selectedDocId) : null;
+
       if (reconcileMode === "match") {
         if (!selectedDocId) {
           alert("Por favor selecciona un documento a asociar.");
@@ -107,7 +149,6 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
           return;
         }
 
-        const selectedDoc = unpaidDocs.find(d => d.id === selectedDocId);
         if (!selectedDoc) {
           alert("Documento no encontrado.");
           setLoading(false);
@@ -271,31 +312,69 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
           }
           await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
         } else {
-          // 1. Create incoming payment record
-          const paymentData = {
-            amount: absAmount,
-            date: transaction.date,
-            method: "Transferencia",
-            reference: transaction.reference || "CONCILIACION",
-            documentId: selectedDoc.id,
-            documentType: "factura",
-            documentNumber: selectedDoc.invoiceNumber || selectedDoc.id,
-            clientName: selectedDoc.clientName || "Cliente",
-            bankAccountId: accountId,
-            createdAt: new Date().toISOString(),
-          };
-          const paymentRef = await addDoc(collection(db, "companies", companyId, "payments"), paymentData);
+          const isRemision = selectedDoc._type === "remision";
+          const docCollection = isRemision ? "remisiones" : "facturas";
+          const docNumber = selectedDoc.remissionNumber || selectedDoc.invoiceNumber || selectedDoc.folio || selectedDoc.id;
 
-          // 2. Update sales invoice paidAmount
-          const updates: any = {
-            paidAmount: increment(absAmount)
-          };
-          const newPaid = (selectedDoc.paidAmount || 0) + absAmount;
-          const totalAmt = selectedDoc.totalAmount || selectedDoc.total || 0;
-          if (newPaid >= totalAmt - 0.01) {
-            updates.status = "cobrada";
+          if (isRemision && selectedDoc.isTpvSale) {
+            // POS sale already paid in shop via TPV. Reconcile with bank without duplicating revenue
+            await updateDoc(doc(db, "companies", companyId, "remisiones", selectedDoc.id), {
+              bankReconciled: true,
+              reconciledBankTxId: transaction.id,
+              reconciledBankAccountId: accountId,
+              reconciledAt: new Date().toISOString()
+            });
+          } else {
+            // 1. Create incoming payment record
+            const paymentData: any = {
+              amount: absAmount,
+              date: transaction.date,
+              method: "Transferencia",
+              reference: transaction.reference || "CONCILIACION",
+              documentId: selectedDoc.id,
+              documentType: isRemision ? "remision" : "factura",
+              documentNumber: docNumber,
+              clientName: selectedDoc.clientName || "Cliente",
+              bankAccountId: accountId,
+              createdAt: new Date().toISOString(),
+            };
+            if (isRemision && selectedDoc.orderId) {
+              paymentData.orderId = selectedDoc.orderId;
+            }
+            await addDoc(collection(db, "companies", companyId, "payments"), paymentData);
+
+            // 2. Update document paidAmount
+            const updates: any = {
+              paidAmount: increment(absAmount)
+            };
+            const newPaid = (selectedDoc.paidAmount || 0) + absAmount;
+            const totalAmt = selectedDoc.totalAmount || selectedDoc.total || 0;
+            if (newPaid >= totalAmt - 0.01) {
+              updates.status = isRemision ? "pagada" : "cobrada";
+            }
+            await updateDoc(doc(db, "companies", companyId, docCollection, selectedDoc.id), updates);
+
+            if (isRemision && selectedDoc.orderId) {
+              try {
+                const orderRef = doc(db, "companies", companyId, "pedidos", selectedDoc.orderId);
+                const orderSnap = await getDoc(orderRef);
+                if (orderSnap.exists()) {
+                  const orderData = orderSnap.data();
+                  const orderPaid = (orderData.paidAmount || 0) + absAmount;
+                  const orderUpdates: any = {
+                    paidAmount: increment(absAmount),
+                    updatedAt: new Date().toISOString()
+                  };
+                  if (orderPaid >= (orderData.totalAmount || 0) - 0.01) {
+                    orderUpdates.status = "pagado";
+                  }
+                  await updateDoc(orderRef, orderUpdates);
+                }
+              } catch (err) {
+                console.error("Error updating parent order paidAmount:", err);
+              }
+            }
           }
-          await updateDoc(doc(db, "companies", companyId, "facturas", selectedDoc.id), updates);
         }
       } else {
         // --- Option B: Register Direct Expense/Income ---
@@ -457,11 +536,18 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
       }
 
       // --- Reconcile the Bank Transaction document ---
+      const isRemision = selectedDoc?._type === "remision";
+      const isTpv = isRemision && selectedDoc?.isTpvSale;
+      const docNumber = selectedDoc?.remissionNumber || selectedDoc?.invoiceNumber || selectedDoc?.folio || selectedDoc?.id;
+
       await updateDoc(doc(db, "companies", companyId, "bankAccounts", accountId, "transactions", transaction.id), {
         reconciled: true,
         matchedAt: new Date().toISOString(),
-        reconcileType: reconcileMode,
-        matchedDocumentId: reconcileMode === "match" ? selectedDocId : selectedExpenseOrIncomeAccountId
+        reconcileType: isTpv ? "tpv_batch" : reconcileMode,
+        matchedDocumentId: reconcileMode === "match" ? selectedDocId : selectedExpenseOrIncomeAccountId,
+        matchedDocumentIds: reconcileMode === "match" && selectedDocId ? [selectedDocId] : undefined,
+        matchedDocumentNumbers: reconcileMode === "match" && docNumber ? [docNumber] : undefined,
+        matchedDocumentType: reconcileMode === "match" ? (isRemision ? "remision" : "factura") : undefined
       });
 
       alert("Movimiento conciliado exitosamente.");
@@ -527,11 +613,11 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
             <div className="space-y-3">
               <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5 text-slate-400" />
-                Selecciona la Factura Pendiente a Asociar *
+                Selecciona el Documento Pendiente a Asociar *
               </label>
               {unpaidDocs.length === 0 ? (
                 <p className="text-xs text-slate-500 text-center py-6 border border-dashed rounded-lg bg-slate-50">
-                  No se encontraron facturas pendientes de cobro/pago para asociar.
+                  No se encontraron facturas ni remisiones pendientes de cobro/pago para asociar.
                 </p>
               ) : (
                 <select
@@ -542,15 +628,16 @@ export function QuickReconcileModal({ transaction, accountId, onClose, onSuccess
                 >
                   <option value="" disabled>Selecciona el documento...</option>
                   {unpaidDocs.map(doc => {
-                    const docNumber = doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
+                    const docNumber = doc.remissionNumber || doc.invoiceNumber || doc.folio || doc.uuid?.substring(0, 8) || doc.id;
                     const docTotal = doc._type === "gasto_manual" ? (doc.amount || 0) : (doc.totalAmount || doc.total || 0);
                     const docPaid = doc.paidAmount || 0;
                     const docOutstanding = docTotal - docPaid;
                     const partnerName = doc.vendorName || doc.emisorName || doc.clientName || "Proveedor/Cliente";
                     const isManualLabel = doc._type === "gasto_manual" ? " (Manual)" : "";
+                    const typeLabel = doc._type === "remision" ? " [Remisión]" : "";
                     return (
                       <option key={doc.id} value={doc.id}>
-                        {partnerName} - #{docNumber}{isManualLabel} (Pendiente: ${docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: ${docTotal.toLocaleString('es-MX')})
+                        {typeLabel}{typeLabel ? " " : ""}{partnerName} - #{docNumber}{isManualLabel} (Pendiente: ${docOutstanding.toLocaleString('es-MX', { minimumFractionDigits: 2 })} / Total: ${docTotal.toLocaleString('es-MX')})
                       </option>
                     );
                   })}

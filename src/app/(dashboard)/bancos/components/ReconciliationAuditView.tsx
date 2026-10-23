@@ -645,22 +645,22 @@ export function ReconciliationAuditView({
       </div>
 
       {/* 3. Section Column Titles (Two Halves) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 border-b bg-slate-100/90 text-slate-600 text-[11px] font-black uppercase tracking-wider px-4 py-2 shrink-0 select-none">
-        <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-slate-500" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 border-b-2 border-slate-400 bg-slate-100/95 text-slate-700 text-[11px] font-black uppercase tracking-wider shrink-0 select-none">
+        <div className="flex items-center gap-2 px-4 py-2.5 lg:border-r-2 lg:border-slate-300">
+          <Building2 className="w-4 h-4 text-slate-600" />
           <span>Lado Izquierdo: Movimiento Bancario Real</span>
         </div>
-        <div className="hidden lg:flex items-center justify-between">
+        <div className="hidden lg:flex items-center justify-between px-4 py-2.5">
           <div className="flex items-center gap-2">
-            <Receipt className="w-4 h-4 text-indigo-600" />
+            <Receipt className="w-4 h-4 text-indigo-700" />
             <span>Lado Derecho: Elemento Correspondiente Conciliado</span>
           </div>
-          <span className="text-[10px] text-slate-400 font-bold lowercase">acción auditor</span>
+          <span className="text-[10px] text-slate-500 font-bold lowercase">acción auditor</span>
         </div>
       </div>
 
       {/* 4. Split-Row Records List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-200 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
         {filteredTxs.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center text-slate-400 space-y-3">
             <CheckCircle2 className="w-12 h-12 text-slate-300 stroke-[1.5]" />
@@ -688,7 +688,7 @@ export function ReconciliationAuditView({
             )}
           </div>
         ) : (
-          filteredTxs.map((tx) => {
+          filteredTxs.map((tx, idx) => {
             const detail = detailsCache[tx.id];
             const isLoadingDetail = loadingDetails[tx.id];
             const isCharge = tx.amount < 0;
@@ -712,14 +712,19 @@ export function ReconciliationAuditView({
             return (
               <div 
                 key={tx.id} 
-                className="grid grid-cols-1 lg:grid-cols-2 hover:bg-slate-50 transition-colors border-b last:border-b-0 bg-white"
+                className={`grid grid-cols-1 lg:grid-cols-2 transition-colors border-b-2 border-slate-400 ${
+                  idx % 2 === 0 ? "bg-white hover:bg-slate-50/90" : "bg-slate-50/70 hover:bg-slate-100/80"
+                }`}
               >
                 {/* --- LADO IZQUIERDO: MOVIMIENTO BANCARIO --- */}
-                <div className="p-4 flex flex-col justify-between gap-3 border-b lg:border-b-0 lg:border-r border-slate-200/80">
+                <div className="p-4 flex flex-col justify-between gap-3 border-b-2 lg:border-b-0 lg:border-r-2 border-slate-300">
                   <div className="space-y-2">
-                    {/* Header: Account Name & Badges + Amount */}
+                    {/* Header: Row Index, Account Name & Badges + Amount */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-black font-mono px-1.5 py-0.5 rounded bg-slate-800 text-white shadow-2xs">
+                          #{idx + 1}
+                        </span>
                         <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         <span className="font-extrabold text-xs text-slate-800">
                           {currentBank?.Name || currentBank?.name || "Cuenta Bancaria"}
@@ -834,7 +839,7 @@ export function ReconciliationAuditView({
                 </div>
 
                 {/* --- LADO DERECHO: ELEMENTO CORRESPONDIENTE CONCILIADO --- */}
-                <div className="p-4 flex flex-col justify-between gap-3 bg-slate-50/40">
+                <div className="p-4 flex flex-col justify-between gap-3 bg-transparent">
                   {isLoadingDetail ? (
                     <div className="flex items-center justify-center py-8 text-xs text-slate-400 gap-2">
                       <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />

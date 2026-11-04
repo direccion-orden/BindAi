@@ -12,6 +12,7 @@ import { ExpensePaymentModal } from "@/components/payments/ExpensePaymentModal";
 import { FormalizeProvisionalModal } from "./components/FormalizeProvisionalModal";
 import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
 import { TableSearchSelect, TableSearchSelectItem } from "@/components/ui/table-search-select";
+import { recordClassificationLearning } from "@/lib/services/expenseClassificationService";
 import Link from "next/link";
 
 interface ExpenseItemPreview {
@@ -1120,6 +1121,18 @@ export default function GastosManualesPage() {
 
       await batch.commit();
 
+      // Bucle de aprendizaje: retroalimentar memoria contable con la decisión del usuario
+      if (effective.accountId) {
+        recordClassificationLearning(db, companyId, [{
+          vendorId: exp.vendorId,
+          vendorName: exp.vendorName,
+          claveProdServ: exp.items?.[0]?.claveProdServ,
+          productName: exp.items?.[0]?.productName || exp.concept,
+          accountId: effective.accountId,
+          costCenterId: effective.costCenterId || null
+        }]).catch(e => console.warn("Error registrando aprendizaje:", e));
+      }
+
       setRowEdits(prev => {
         const copy = { ...prev };
         delete copy[exp.id];
@@ -1190,6 +1203,30 @@ export default function GastosManualesPage() {
 
       await batch.commit();
 
+      // Feedback loop: aprender clasificaciones de lote
+      const learnedBatchUpdates = selectedExpenseIds
+        .map(id => {
+          const exp = expenses.find(e => e.id === id);
+          if (!exp) return null;
+          const eff = getEffectiveRow(exp);
+          const finalAcc = applyCommonValues && batchAccountId ? batchAccountId : eff.accountId;
+          const finalCC = applyCommonValues && batchCostCenterId !== "" ? batchCostCenterId : eff.costCenterId;
+          if (!finalAcc) return null;
+          return {
+            vendorId: exp.vendorId,
+            vendorName: exp.vendorName,
+            claveProdServ: exp.items?.[0]?.claveProdServ,
+            productName: exp.items?.[0]?.productName || exp.concept,
+            accountId: finalAcc,
+            costCenterId: finalCC || null
+          };
+        })
+        .filter(Boolean) as any[];
+
+      if (learnedBatchUpdates.length > 0) {
+        recordClassificationLearning(db, companyId, learnedBatchUpdates).catch(e => console.warn("Error guardando aprendizaje lote:", e));
+      }
+
       setRowEdits(prev => {
         const copy = { ...prev };
         selectedExpenseIds.forEach(id => delete copy[id]);
@@ -1243,6 +1280,28 @@ export default function GastosManualesPage() {
       }
 
       await batch.commit();
+
+      // Feedback loop: aprender modificaciones dirty
+      const dirtyUpdates = dirtyExpenseIds
+        .map(id => {
+          const exp = expenses.find(e => e.id === id);
+          if (!exp) return null;
+          const eff = getEffectiveRow(exp);
+          if (!eff.accountId) return null;
+          return {
+            vendorId: exp.vendorId,
+            vendorName: exp.vendorName,
+            claveProdServ: exp.items?.[0]?.claveProdServ,
+            productName: exp.items?.[0]?.productName || exp.concept,
+            accountId: eff.accountId,
+            costCenterId: eff.costCenterId || null
+          };
+        })
+        .filter(Boolean) as any[];
+
+      if (dirtyUpdates.length > 0) {
+        recordClassificationLearning(db, companyId, dirtyUpdates).catch(e => console.warn("Error guardando aprendizaje dirty:", e));
+      }
 
       setRowEdits({});
       setActionFeedback(`¡${dirtyExpenseIds.length} gastos modificados guardados con éxito!`);

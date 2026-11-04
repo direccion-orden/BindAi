@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { findOrCreateOfficialVendor } from "@/lib/services/vendorSyncService";
+import { recordClassificationLearning } from "@/lib/services/expenseClassificationService";
 import { 
   Loader2, X, CheckCircle2, ShieldCheck, Building2, Layers, BookOpen, 
   AlertCircle, FileCheck, Receipt, Search, UploadCloud, Sparkles, Check
@@ -616,6 +617,20 @@ export function FormalizeProvisionalModal({
       }
 
       await batch.commit();
+
+      // Bucle de aprendizaje: retroalimentar memoria contable con la formalización
+      if (accountId) {
+        const learnedUpdates = expenses.map(exp => ({
+          vendorId: exp.vendorId || undefined,
+          vendorName: exp.vendorName || vendorName || undefined,
+          claveProdServ: exp.items?.[0]?.claveProdServ,
+          productName: exp.items?.[0]?.productName || exp.concept,
+          accountId,
+          costCenterId: costCenterId || null
+        }));
+        recordClassificationLearning(db, companyId, learnedUpdates).catch(e => console.warn("Error guardando aprendizaje en formalización:", e));
+      }
+
       onSuccess();
       onClose();
     } catch (err: any) {

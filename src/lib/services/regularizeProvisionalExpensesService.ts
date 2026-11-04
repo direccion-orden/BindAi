@@ -1,6 +1,12 @@
 import { doc, getDoc, getDocs, collection, updateDoc, query, where } from "firebase/firestore";
 import { Firestore } from "firebase/firestore";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
+import {
+  loadClassificationMemory,
+  classifyExpenseItemsBatch,
+  ClassificationMemory
+} from "@/lib/services/expenseClassificationService";
 
 export interface RegularizeControlSignal {
   isPaused: () => boolean;
@@ -166,6 +172,10 @@ export async function runClientRegularizationAgent(
     let regularizedCount = 0;
     const totalSats = satList.length;
 
+    // Cargar memoria contable y reglas de clasificación para partidas SAT
+    control?.onProgress?.(0, totalSats, "Cargando memoria contable y reglas aprendidas...");
+    const classificationMemory: ClassificationMemory = await loadClassificationMemory(db, companyId);
+
     for (let idx = 0; idx < totalSats; idx++) {
       if (control?.isCancelled()) {
         return { success: true, regularizedCount, details, cancelled: true };
@@ -289,8 +299,49 @@ Formato JSON estricto:
       ) {
         const provExp = activeProvs.find(p => p.id === mergeData.matchedProvisionalExpenseId);
         if (provExp) {
-          // 1. Actualizar Gasto Provisional a Regularizado
-          await updateDoc(doc(db, "companies", companyId, "expenses", mergeData.matchedProvisionalExpenseId), {
+          // Extraer y clasificar partidas multipartida si el CFDI tiene XML
+          let classifiedItems: any[] | undefined = undefined;
+          let primaryAccountId: string | undefined = undefined;
+          let primaryCostCenterId: string | undefined = undefined;
+
+          if (sat.xmlBase64) {
+            try {
+              const rawItems = parseCfdiItems(sat.xmlBase64);
+              if (rawItems && rawItems.length > 0) {
+                const itemsToClassify = rawItems.map(p => ({
+                  productId: null,
+                  variantId: null,
+                  productName: p.productName || "Concepto SAT",
+                  variantTitle: p.variantTitle || "",
+                  quantity: p.quantity || 1,
+                  unitCost: p.unitCost || 0,
+                  amount: p.amount || ((p.quantity || 1) * (p.unitCost || 0)),
+                  lineKey: p.lineKey || "",
+                  costCenterId: null,
+                  accountId: null,
+                  locationId: null,
+                  claveProdServ: p.claveProdServ || "",
+                  unit: p.unidad || p.claveUnidad || "PZA"
+                }));
+
+                classifiedItems = await classifyExpenseItemsBatch(
+                  itemsToClassify,
+                  { id: sat.vendorId, name: emitter, rfc: sat.emisorRfc },
+                  classificationMemory,
+                  apiKey
+                );
+
+                if (classifiedItems.length > 0) {
+                  primaryAccountId = classifiedItems[0].accountId || undefined;
+                  primaryCostCenterId = classifiedItems[0].costCenterId || undefined;
+                }
+              }
+            } catch (e) {
+              console.warn("No se pudieron clasificar partidas al regularizar:", e);
+            }
+          }
+
+          const expenseUpdate: any = {
             isProvisional: false,
             isPendingFiscalInvoice: false,
             status: "fiscal_regularizado",
@@ -302,7 +353,17 @@ Formato JSON estricto:
             regularizedAt: new Date().toISOString(),
             regularizedBy: userEmail || "Agente IA (Regularización Bidireccional)",
             regularizationReason: mergeData.reasoning
-          });
+          };
+
+          if (sat.xmlBase64) expenseUpdate.xmlBase64 = sat.xmlBase64;
+          if (classifiedItems && classifiedItems.length > 0) {
+            expenseUpdate.items = classifiedItems;
+            if (primaryAccountId) expenseUpdate.accountId = primaryAccountId;
+            if (primaryCostCenterId) expenseUpdate.costCenterId = primaryCostCenterId;
+          }
+
+          // 1. Actualizar Gasto Provisional a Regularizado
+          await updateDoc(doc(db, "companies", companyId, "expenses", mergeData.matchedProvisionalExpenseId), expenseUpdate);
 
           // 2. Actualizar Factura en Expenses Inbox a Pagada/Vinculada
           await updateDoc(doc(db, "companies", companyId, "expenses_inbox", sat.id), {

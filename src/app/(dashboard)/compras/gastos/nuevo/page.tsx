@@ -14,6 +14,7 @@ import { Loader2, ArrowLeft, Search, Trash2, FileText, DollarSign, Calendar, Bui
 import Link from "next/link";
 import { ShopifyProduct } from "@/types/product";
 import { parseCfdiItems, parseCfdiSummary } from "@/lib/cfdi/parseInvoiceItems";
+import { recordClassificationLearning } from "@/lib/services/expenseClassificationService";
 
 interface OrderItem {
   lineKey?: string;
@@ -955,6 +956,23 @@ function NuevoGastoForm() {
           });
         } catch (e) {
           console.error("Error saving vendor classification defaults:", e);
+        }
+      }
+
+      // Feedback loop: aprender clasificación para todas las partidas del gasto
+      if (selectedItems.length > 0) {
+        const itemRules = selectedItems
+          .filter(i => i.accountId)
+          .map(i => ({
+            vendorId,
+            vendorName,
+            claveProdServ: (i as any).claveProdServ,
+            productName: i.productName,
+            accountId: i.accountId!,
+            costCenterId: i.costCenterId || null
+          }));
+        if (itemRules.length > 0) {
+          recordClassificationLearning(db, companyId, itemRules).catch(e => console.warn("Error guardando aprendizaje partidas:", e));
         }
       }
 

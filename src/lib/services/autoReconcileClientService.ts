@@ -3,6 +3,12 @@ import { Firestore } from "firebase/firestore";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { isCreditAccount } from "@/types/bank";
 import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
+import {
+  loadClassificationMemory,
+  classifyExpenseItemsBatch,
+  classifyProvisionalExpense,
+  ClassificationMemory
+} from "@/lib/services/expenseClassificationService";
 
 export const findBankAccountingAccount = (physicalBankAccount: any, accountingAccountsAll: any[]) => {
   if (!physicalBankAccount) return null;
@@ -1196,6 +1202,10 @@ export async function runClientAiReconciliation(
           : "No se encontraron movimientos bancarios de egreso pendientes de conciliar en la cuenta y rango de fechas seleccionados."
       };
     }
+    
+    // Cargar en memoria caché el catálogo contable, centros de costos y memoria de reglas
+    control?.onProgress?.(0, pendingTxs.length, "Cargando memoria contable y reglas de clasificación...");
+    const classificationMemory: ClassificationMemory = await loadClassificationMemory(db, companyId);
 
     for (let idx = 0; idx < pendingTxs.length; idx++) {
       // ─────────────────────────────────────────────────────────────
@@ -1375,7 +1385,7 @@ Formato JSON estricto:
                 quantity: item.quantity || 1,
                 unitCost: item.unitCost || 0,
                 amount: item.amount || ((item.quantity || 1) * (item.unitCost || 0)),
-                lineKey: "",
+                lineKey: item.lineKey || "",
                 costCenterId: null,
                 accountId: null,
                 locationId: null,
@@ -1402,20 +1412,40 @@ Formato JSON estricto:
               ];
             }
 
+            // Clasificación inteligente multipartida con memoria contable y centros de costos
+            const vendorInfo = {
+              id: matchedCand.vendorId || "",
+              name: matchedCand.emitterName || matchedCand.vendorName || "Proveedor",
+              rfc: matchedCand.emitterRfc || matchedCand.vendorRfc || ""
+            };
+            const classifiedItems = await classifyExpenseItemsBatch(
+              parsedItems,
+              vendorInfo,
+              classificationMemory,
+              apiKey
+            );
+
+            const primaryItem = classifiedItems[0] || null;
+
             // Crear gasto oficial en "expenses"
             await setDoc(doc(db, "companies", companyId, "expenses", targetExpenseId), {
               id: targetExpenseId,
               number: 100,
               documentNumber: docNumber,
               date: matchedCand.date || txDate,
-              vendorName: matchedCand.emitterName || "Proveedor",
-              vendorRfc: matchedCand.emitterRfc || "",
+              vendorId: matchedCand.vendorId || "",
+              vendorName: matchedCand.emitterName || matchedCand.vendorName || "Proveedor",
+              vendorRfc: matchedCand.emitterRfc || matchedCand.vendorRfc || "",
               concept: matchedCand.concept || `Gasto desde XML ${docNumber}`,
               amount: matchedCand.total || txAbsAmount,
               vatRate: 0.16,
               paidAmount: txAbsAmount,
               status: "paid",
-              items: parsedItems,
+              items: classifiedItems,
+              accountId: primaryItem?.accountId || null,
+              accountCode: primaryItem?.accountCode || null,
+              accountName: primaryItem?.accountName || null,
+              costCenterId: primaryItem?.costCenterId || null,
               satInvoiceId: evalData.matchedDocId,
               xmlBase64: matchedCand.xmlBase64 || null,
               isProvisional: false,
@@ -1433,56 +1463,98 @@ Formato JSON estricto:
               expenseId: targetExpenseId,
               linkedExpenseId: targetExpenseId
             });
+
+            // Outflow
+            const outflowId = crypto.randomUUID();
+            await setDoc(doc(db, "companies", companyId, "outflows", outflowId), {
+              id: outflowId,
+              amount: txAbsAmount,
+              date: txDate,
+              method: defaultPaymentMethod,
+              reference: tx.reference || tx.concept || "CONCILIACION_IA",
+              documentId: targetExpenseId,
+              documentType: "gasto_manual",
+              documentNumber: docNumber,
+              providerName: matchedCand?.emitterName || "Proveedor",
+              bankAccountId,
+              createdAt: new Date().toISOString(),
+              createdBy: "Agente IA"
+            });
+
+            // Póliza Contable desagregada por partidas y centros de costos
+            const journalId = crypto.randomUUID();
+            const vatAmount = txAbsAmount - (txAbsAmount / 1.16);
+            const subtotal = txAbsAmount - vatAmount;
+
+            const itemEntries: any[] = [];
+            const groupMap = new Map<string, { accountId?: string; accountCode: string; accountName: string; costCenterId?: string | null; debit: number }>();
+
+            for (const it of classifiedItems) {
+              const code = it.accountCode || "601.01";
+              const name = it.accountName || "Gastos Generales";
+              const ccId = it.costCenterId || null;
+              const key = `${code}_${ccId || ""}`;
+              const itSubtotal = (it.amount || 0) / 1.16;
+              if (!groupMap.has(key)) {
+                groupMap.set(key, {
+                  accountId: it.accountId || undefined,
+                  accountCode: code,
+                  accountName: name,
+                  costCenterId: ccId,
+                  debit: 0
+                });
+              }
+              groupMap.get(key)!.debit += itSubtotal;
+            }
+
+            for (const grp of groupMap.values()) {
+              itemEntries.push({
+                accountId: grp.accountId,
+                accountCode: grp.accountCode,
+                accountName: grp.accountName,
+                costCenterId: grp.costCenterId || null,
+                debit: grp.debit,
+                credit: 0
+              });
+            }
+
+            if (itemEntries.length === 0) {
+              itemEntries.push({
+                accountCode: "601.01",
+                accountName: "Gastos Generales",
+                costCenterId: null,
+                debit: subtotal,
+                credit: 0
+              });
+            }
+
+            itemEntries.push({ accountCode: "118.01", accountName: "IVA Acreditable Pagado", debit: vatAmount, credit: 0 });
+            itemEntries.push({ accountCode: bankAccountInfo.code, accountName: bankAccountInfo.name, debit: 0, credit: txAbsAmount });
+
+            await setDoc(doc(db, "companies", companyId, "journal_entries", journalId), {
+              id: journalId,
+              date: txDate,
+              concept: `Conciliación Autónoma IA: ${matchedCand?.emitterName || 'Proveedor'} - ${tx.concept}`,
+              reference: tx.reference || docNumber,
+              documentId: targetExpenseId,
+              entries: itemEntries,
+              createdAt: new Date().toISOString()
+            });
+
+            // Actualizar transacción bancaria
+            await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", tx.id), {
+              reconciled: true,
+              reconciledType: "match",
+              reconciledDocId: targetExpenseId,
+              reconciledBy: "AI_AGENT",
+              confidenceScore: evalData.confidenceScore,
+              aiMatchReason: evalData.reasoning,
+              reconciledAt: new Date().toISOString()
+            });
+
+            processedCount++;
+            details.push({ txId: tx.id, action: "MATCH_INVOICE", docNumber, reasoning: evalData.reasoning });
           }
-
-          // Outflow
-          const outflowId = crypto.randomUUID();
-          await setDoc(doc(db, "companies", companyId, "outflows", outflowId), {
-            id: outflowId,
-            amount: txAbsAmount,
-            date: txDate,
-            method: defaultPaymentMethod,
-            reference: tx.reference || tx.concept || "CONCILIACION_IA",
-            documentId: targetExpenseId,
-            documentType: "gasto_manual",
-            documentNumber: docNumber,
-            providerName: matchedCand?.emitterName || "Proveedor",
-            bankAccountId,
-            createdAt: new Date().toISOString(),
-            createdBy: "Agente IA"
-          });
-
-          // Póliza Contable
-          const journalId = crypto.randomUUID();
-          const vatAmount = txAbsAmount - (txAbsAmount / 1.16);
-          const subtotal = txAbsAmount - vatAmount;
-          await setDoc(doc(db, "companies", companyId, "journal_entries", journalId), {
-            id: journalId,
-            date: txDate,
-            concept: `Conciliación Autónoma IA: ${matchedCand?.emitterName || 'Proveedor'} - ${tx.concept}`,
-            reference: tx.reference || docNumber,
-            documentId: targetExpenseId,
-            entries: [
-              { accountCode: "601.01", accountName: "Gastos Generales", debit: subtotal, credit: 0 },
-              { accountCode: "118.01", accountName: "IVA Acreditable Pagado", debit: vatAmount, credit: 0 },
-              { accountCode: bankAccountInfo.code, accountName: bankAccountInfo.name, debit: 0, credit: txAbsAmount }
-            ],
-            createdAt: new Date().toISOString()
-          });
-
-          // Actualizar transacción bancaria
-          await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", tx.id), {
-            reconciled: true,
-            reconciledType: "match",
-            reconciledDocId: targetExpenseId,
-            reconciledBy: "AI_AGENT",
-            confidenceScore: evalData.confidenceScore,
-            aiMatchReason: evalData.reasoning,
-            reconciledAt: new Date().toISOString()
-          });
-
-          processedCount++;
-          details.push({ txId: tx.id, action: "MATCH_INVOICE", docNumber, reasoning: evalData.reasoning });
         } else if (evalData.recommendedAction === "CREATE_PROVISIONAL_EXPENSE") {
           const expenseId = crypto.randomUUID();
           const documentNumber = `PROV-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1492,6 +1564,15 @@ Formato JSON estricto:
             bankAccountInfo.name || currentBankAccount.name || currentBankAccount.Name || "Banco",
             evalData.suggestedVendorName,
             evalData.suggestedConcept
+          );
+
+          // Clasificación inteligente del gasto provisional con memoria y catálogo contable
+          const provClassification = await classifyProvisionalExpense(
+            tx.concept || "",
+            txAbsAmount,
+            { id: resolved.vendorId, name: resolved.vendorName, rfc: resolved.vendorRfc },
+            classificationMemory,
+            apiKey
           );
 
           // Crear Gasto Directo Provisional con Proveedor y Concepto Validados
@@ -1510,8 +1591,10 @@ Formato JSON estricto:
             isProvisional: true,
             isPendingFiscalInvoice: true,
             linkedBankTransactionId: tx.id,
-            accountCode: evalData.suggestedAccountCode || "601.01",
-            accountName: evalData.suggestedAccountName || "Gastos Generales",
+            accountId: provClassification.accountId || null,
+            accountCode: provClassification.accountCode,
+            accountName: provClassification.accountName,
+            costCenterId: provClassification.costCenterId || null,
             createdAt: new Date().toISOString(),
             createdBy: "Agente IA (Provisional)",
             _type: "gasto_manual"
@@ -1534,7 +1617,7 @@ Formato JSON estricto:
             createdBy: "Agente IA"
           });
 
-          // Póliza Contable
+          // Póliza Contable con cuenta y centro de costo clasificados
           const journalId = crypto.randomUUID();
           await setDoc(doc(db, "companies", companyId, "journal_entries", journalId), {
             id: journalId,
@@ -1543,7 +1626,14 @@ Formato JSON estricto:
             reference: tx.reference || documentNumber,
             documentId: expenseId,
             entries: [
-              { accountCode: evalData.suggestedAccountCode || "601.01", accountName: evalData.suggestedAccountName || "Gastos Generales", debit: txAbsAmount, credit: 0 },
+              {
+                accountId: provClassification.accountId || undefined,
+                accountCode: provClassification.accountCode,
+                accountName: provClassification.accountName,
+                costCenterId: provClassification.costCenterId || null,
+                debit: txAbsAmount,
+                credit: 0
+              },
               { accountCode: bankAccountInfo.code, accountName: bankAccountInfo.name, debit: 0, credit: txAbsAmount }
             ],
             createdAt: new Date().toISOString()

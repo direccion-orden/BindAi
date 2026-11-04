@@ -662,8 +662,13 @@ export default function GastosManualesPage() {
   const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [vendorFilter, setVendorFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [accountFilter, setAccountFilter] = useState("all");
+  const [costCenterFilter, setCostCenterFilter] = useState("all");
 
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<any[]>([]);
   const [outflowsByExpense, setOutflowsByExpense] = useState<Map<string, { bankIds: Set<string>; bankNames: Set<string> }>>(new Map());
 
   // Catalogs for inline assignment
@@ -953,6 +958,13 @@ export default function GastosManualesPage() {
       }
     );
 
+    const unsubscribeVendors = onSnapshot(
+      query(collection(db, "companies", companyId, "vendors")),
+      (snapshot) => {
+        setVendors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    );
+
     return () => {
       unsubscribeExpenses();
       unsubscribeBanks();
@@ -960,6 +972,7 @@ export default function GastosManualesPage() {
       unsubscribeLocations();
       unsubscribeAccounts();
       unsubscribeCostCenters();
+      unsubscribeVendors();
     };
   }, [companyId]);
 
@@ -976,6 +989,23 @@ export default function GastosManualesPage() {
       subtitle: c.description || ""
     }));
   }, [costCenters]);
+
+  const uniqueVendors = useMemo(() => {
+    const map = new Map<string, string>();
+    vendors.forEach(v => {
+      const name = (v.name || v.Name || "").trim();
+      if (name) map.set(name.toLowerCase(), name);
+    });
+    expenses.forEach(e => {
+      const name = (e.vendorName || "").trim();
+      if (name && name !== "Proveedor no especificado") {
+        map.set(name.toLowerCase(), name);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([key, name]) => ({ key, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [vendors, expenses]);
 
   const accountItems: TableSearchSelectItem[] = useMemo(() => {
     return [...accounts]
@@ -1514,9 +1544,68 @@ export default function GastosManualesPage() {
         if (dateFrom && exp.date < dateFrom) return false;
         if (dateTo && exp.date > dateTo) return false;
       }
+      // 5. Vendor Filter
+      if (vendorFilter !== "all") {
+        const vName = (exp.vendorName || "").trim();
+        const isVendorEmpty = !vName || vName === "Proveedor no especificado" || (!exp.vendorId && !vName);
+        if (vendorFilter === "empty") {
+          if (!isVendorEmpty) return false;
+        } else {
+          const matchesId = exp.vendorId === vendorFilter;
+          const matchesName = vName.toLowerCase() === vendorFilter.toLowerCase();
+          if (!matchesId && !matchesName) return false;
+        }
+      }
+      // 6. Location Filter (Sucursal)
+      if (locationFilter !== "all") {
+        const effective = getEffectiveRow(exp);
+        const locId = (effective.locationId || "").trim();
+        const isLocEmpty = !locId;
+        if (locationFilter === "empty") {
+          if (!isLocEmpty) return false;
+        } else {
+          if (locId !== locationFilter) return false;
+        }
+      }
+      // 7. Accounting Account Filter
+      if (accountFilter !== "all") {
+        const effective = getEffectiveRow(exp);
+        const accId = (effective.accountId || "").trim();
+        const isAccEmpty = !accId;
+        if (accountFilter === "empty") {
+          if (!isAccEmpty) return false;
+        } else {
+          if (accId !== accountFilter) return false;
+        }
+      }
+      // 8. Cost Center Filter
+      if (costCenterFilter !== "all") {
+        const effective = getEffectiveRow(exp);
+        const ccId = (effective.costCenterId || "").trim();
+        const isCCEmpty = !ccId;
+        if (costCenterFilter === "empty") {
+          if (!isCCEmpty) return false;
+        } else {
+          if (ccId !== costCenterFilter) return false;
+        }
+      }
       return true;
     });
-  }, [expenses, searchTerm, statusFilter, bankAccountFilter, outflowsByExpense, dateFrom, dateTo, getPendingBalance]);
+  }, [
+    expenses,
+    searchTerm,
+    statusFilter,
+    bankAccountFilter,
+    outflowsByExpense,
+    dateFrom,
+    dateTo,
+    getPendingBalance,
+    vendorFilter,
+    locationFilter,
+    accountFilter,
+    costCenterFilter,
+    getEffectiveRow
+  ]);
 
   // Ordenamiento memoizado
   const sortedExpenses = useMemo(() => {
@@ -1550,7 +1639,58 @@ export default function GastosManualesPage() {
   // Reset de página al cambiar filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, bankAccountFilter, dateFilterOption, dateFrom, dateTo, pageSize]);
+  }, [
+    searchTerm,
+    statusFilter,
+    bankAccountFilter,
+    dateFilterOption,
+    dateFrom,
+    dateTo,
+    pageSize,
+    vendorFilter,
+    locationFilter,
+    accountFilter,
+    costCenterFilter
+  ]);
+
+  const isAnyFilterActive = useMemo(() => {
+    return (
+      Boolean(searchTerm.trim()) ||
+      statusFilter !== "all" ||
+      bankAccountFilter !== "all" ||
+      dateFilterOption !== "all" ||
+      Boolean(dateFrom) ||
+      Boolean(dateTo) ||
+      vendorFilter !== "all" ||
+      locationFilter !== "all" ||
+      accountFilter !== "all" ||
+      costCenterFilter !== "all"
+    );
+  }, [
+    searchTerm,
+    statusFilter,
+    bankAccountFilter,
+    dateFilterOption,
+    dateFrom,
+    dateTo,
+    vendorFilter,
+    locationFilter,
+    accountFilter,
+    costCenterFilter
+  ]);
+
+  const handleClearAllFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("all");
+    setBankAccountFilter("all");
+    setDateFilterOption("all");
+    setDateFrom("");
+    setDateTo("");
+    setVendorFilter("all");
+    setLocationFilter("all");
+    setAccountFilter("all");
+    setCostCenterFilter("all");
+  };
 
   // Métricas financieras calculadas en un solo pase O(N)
   const { totalGastado, totalPagado, totalPendiente } = useMemo(() => {
@@ -1688,8 +1828,9 @@ export default function GastosManualesPage() {
       </div>
 
       {/* Filters Header Panel */}
-      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-end justify-between bg-card p-4 rounded-xl border shadow-sm">
-        <div className="flex flex-col sm:flex-row gap-3 items-end flex-1 w-full">
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl border shadow-sm">
+        {/* Row 1: Búsqueda, Estatus, Cuenta Bancaria, Rango de Fecha */}
+        <div className="flex flex-col md:flex-row flex-wrap gap-3 items-end">
           {/* Búsqueda */}
           <div className="space-y-1 w-full sm:w-64">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Buscar</span>
@@ -1708,7 +1849,9 @@ export default function GastosManualesPage() {
           <div className="space-y-1 w-full sm:w-44">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Estatus</span>
             <select
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium ${
+                statusFilter !== "all" ? "border-indigo-400 bg-indigo-50/20 text-indigo-900 font-semibold" : ""
+              }`}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -1725,7 +1868,9 @@ export default function GastosManualesPage() {
           <div className="space-y-1 w-full sm:w-48">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Cuenta Bancaria</span>
             <select
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium ${
+                bankAccountFilter !== "all" ? "border-indigo-400 bg-indigo-50/20 text-indigo-900 font-semibold" : ""
+              }`}
               value={bankAccountFilter}
               onChange={(e) => setBankAccountFilter(e.target.value)}
             >
@@ -1743,7 +1888,9 @@ export default function GastosManualesPage() {
           <div className="space-y-1 w-full sm:w-44">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rango de Fecha</span>
             <select
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+              className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium ${
+                dateFilterOption !== "all" ? "border-indigo-400 bg-indigo-50/20 text-indigo-900 font-semibold" : ""
+              }`}
               value={dateFilterOption}
               onChange={(e) => handleDateFilterChange(e.target.value)}
             >
@@ -1780,6 +1927,116 @@ export default function GastosManualesPage() {
                 />
               </div>
             </>
+          )}
+        </div>
+
+        {/* Row 2: Proveedor, Sucursal, Cuenta Contable, Centro de Costo, Botón Limpiar */}
+        <div className="flex flex-col md:flex-row flex-wrap gap-3 items-end pt-2 border-t border-slate-100">
+          {/* Proveedor */}
+          <div className="space-y-1 w-full sm:w-56">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Proveedor</span>
+            <select
+              className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium ${
+                vendorFilter !== "all" ? "border-indigo-500 bg-indigo-50/30 text-indigo-950 font-semibold" : ""
+              }`}
+              value={vendorFilter}
+              onChange={(e) => setVendorFilter(e.target.value)}
+            >
+              <option value="all">Todos los proveedores</option>
+              <option value="empty" className="font-bold text-amber-700 bg-amber-50">
+                ⚠️ [Vacío] Sin Proveedor
+              </option>
+              <option disabled>──────────</option>
+              {uniqueVendors.map((v) => (
+                <option key={v.key} value={v.key}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sucursal */}
+          <div className="space-y-1 w-full sm:w-48">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sucursal</span>
+            <select
+              className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium ${
+                locationFilter !== "all" ? "border-indigo-500 bg-indigo-50/30 text-indigo-950 font-semibold" : ""
+              }`}
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+            >
+              <option value="all">Todas las sucursales</option>
+              <option value="empty" className="font-bold text-amber-700 bg-amber-50">
+                ⚠️ [Vacío] Sin Sucursal
+              </option>
+              <option disabled>──────────</option>
+              {locationItems.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Cuenta Contable */}
+          <div className="space-y-1 w-full sm:w-56">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Cuenta Contable</span>
+            <select
+              className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium ${
+                accountFilter !== "all" ? "border-indigo-500 bg-indigo-50/30 text-indigo-950 font-semibold" : ""
+              }`}
+              value={accountFilter}
+              onChange={(e) => setAccountFilter(e.target.value)}
+            >
+              <option value="all">Todas las cuentas</option>
+              <option value="empty" className="font-bold text-amber-700 bg-amber-50">
+                ⚠️ [Vacío] Sin Cuenta Contable
+              </option>
+              <option disabled>──────────</option>
+              {accountItems.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Centro de Costo */}
+          <div className="space-y-1 w-full sm:w-56">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Centro de Costo</span>
+            <select
+              className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium ${
+                costCenterFilter !== "all" ? "border-indigo-500 bg-indigo-50/30 text-indigo-950 font-semibold" : ""
+              }`}
+              value={costCenterFilter}
+              onChange={(e) => setCostCenterFilter(e.target.value)}
+            >
+              <option value="all">Todos los centros</option>
+              <option value="empty" className="font-bold text-amber-700 bg-amber-50">
+                ⚠️ [Vacío] Sin Centro de Costos
+              </option>
+              <option disabled>──────────</option>
+              {costCenterItems.map((cc) => (
+                <option key={cc.id} value={cc.id}>
+                  {cc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Botón para Limpiar Filtros */}
+          {isAnyFilterActive && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleClearAllFilters}
+              className="h-9 px-3 text-xs font-bold text-slate-600 border-slate-300 hover:bg-slate-100 hover:text-slate-900 gap-1.5 shrink-0"
+              title="Restablecer todos los filtros a sus valores predeterminados"
+            >
+              <X className="w-3.5 h-3.5" />
+              Limpiar filtros
+            </Button>
           )}
         </div>
       </div>
@@ -1886,11 +2143,11 @@ export default function GastosManualesPage() {
               <select
                 value={batchLocationId}
                 onChange={(e) => setBatchLocationId(e.target.value)}
-                className="h-8 w-full text-xs rounded-md border border-slate-600 bg-slate-800 text-white px-2 py-1 outline-none font-medium focus:ring-1 focus:ring-indigo-400"
+                className="h-8 w-full text-xs rounded-md border border-slate-600 bg-slate-800 text-white [&>option]:bg-white [&>option]:text-slate-900 px-2 py-1 outline-none font-medium focus:ring-1 focus:ring-indigo-400"
               >
-                <option value="">(Mantener individual)</option>
+                <option value="" className="bg-white text-slate-900">(Mantener individual)</option>
                 {locations.map(loc => (
-                  <option key={loc.id} value={loc.id}>
+                  <option key={loc.id} value={loc.id} className="bg-white text-slate-900">
                     {loc.name || loc.Name || loc.id}
                   </option>
                 ))}
@@ -1928,11 +2185,11 @@ export default function GastosManualesPage() {
               <select
                 value={batchNonDeductible}
                 onChange={(e) => setBatchNonDeductible(e.target.value)}
-                className="h-8 w-full text-xs rounded-md border border-slate-600 bg-slate-800 text-white px-2 py-1 outline-none font-medium focus:ring-1 focus:ring-indigo-400"
+                className="h-8 w-full text-xs rounded-md border border-slate-600 bg-slate-800 text-white [&>option]:bg-white [&>option]:text-slate-900 px-2 py-1 outline-none font-medium focus:ring-1 focus:ring-indigo-400"
               >
-                <option value="keep">(Mantener individual)</option>
-                <option value="deducible">Marcar como Deducible</option>
-                <option value="no_deducible">Marcar como No Deducible</option>
+                <option value="keep" className="bg-white text-slate-900">(Mantener individual)</option>
+                <option value="deducible" className="bg-white text-slate-900">Marcar como Deducible</option>
+                <option value="no_deducible" className="bg-white text-slate-900">Marcar como No Deducible</option>
               </select>
             </div>
           </div>

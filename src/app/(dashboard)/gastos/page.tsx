@@ -130,11 +130,36 @@ export default function GastosPage() {
     const isPending = !isFullyPaid;
     const isSinPago = !isFullyPaid && paid <= 0.01;
 
+    // Búsqueda por texto y por monto normalizado
+    const rawSearch = searchTerm.trim().toLowerCase();
+    const cleanNumericTerm = rawSearch.replace(/[$,\s]/g, "");
+    const parsedNumericQuery = cleanNumericTerm.length > 0 && !isNaN(Number(cleanNumericTerm)) 
+      ? Number(cleanNumericTerm) 
+      : null;
+
+    const invTotal = Number(inv.total ?? inv.amount ?? 0);
+    const rawTotalStr = invTotal.toString();
+    const fixedTotalStr = invTotal.toFixed(2);
+    const formattedTotal = invTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedNoDec = Math.round(invTotal).toLocaleString("en-US");
+
+    const matchesAmount = 
+      (cleanNumericTerm.length > 0 && rawTotalStr.includes(cleanNumericTerm)) ||
+      (cleanNumericTerm.length > 0 && fixedTotalStr.includes(cleanNumericTerm)) ||
+      formattedTotal.includes(rawSearch) ||
+      formattedNoDec.includes(rawSearch) ||
+      (parsedNumericQuery !== null && (
+        Math.abs(invTotal - parsedNumericQuery) < 0.01 ||
+        (!cleanNumericTerm.includes(".") && Math.floor(invTotal) === Math.floor(parsedNumericQuery))
+      ));
+
     const matchesSearch = 
-      (inv.emisorName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (inv.emisorRfc || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (inv.uuid || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (inv.folio || "").toLowerCase().includes(searchTerm.toLowerCase());
+      !rawSearch ||
+      (inv.emisorName || "").toLowerCase().includes(rawSearch) ||
+      (inv.emisorRfc || "").toLowerCase().includes(rawSearch) ||
+      (inv.uuid || "").toLowerCase().includes(rawSearch) ||
+      (inv.folio || "").toLowerCase().includes(rawSearch) ||
+      matchesAmount;
       
     let matchesStatus = true;
     if (statusFilter === "pagadas" || statusFilter === "pagada") {
@@ -157,20 +182,35 @@ export default function GastosPage() {
   });
 
   const sortedInvoices = [...filteredInvoices].sort((a, b) => {
-    let aVal = a[sortField] || "";
-    let bVal = b[sortField] || "";
-
-    if (typeof aVal === "string" && typeof bVal === "string") {
-      return sortDirection === "asc" 
-        ? aVal.localeCompare(bVal, "es") 
-        : bVal.localeCompare(aVal, "es");
+    if (sortField === "total") {
+      const aVal = Number(a.total ?? a.amount ?? 0);
+      const bVal = Number(b.total ?? b.amount ?? 0);
+      if (Math.abs(aVal - bVal) > 0.0001) {
+        return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+      }
+      // Desempate determinista para facturas con el mismo monto
+      const dateCmp = (b.date || "").localeCompare(a.date || "");
+      if (dateCmp !== 0) return dateCmp;
+      return (a.id || a.uuid || "").localeCompare(b.id || b.uuid || "");
     }
 
-    if (typeof aVal === "number" && typeof bVal === "number") {
-      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    if (sortField === "date") {
+      const aVal = a.date || "";
+      const bVal = b.date || "";
+      const cmp = sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      if (cmp !== 0) return cmp;
+      const aTotal = Number(a.total ?? a.amount ?? 0);
+      const bTotal = Number(b.total ?? b.amount ?? 0);
+      return bTotal - aTotal;
     }
 
-    return 0;
+    const aVal = String(a[sortField] ?? "").toLowerCase();
+    const bVal = String(b[sortField] ?? "").toLowerCase();
+    const cmp = sortDirection === "asc" 
+      ? aVal.localeCompare(bVal, "es", { numeric: true }) 
+      : bVal.localeCompare(aVal, "es", { numeric: true });
+    if (cmp !== 0) return cmp;
+    return (b.date || "").localeCompare(a.date || "");
   });
   const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -623,7 +663,7 @@ export default function GastosPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Buscar por emisor, RFC o UUID..." 
+                    placeholder="Buscar por monto ($), emisor, folio, RFC o UUID..." 
                     className="pl-9 bg-background h-9 text-sm"
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}

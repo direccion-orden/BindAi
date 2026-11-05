@@ -293,6 +293,9 @@ export function FormalizeProvisionalModal({
     const expAmount = Number(singleExpense.amount || 0);
     const expVendor = (singleExpense.vendorName || "").toLowerCase();
     const q = inboxSearch.toLowerCase().trim();
+    const cleanNumericQ = q.replace(/[$,\s]/g, "");
+    const parsedNumericQuery = cleanNumericQ ? parseFloat(cleanNumericQ) : NaN;
+    const isNumericSearch = !isNaN(parsedNumericQuery) && cleanNumericQ.length > 0;
 
     return [...inboxInvoices]
       .filter(inv => {
@@ -301,11 +304,41 @@ export function FormalizeProvisionalModal({
         const emisor = (inv.emisorName || inv.vendorName || "").toLowerCase();
         const rfc = (inv.emisorRfc || inv.vendorRfc || "").toLowerCase();
         const uuid = (inv.uuid || inv.id || "").toLowerCase();
-        return folio.includes(q) || emisor.includes(q) || rfc.includes(q) || uuid.includes(q);
+        const textMatches = folio.includes(q) || emisor.includes(q) || rfc.includes(q) || uuid.includes(q);
+        if (textMatches) return true;
+
+        // Búsqueda inteligente por monto
+        const invTotal = Number(inv.total || inv.amount || 0);
+        const rawTotalStr = invTotal.toString();
+        const fixedTotalStr = invTotal.toFixed(2);
+        const formattedTotal = invTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const formattedNoDec = Math.round(invTotal).toLocaleString("en-US");
+
+        const matchesAmountStr = 
+          (cleanNumericQ && rawTotalStr.includes(cleanNumericQ)) ||
+          (cleanNumericQ && fixedTotalStr.includes(cleanNumericQ)) ||
+          formattedTotal.includes(q) ||
+          formattedNoDec.includes(q);
+
+        const matchesNumericExact = isNumericSearch && (
+          Math.abs(invTotal - parsedNumericQuery) < 0.01 ||
+          (cleanNumericQ.indexOf(".") === -1 && Math.floor(invTotal) === Math.floor(parsedNumericQuery))
+        );
+
+        return matchesAmountStr || matchesNumericExact;
       })
       .sort((a, b) => {
         const aTotal = Number(a.total || a.amount || 0);
         const bTotal = Number(b.total || b.amount || 0);
+
+        // Si el usuario buscó un monto numérico, priorizar facturas que coincidan exactamente con la búsqueda
+        if (isNumericSearch) {
+          const aMatchQuery = Math.abs(aTotal - parsedNumericQuery) < 0.01;
+          const bMatchQuery = Math.abs(bTotal - parsedNumericQuery) < 0.01;
+          if (aMatchQuery && !bMatchQuery) return -1;
+          if (!aMatchQuery && bMatchQuery) return 1;
+        }
+
         const aExact = Math.abs(aTotal - expAmount) < 0.05;
         const bExact = Math.abs(bTotal - expAmount) < 0.05;
         if (aExact && !bExact) return -1;
@@ -842,7 +875,7 @@ export function FormalizeProvisionalModal({
                 <Input
                   value={inboxSearch}
                   onChange={(e) => setInboxSearch(e.target.value)}
-                  placeholder="Buscar por Proveedor, RFC, Folio o UUID..."
+                  placeholder="Buscar factura en buzón SAT por monto ($), folio, proveedor, RFC o UUID..."
                   className="pl-9 h-9 text-xs"
                 />
               </div>

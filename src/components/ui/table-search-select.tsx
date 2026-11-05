@@ -147,10 +147,10 @@ export function TableSearchSelect({
           "bg-slate-50/80 border-dashed border-slate-300 text-slate-400 hover:text-slate-600 hover:border-slate-400"
         } ${className}`}
       >
-        <span className="truncate block flex-1 font-medium">
+        <span className={`truncate block flex-1 ${selectedItem ? "text-slate-900 font-semibold" : "text-slate-500 font-normal"}`}>
           {displayName || placeholder}
         </span>
-        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-slate-400 group-hover:text-slate-600 transition-colors" />
+        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-slate-500 group-hover:text-slate-700 transition-colors" />
       </button>
 
       {open && typeof document !== "undefined" && createPortal(

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, getDoc, writeBatch, getDocs, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { getLocalDateString } from "@/lib/utils";
@@ -39,10 +40,44 @@ function ExpenseFolioWithPreview({
   const [isOpen, setIsOpen] = useState(false);
   const [asyncItems, setAsyncItems] = useState<ExpenseItemPreview[] | null>(null);
   const [loadingAsync, setLoadingAsync] = useState(false);
+  const [coords, setCoords] = useState<{
+    top: number | null;
+    bottom: number | null;
+    left: number;
+    width: number;
+    maxHeight: number;
+  }>({
+    top: 0,
+    bottom: null,
+    left: 0,
+    width: 380,
+    maxHeight: 360,
+  });
+  const triggerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const popoverWidth = Math.min(380, window.innerWidth - 24);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const placeUp = spaceBelow < 320 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(160, Math.min(360, (placeUp ? spaceAbove : spaceBelow) - 16));
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - popoverWidth - 12));
+
+    setCoords({
+      top: placeUp ? null : rect.bottom + 6,
+      bottom: placeUp ? window.innerHeight - rect.top + 6 : null,
+      left,
+      width: popoverWidth,
+      maxHeight,
+    });
+  }, []);
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    updatePosition();
     setIsOpen(true);
   };
 
@@ -52,6 +87,19 @@ function ExpenseFolioWithPreview({
       setIsOpen(false);
     }, 120);
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleScrollOrResize = () => {
+      updatePosition();
+    };
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
+  }, [isOpen, updatePosition]);
 
   const isProv = Boolean(
     exp.isProvisional || 
@@ -255,6 +303,7 @@ function ExpenseFolioWithPreview({
 
   return (
     <div 
+      ref={triggerRef}
       className="relative inline-block"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -267,15 +316,24 @@ function ExpenseFolioWithPreview({
         <span>{displayDocNum}</span>
       </span>
 
-      {/* Pop-up flotante con las partidas */}
-      {isOpen && (
+      {/* Pop-up flotante con las partidas renderizado en portal para evitar recorte por overflow */}
+      {isOpen && typeof document !== "undefined" && createPortal(
         <div 
-          className="absolute left-0 top-full mt-2 w-80 sm:w-96 max-w-[90vw] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-3.5 text-left animate-in fade-in zoom-in-95 duration-150"
+          style={{
+            position: "fixed",
+            ...(coords.top !== null ? { top: `${coords.top}px` } : {}),
+            ...(coords.bottom !== null ? { bottom: `${coords.bottom}px` } : {}),
+            left: `${coords.left}px`,
+            width: `${coords.width}px`,
+            maxHeight: `${coords.maxHeight}px`,
+            zIndex: 99999,
+          }}
+          className="bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-left animate-in fade-in zoom-in-95 duration-150 flex flex-col pointer-events-auto"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
           {/* Header del pop-up */}
-          <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
+          <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5 shrink-0">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="p-1 rounded bg-indigo-50 text-indigo-600">
@@ -298,8 +356,8 @@ function ExpenseFolioWithPreview({
           </div>
 
           {/* Lista de Partidas */}
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+          <div className="space-y-2 overflow-y-auto pr-1 custom-scrollbar shrink min-h-0">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block sticky top-0 bg-white py-0.5">
               Partidas del Gasto ({items.length}):
             </span>
             {loadingAsync ? (
@@ -337,7 +395,7 @@ function ExpenseFolioWithPreview({
           </div>
 
           {/* Footer del Pop-up */}
-          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
             <span>
               {exp.isProvisional ? "Gasto Provisional" : exp.isNonDeductible ? "No Deducible" : "Gasto Formal"}
             </span>
@@ -345,7 +403,8 @@ function ExpenseFolioWithPreview({
               <span>Fecha: {exp.date.split("T")[0]}</span>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -427,7 +486,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
 
   return (
     <tr className={`hover:bg-slate-50 transition-colors ${isCancelled ? 'bg-slate-100/70 opacity-60 text-slate-500' : isSelected ? 'bg-indigo-50/40' : isDirty ? 'bg-amber-50/30' : ''}`}>
-      <td className="px-3 py-2.5 text-center">
+      <td className="px-1.5 py-2 text-center">
         {!isCancelled ? (
           <button
             type="button"
@@ -443,10 +502,10 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
           </button>
         ) : null}
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-slate-600 text-xs font-medium">
+      <td className="px-2 py-2 whitespace-nowrap text-slate-600 text-xs font-medium">
         {displayDate}
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap font-medium text-slate-700 text-xs">
+      <td className="px-2 py-2 whitespace-nowrap font-medium text-slate-700 text-xs">
         <ExpenseFolioWithPreview 
           exp={exp}
           rawDocNum={rawDocNum}
@@ -455,12 +514,12 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
           companyId={companyId}
         />
       </td>
-      <td className="px-3 py-2.5 font-medium text-slate-900 max-w-[180px] truncate text-xs" title={exp.vendorName}>
+      <td className="px-2 py-2 font-medium text-slate-900 max-w-[160px] truncate text-xs" title={exp.vendorName}>
         {exp.vendorName}
       </td>
 
       {/* Columna Sucursal */}
-      <td className="px-2 py-2.5">
+      <td className="px-1.5 py-2">
         <select
           value={effective.locationId}
           disabled={isCancelled}
@@ -483,7 +542,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       </td>
 
       {/* Columna Cuenta Contable con buscador */}
-      <td className="px-2 py-2.5">
+      <td className="px-1.5 py-2">
         <TableSearchSelect
           value={effective.accountId}
           disabled={isCancelled}
@@ -497,7 +556,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       </td>
 
       {/* Columna Centro de Costos con buscador */}
-      <td className="px-2 py-2.5">
+      <td className="px-1.5 py-2">
         <TableSearchSelect
           value={effective.costCenterId}
           disabled={isCancelled}
@@ -511,7 +570,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       </td>
 
       {/* Columna Tipo Fiscal (Deducibilidad) */}
-      <td className="px-2 py-2.5">
+      <td className="px-1.5 py-2">
         <select
           value={effective.isNonDeductible ? "no_deducible" : "deducible"}
           disabled={isCancelled}
@@ -530,7 +589,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       </td>
 
       {/* Columna Cuenta Bancaria */}
-      <td className="px-2 py-2.5 text-xs">
+      <td className="px-1.5 py-2 text-xs">
         {bankDisplay.length === 0 ? (
           <span className="text-slate-400 font-mono text-[11px]">-</span>
         ) : (
@@ -546,7 +605,7 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       </td>
 
       {/* Columna Estatus - Cancelado tiene MÁXIMA prioridad */}
-      <td className="px-2 py-2.5 text-center">
+      <td className="px-1.5 py-2 text-center">
         {isCancelled ? (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-200">
             Cancelado
@@ -575,40 +634,39 @@ const ExpenseTableRow = React.memo(function ExpenseTableRow({
       </td>
 
       {/* Montos */}
-      <td className="px-3 py-2.5 text-right font-bold text-slate-900 text-xs">
+      <td className="px-2 py-2 text-right font-bold text-slate-900 text-xs">
         {formatMoney(exp.amount)}
       </td>
-      <td className="px-2 py-2.5 text-right text-emerald-600 font-semibold text-xs">
+      <td className="px-1.5 py-2 text-right text-emerald-600 font-semibold text-xs">
         {formatMoney(exp.paidAmount || 0)}
       </td>
-      <td className={`px-2 py-2.5 text-right font-bold text-xs ${pendingBalance > 0.01 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
+      <td className={`px-1.5 py-2 text-right font-bold text-xs ${pendingBalance > 0.01 && exp.status !== "cancelado" ? "text-amber-600" : "text-slate-400"}`}>
         {formatMoney(pendingBalance)}
       </td>
 
       {/* Acciones */}
-      <td className="px-3 py-2.5 text-center whitespace-nowrap">
+      <td className="px-1.5 py-2 text-center whitespace-nowrap">
         <div className="flex items-center justify-center gap-1.5 flex-nowrap min-w-max">
-          {/* Botón Guardar individual */}
+          {/* Botón Guardar individual (solo icono) */}
           <Button 
             type="button" 
-            size="sm"
+            size="icon"
             disabled={isSaving || isCancelled}
             onClick={() => onSave(exp)}
-            className={`h-8 px-2.5 text-xs font-bold gap-1 transition-all shadow-xs ${
+            className={`h-8 w-8 shrink-0 transition-all shadow-xs ${
               isDirty
                 ? "bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse"
                 : isProv
                 ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+                : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
             }`}
             title="Guardar asignaciones de este gasto"
           >
             {isSaving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <Check className="w-3.5 h-3.5" />
+              <Check className="w-4 h-4" />
             )}
-            <span>Guardar</span>
           </Button>
 
           <Link href={`/gastos/${exp.id}`} target="_blank">
@@ -1798,7 +1856,7 @@ export default function GastosManualesPage() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in w-full max-w-[1650px] mx-auto">
+    <div className="space-y-6 animate-in fade-in w-full">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 text-indigo-950">
@@ -2202,11 +2260,13 @@ export default function GastosManualesPage() {
               <select
                 value={batchLocationId}
                 onChange={(e) => setBatchLocationId(e.target.value)}
-                className="h-8 w-full text-xs rounded-md border border-slate-600 bg-slate-800 text-white [&>option]:bg-white [&>option]:text-slate-900 px-2 py-1 outline-none font-medium focus:ring-1 focus:ring-indigo-400"
+                className={`h-8 w-full text-xs rounded-md border border-slate-300 bg-white px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs transition-colors ${
+                  batchLocationId ? "text-slate-900 font-semibold" : "text-slate-500 font-normal"
+                }`}
               >
-                <option value="" className="bg-white text-slate-900">(Mantener individual)</option>
+                <option value="" className="text-slate-500 font-normal">(Mantener individual)</option>
                 {locations.map(loc => (
-                  <option key={loc.id} value={loc.id} className="bg-white text-slate-900">
+                  <option key={loc.id} value={loc.id} className="text-slate-900 font-medium">
                     {loc.name || loc.Name || loc.id}
                   </option>
                 ))}
@@ -2222,7 +2282,7 @@ export default function GastosManualesPage() {
                 placeholder="(Mantener individual)"
                 emptyLabel="(Sin cuenta contable)"
                 minWidth={280}
-                className="bg-slate-800 border-slate-600 text-white"
+                className="bg-white border-slate-300 shadow-xs"
               />
             </div>
 
@@ -2235,7 +2295,7 @@ export default function GastosManualesPage() {
                 placeholder="(Mantener individual)"
                 emptyLabel="(Sin centro de costos)"
                 minWidth={250}
-                className="bg-slate-800 border-slate-600 text-white"
+                className="bg-white border-slate-300 shadow-xs"
               />
             </div>
 
@@ -2244,11 +2304,13 @@ export default function GastosManualesPage() {
               <select
                 value={batchNonDeductible}
                 onChange={(e) => setBatchNonDeductible(e.target.value)}
-                className="h-8 w-full text-xs rounded-md border border-slate-600 bg-slate-800 text-white [&>option]:bg-white [&>option]:text-slate-900 px-2 py-1 outline-none font-medium focus:ring-1 focus:ring-indigo-400"
+                className={`h-8 w-full text-xs rounded-md border border-slate-300 bg-white px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs transition-colors ${
+                  batchNonDeductible !== "keep" ? "text-slate-900 font-semibold" : "text-slate-500 font-normal"
+                }`}
               >
-                <option value="keep" className="bg-white text-slate-900">(Mantener individual)</option>
-                <option value="deducible" className="bg-white text-slate-900">Marcar como Deducible</option>
-                <option value="no_deducible" className="bg-white text-slate-900">Marcar como No Deducible</option>
+                <option value="keep" className="text-slate-500 font-normal">(Mantener individual)</option>
+                <option value="deducible" className="text-slate-900 font-medium">Marcar como Deducible</option>
+                <option value="no_deducible" className="text-slate-900 font-medium">Marcar como No Deducible</option>
               </select>
             </div>
           </div>
@@ -2258,10 +2320,10 @@ export default function GastosManualesPage() {
       {/* Main Expenses Table */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1680px] text-sm text-left">
+          <table className="w-full min-w-[1240px] text-sm text-left">
             <thead className="bg-slate-50 border-b text-slate-500 uppercase text-xs font-semibold">
               <tr>
-                <th className="px-3 py-3 w-10 text-center">
+                <th className="px-1.5 py-2.5 w-9 text-center">
                   {(() => {
                     const selectableExpenses = paginatedExpenses.filter(e => e.status !== "cancelado");
                     const allSelected = selectableExpenses.length > 0 && selectableExpenses.every(e => selectedExpenseIds.includes(e.id));
@@ -2289,27 +2351,27 @@ export default function GastosManualesPage() {
                     );
                   })()}
                 </th>
-                <th className="px-3 py-3 w-24 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
+                <th className="px-2 py-2.5 w-20 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("date")}>
                   <div className="flex items-center">Fecha {renderSortIcon("date")}</div>
                 </th>
-                <th className="px-3 py-3 w-28 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
+                <th className="px-2 py-2.5 w-24 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("documentNumber")}>
                   <div className="flex items-center">Folio {renderSortIcon("documentNumber")}</div>
                 </th>
-                <th className="px-3 py-3 min-w-[140px] max-w-[180px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
+                <th className="px-2 py-2.5 min-w-[120px] max-w-[160px] cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("vendorName")}>
                   <div className="flex items-center">Proveedor {renderSortIcon("vendorName")}</div>
                 </th>
-                <th className="px-2 py-3 min-w-[140px] whitespace-nowrap">Sucursal</th>
-                <th className="px-2 py-3 min-w-[210px] whitespace-nowrap">Cuenta Contable</th>
-                <th className="px-2 py-3 min-w-[180px] whitespace-nowrap">Centro de Costos</th>
-                <th className="px-2 py-3 min-w-[125px] whitespace-nowrap">Tipo Fiscal</th>
-                <th className="px-2 py-3 min-w-[110px] whitespace-nowrap">Cuenta Bancaria</th>
-                <th className="px-2 py-3 w-20 text-center whitespace-nowrap">Estatus</th>
-                <th className="px-3 py-3 w-24 text-right whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
+                <th className="px-1.5 py-2.5 min-w-[110px] whitespace-nowrap">Sucursal</th>
+                <th className="px-1.5 py-2.5 min-w-[155px] whitespace-nowrap">Cuenta Contable</th>
+                <th className="px-1.5 py-2.5 min-w-[135px] whitespace-nowrap">Centro de Costos</th>
+                <th className="px-1.5 py-2.5 min-w-[100px] whitespace-nowrap">Tipo Fiscal</th>
+                <th className="px-1.5 py-2.5 min-w-[95px] whitespace-nowrap">Cuenta Bancaria</th>
+                <th className="px-1.5 py-2.5 w-20 text-center whitespace-nowrap">Estatus</th>
+                <th className="px-2 py-2.5 w-22 text-right whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => handleSort("amount")}>
                   <div className="flex items-center justify-end">Monto {renderSortIcon("amount")}</div>
                 </th>
-                <th className="px-2 py-3 w-20 text-right whitespace-nowrap">Pagado</th>
-                <th className="px-2 py-3 w-20 text-right whitespace-nowrap">Pendiente</th>
-                <th className="px-3 py-3 min-w-[140px] text-center whitespace-nowrap">Acciones</th>
+                <th className="px-1.5 py-2.5 w-20 text-right whitespace-nowrap">Pagado</th>
+                <th className="px-1.5 py-2.5 w-20 text-right whitespace-nowrap">Pendiente</th>
+                <th className="px-1.5 py-2.5 w-28 min-w-[110px] text-center whitespace-nowrap">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y">

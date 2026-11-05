@@ -10,6 +10,12 @@ import { Loader2, Landmark, DollarSign, BookOpen, AlertCircle, Sparkles, Receipt
 import { BankTransaction, isCreditAccount } from "@/types/bank";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
 import { parseCfdiItems } from "@/lib/cfdi/parseInvoiceItems";
+import {
+  loadClassificationMemory,
+  classifyItemLocally,
+  recordClassificationLearning,
+  ClassificationMemory
+} from "@/lib/services/expenseClassificationService";
 
 interface ReconcilePanelProps {
   transactions: BankTransaction[];
@@ -332,6 +338,7 @@ export function ReconcilePanel({
   const [vendors, setVendors] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [costCenters, setCostCenters] = useState<any[]>([]);
+  const [classificationMemory, setClassificationMemory] = useState<ClassificationMemory | null>(null);
 
   // Form selections
   const [selectedDocId, setSelectedDocId] = useState("");
@@ -615,6 +622,14 @@ export function ReconcilePanel({
     }
   }, [reconcileMode, accountingAccounts, selectedExpenseOrIncomeAccountId]);
 
+  // Load continuous classification memory
+  useEffect(() => {
+    if (!companyId) return;
+    loadClassificationMemory(db, companyId)
+      .then(mem => setClassificationMemory(mem))
+      .catch(err => console.warn("Error cargando memoria contable en ReconcilePanel:", err));
+  }, [companyId]);
+
   // Load catalogs (vendors, locations, cost centers, bank accounts)
   useEffect(() => {
     if (!companyId) return;
@@ -626,7 +641,10 @@ export function ReconcilePanel({
         return {
           id: d.id,
           name: data.LegalName || data.name || data.CommercialName || "Proveedor sin nombre",
-          rfc: data.rfc || data.RFC || ""
+          rfc: data.rfc || data.RFC || "",
+          defaultLocationId: data.defaultLocationId || data.locationId || "",
+          defaultAccountId: data.defaultAccountId || data.accountId || "",
+          defaultCostCenterId: data.defaultCostCenterId || data.costCenterId || ""
         };
       }));
     });
@@ -735,33 +753,160 @@ export function ReconcilePanel({
     }
   }, [transactions, bankAccounts, accountId]);
 
-  // Pre-fill selections from selected document when selectedDocId changes (for charges in match mode)
+  // Pre-fill selections intelligently from selected document, continuous memory and vendor defaults (for charges in match mode)
   useEffect(() => {
     if (!selectedDocId || !isCharge || reconcileMode !== "match") return;
     const selectedDoc = sortedAndMatchedDocs.find(d => d.id === selectedDocId);
-    if (selectedDoc) {
-      setSelectedExpenseOrIncomeAccountId(selectedDoc.accountId || "");
-      setSelectedLocationId(selectedDoc.locationId || "");
-      
-      const docCostCenterId = selectedDoc.costCenterId || selectedDoc.items?.[0]?.costCenterId || "";
-      setSelectedCostCenterId(docCostCenterId);
-      
-      if (selectedDoc.vatRate !== undefined) {
-        setVatRate(Number(selectedDoc.vatRate));
-      } else {
-        setVatRate(0.16);
+    if (!selectedDoc) return;
+
+    // 1. Detect vendor associated with document
+    const docVendorId = selectedDoc.vendorId;
+    const docRfc = (selectedDoc.rfc || selectedDoc.emisorRfc || "").trim().toUpperCase();
+    const docVendorName = (selectedDoc.vendorName || selectedDoc.emisorName || "").trim().toLowerCase();
+
+    const matchedVendor = vendors.find(v => {
+      if (docVendorId && v.id === docVendorId) return true;
+      if (docRfc && v.rfc && v.rfc.toUpperCase() === docRfc) return true;
+      if (docVendorName && v.name && v.name.toLowerCase() === docVendorName) return true;
+      return false;
+    });
+
+    // 2. Intelligent Pre-fill: Sucursal / Location
+    let targetLocationId = selectedDoc.locationId || "";
+    if (!targetLocationId && matchedVendor?.defaultLocationId) {
+      targetLocationId = matchedVendor.defaultLocationId;
+    }
+    if (!targetLocationId && locations.length > 0) {
+      targetLocationId = locations[0].id;
+    }
+    if (targetLocationId) {
+      setSelectedLocationId(targetLocationId);
+    }
+
+    // 3. Intelligent Pre-fill: Cuenta Contable & Centro de Costos
+    let targetAccountId = selectedDoc.accountId || "";
+    let targetCostCenterId = selectedDoc.costCenterId || selectedDoc.items?.[0]?.costCenterId || "";
+
+    // 3a. Evaluate concepts / items with continuous memory if available
+    if ((!targetAccountId || !targetCostCenterId) && classificationMemory) {
+      if (selectedDocConcepts && selectedDocConcepts.length > 0) {
+        for (const concept of selectedDocConcepts) {
+          const itemToClassify = {
+            productName: concept.descripcion || concept.productName || "",
+            claveProdServ: concept.claveProdServ || "",
+            quantity: concept.cantidad || 1,
+            unitCost: concept.valorUnitario || 0,
+            amount: concept.importe || 0
+          };
+          const classified = classifyItemLocally(itemToClassify, matchedVendor?.id, classificationMemory);
+          if (classified) {
+            if (!targetAccountId && classified.accountId) {
+              targetAccountId = classified.accountId;
+            }
+            if (!targetCostCenterId && classified.costCenterId) {
+              targetCostCenterId = classified.costCenterId;
+            }
+          }
+          if (targetAccountId && targetCostCenterId) break;
+        }
       }
 
-      // Pre-fill expenseDate with document date if available, otherwise fallback to transaction date
-      if (selectedDoc.date) {
-        setExpenseDate(selectedDoc.date.substring(0, 10));
-      } else if (selectedDoc.createdAt) {
-        setExpenseDate(selectedDoc.createdAt.substring(0, 10));
-      } else if (transactions.length > 0) {
-        setExpenseDate(transactions[0].date || new Date().toISOString().split("T")[0]);
+      // 3b. Vendor memory rule or vendor default catalog
+      if (!targetAccountId && matchedVendor?.defaultAccountId) {
+        targetAccountId = matchedVendor.defaultAccountId;
+      }
+      if (!targetCostCenterId && matchedVendor?.defaultCostCenterId) {
+        targetCostCenterId = matchedVendor.defaultCostCenterId;
+      }
+
+      if (matchedVendor?.id && (!targetAccountId || !targetCostCenterId)) {
+        const vRule = classificationMemory.rulesByVendor.get(matchedVendor.id);
+        if (vRule) {
+          if (!targetAccountId && vRule.accountId) targetAccountId = vRule.accountId;
+          if (!targetCostCenterId && vRule.costCenterId) targetCostCenterId = vRule.costCenterId;
+        }
+      }
+
+      // 3c. Default fallback account (e.g. 601.01 Gastos Generales)
+      if (!targetAccountId && accountingAccounts.length > 0) {
+        const defaultAcc = accountingAccounts.find(a => a.code === "601.01" || a.code?.startsWith("601")) || accountingAccounts[0];
+        if (defaultAcc) {
+          targetAccountId = defaultAcc.id;
+        }
       }
     }
-  }, [selectedDocId, sortedAndMatchedDocs, isCharge, reconcileMode, transactions]);
+
+    // Fallback if classificationMemory wasn't ready yet
+    if (!targetAccountId && matchedVendor?.defaultAccountId) {
+      targetAccountId = matchedVendor.defaultAccountId;
+    }
+    if (!targetCostCenterId && matchedVendor?.defaultCostCenterId) {
+      targetCostCenterId = matchedVendor.defaultCostCenterId;
+    }
+    if (!targetAccountId && accountingAccounts.length > 0) {
+      const defaultAcc = accountingAccounts.find(a => a.code === "601.01" || a.code?.startsWith("601")) || accountingAccounts[0];
+      if (defaultAcc) {
+        targetAccountId = defaultAcc.id;
+      }
+    }
+
+    setSelectedExpenseOrIncomeAccountId(targetAccountId || "");
+    setSelectedCostCenterId(targetCostCenterId || "");
+
+    // 4. VAT Rate
+    if (selectedDoc.vatRate !== undefined) {
+      setVatRate(Number(selectedDoc.vatRate));
+    } else {
+      setVatRate(0.16);
+    }
+
+    // 5. Pre-fill expenseDate with document date if available, otherwise fallback to transaction date
+    if (selectedDoc.date) {
+      setExpenseDate(selectedDoc.date.substring(0, 10));
+    } else if (selectedDoc.createdAt) {
+      setExpenseDate(selectedDoc.createdAt.substring(0, 10));
+    } else if (transactions.length > 0) {
+      setExpenseDate(transactions[0].date || new Date().toISOString().split("T")[0]);
+    }
+  }, [
+    selectedDocId,
+    sortedAndMatchedDocs,
+    selectedDocConcepts,
+    classificationMemory,
+    vendors,
+    locations,
+    accountingAccounts,
+    isCharge,
+    reconcileMode,
+    transactions
+  ]);
+
+  // Pre-fill defaults when vendor is selected in direct classification mode
+  useEffect(() => {
+    if (reconcileMode !== "direct" || !selectedVendorId) return;
+    const v = vendors.find(item => item.id === selectedVendorId);
+    if (!v) return;
+
+    if (v.defaultLocationId) {
+      setSelectedLocationId(v.defaultLocationId);
+    } else if (locations.length > 0 && !selectedLocationId) {
+      setSelectedLocationId(locations[0].id);
+    }
+
+    let accId = v.defaultAccountId || "";
+    let ccId = v.defaultCostCenterId || "";
+
+    if ((!accId || !ccId) && classificationMemory) {
+      const vRule = classificationMemory.rulesByVendor.get(selectedVendorId);
+      if (vRule) {
+        if (!accId && vRule.accountId) accId = vRule.accountId;
+        if (!ccId && vRule.costCenterId) ccId = vRule.costCenterId;
+      }
+    }
+
+    if (accId) setSelectedExpenseOrIncomeAccountId(accId);
+    if (ccId) setSelectedCostCenterId(ccId);
+  }, [selectedVendorId, reconcileMode, vendors, locations, selectedLocationId, classificationMemory]);
 
   // Suggestion and sorting logic for own transfer matching
   const sortedTargetTransactions = useMemo(() => {
@@ -1009,6 +1154,7 @@ export function ReconcilePanel({
               accountId: selectedExpenseOrIncomeAccountId,
               accountCode: selectedAccount?.code || "",
               accountName: selectedAccount?.name || "",
+              costCenterId: selectedCostCenterId || null,
               paidAmount: totalAbsAmount,
               status: status,
               items: mappedItems,
@@ -1065,6 +1211,7 @@ export function ReconcilePanel({
                   accountId: selectedExpenseOrIncomeAccountId,
                   accountCode: selectedAccount.code,
                   accountName: selectedAccount.name,
+                  costCenterId: selectedCostCenterId || null,
                   debit: subtotalAmount,
                   credit: 0
                 },
@@ -1331,6 +1478,30 @@ export function ReconcilePanel({
               }
             }
           }
+
+          // Continuous Learning: Record rule updates for future reconciliations
+          if (isCharge && selectedExpenseOrIncomeAccountId) {
+            const learningUpdates = (selectedDocConcepts && selectedDocConcepts.length > 0)
+              ? selectedDocConcepts.map((item: any) => ({
+                  vendorId: selectedDoc.vendorId || undefined,
+                  vendorName: selectedDoc.emisorName || selectedDoc.vendorName || undefined,
+                  claveProdServ: item.claveProdServ || undefined,
+                  productName: item.descripcion || item.productName || undefined,
+                  accountId: selectedExpenseOrIncomeAccountId,
+                  costCenterId: selectedCostCenterId || null
+                }))
+              : [{
+                  vendorId: selectedDoc.vendorId || undefined,
+                  vendorName: selectedDoc.emisorName || selectedDoc.vendorName || undefined,
+                  productName: selectedDoc.concept || undefined,
+                  accountId: selectedExpenseOrIncomeAccountId,
+                  costCenterId: selectedCostCenterId || null
+                }];
+
+            recordClassificationLearning(db, companyId, learningUpdates).catch(err => {
+              console.warn("Error guardando regla de aprendizaje contable en match:", err);
+            });
+          }
         }
 
       } else if (reconcileMode === "direct") {
@@ -1400,6 +1571,7 @@ export function ReconcilePanel({
             accountId: selectedExpenseOrIncomeAccountId,
             accountCode: selectedAccount?.code || "",
             accountName: selectedAccount?.name || "",
+            costCenterId: selectedCostCenterId || null,
             paidAmount: absAmount,
             status: "paid",
             items: [
@@ -1461,6 +1633,7 @@ export function ReconcilePanel({
                   accountId: selectedExpenseOrIncomeAccountId,
                   accountCode: selectedAccount.code,
                   accountName: selectedAccount.name,
+                  costCenterId: selectedCostCenterId || null,
                   debit: subtotalAmount,
                   credit: 0
                 },
@@ -1576,6 +1749,17 @@ export function ReconcilePanel({
             reconcileType: reconcileMode,
             matchedDocumentId: isCharge ? expenseId : selectedExpenseOrIncomeAccountId
           });
+        }
+
+        // Continuous Learning: Record rule update for direct classification
+        if (isCharge && selectedExpenseOrIncomeAccountId && (selectedVendorId || directDescription)) {
+          recordClassificationLearning(db, companyId, [{
+            vendorId: selectedVendorId || undefined,
+            vendorName: vendorName || undefined,
+            productName: directDescription || undefined,
+            accountId: selectedExpenseOrIncomeAccountId,
+            costCenterId: selectedCostCenterId || null
+          }]).catch(err => console.warn("Error guardando regla de aprendizaje contable directo:", err));
         }
       } else if (reconcileMode === "transfer") {
         if (!selectedTargetAccountId) {
@@ -2233,9 +2417,15 @@ export function ReconcilePanel({
                 {/* Classification controls for matched charges */}
                 {isCharge && selectedDocId && (
                   <div className="space-y-4 border-t pt-4 mt-4 animate-in fade-in duration-300">
-                    <p className="text-xs font-bold text-indigo-950 uppercase tracking-wider">
-                      Datos de Clasificación del Gasto
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                        Datos de Clasificación del Gasto
+                      </p>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                        <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
+                        Precarga Inteligente
+                      </span>
+                    </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">

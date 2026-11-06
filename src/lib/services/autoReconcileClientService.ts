@@ -98,9 +98,13 @@ export async function runClientAiReconciliation(
   bankAccountId: string,
   userEmail?: string,
   dateRange?: { startDate?: string; endDate?: string },
-  control?: ReconcileControlSignal
+  control?: ReconcileControlSignal,
+  options?: {
+    includeProvisionalExpenses?: boolean;
+  }
 ): Promise<{ success: boolean; processedCount: number; details: any[]; cancelled?: boolean; error?: string }> {
   try {
+    const includeProvisionalExpenses = options?.includeProvisionalExpenses ?? false;
     control?.onProgress?.(0, 0, "Obteniendo configuración y facturas candidatas...");
 
     // 1. Obtener API Key de Gemini
@@ -1328,7 +1332,7 @@ ${JSON.stringify(slicedCandidates, null, 2)}
 REGLAS DE CONCILIACIÓN:
 1. MATCH_INVOICE: Si un candidato coincide en monto con el movimiento bancario (mismo monto exacto o variación de centavos justificada), mismo proveedor y fecha cercana, asigna confidenceScore >= 0.90 y recommendedAction = "MATCH_INVOICE" indicando el matchedDocId.
 2. PROVEEDORES RECURRENTES Y COMPRAS INDEPENDIENTES: En comercios recurrentes (ej. Amazon, Costco, Mercado Pago, Uber, Oxxo, Telcel, Bed Bath, etc.), es habitual realizar múltiples compras en diferentes fechas y por distintos importes. Si los candidatos en la lista son de fechas o importes claramente diferentes a este movimiento, representan OTRAS compras y NO corresponden a este consumo. En tal situación, procede con la REGLA 3.
-3. CREATE_PROVISIONAL_EXPENSE: Si NO existe una factura exacta en los candidatos para este movimiento específico, pero el concepto corresponde a un gasto comercial, compra con tarjeta o servicio operativo identificable (ej. Costco, Amazon, Bed Bath, Uber, Oxxo, Telcel, restaurantes, papelerías, gasolina, casetas, comisiones, etc.):
+${includeProvisionalExpenses ? `3. CREATE_PROVISIONAL_EXPENSE: Si NO existe una factura exacta en los candidatos para este movimiento específico, pero el concepto corresponde a un gasto comercial, compra con tarjeta o servicio operativo identificable (ej. Costco, Amazon, Bed Bath, Uber, Oxxo, Telcel, restaurantes, papelerías, gasolina, casetas, comisiones, etc.):
    - recommendedAction = "CREATE_PROVISIONAL_EXPENSE"
    - confidenceScore = 0.95
    - suggestedAccountCode = cuenta contable de gastos (ej. "601.01" Gastos Generales)
@@ -1338,7 +1342,13 @@ REGLAS DE CONCILIACIÓN:
 4. REVIEW_REQUIRED: Asigna recommendedAction = "REVIEW_REQUIRED" (confidenceScore < 0.90) ÚNICAMENTE si:
    - Hay una factura con el MISMO proveedor y misma fecha pero con discrepancia en el monto que genera duda legítima (ej. pago parcial vs factura pendiente).
    - O el concepto bancario es completamente indescifrable o ambiguo (ej. cadenas aleatorias sin nombre de comercio ni banco).
-   - NUNCA uses "REVIEW_REQUIRED" simplemente porque "no se encontró la factura en el sistema" o "falta el XML". Para consumos operativos o compras sin XML registrado, la regla contable obligatoria es SIEMPRE crear el gasto provisional ("CREATE_PROVISIONAL_EXPENSE").
+   - NUNCA uses "REVIEW_REQUIRED" simplemente porque "no se encontró la factura en el sistema" o "falta el XML". Para consumos operativos o compras sin XML registrado, la regla contable obligatoria es SIEMPRE crear el gasto provisional ("CREATE_PROVISIONAL_EXPENSE").` : `3. MODO ESTRICTO SIN GASTOS PROVISIONALES (EXCLUSIVAMENTE FACTURAS XML): El usuario ha configurado el agente para conciliar EXCLUSIVAMENTE contra facturas o XMLs existentes en la lista de candidatos.
+   - Si NO existe una factura o XML candidato que coincida claramente con este movimiento bancario, ASIGNA OBLIGATORIAMENTE:
+     recommendedAction = "REVIEW_REQUIRED"
+     confidenceScore = 0.50
+     matchedDocId = null
+     reasoning = "Sin factura XML correspondiente en el sistema."
+   - NUNCA uses "CREATE_PROVISIONAL_EXPENSE" bajo este modo.`}
 
 Formato JSON estricto:
 {
@@ -1551,6 +1561,10 @@ Formato JSON estricto:
             details.push({ txId: tx.id, action: "MATCH_INVOICE", docNumber, reasoning: evalData.reasoning });
           }
         } else if (evalData.recommendedAction === "CREATE_PROVISIONAL_EXPENSE") {
+          if (!includeProvisionalExpenses) {
+            details.push({ txId: tx.id, action: "SKIPPED_NO_XML", reasoning: "Omitido: Modo sin gastos provisionales (requiere factura XML)." });
+            continue;
+          }
           // Reutilizar gasto provisional previo si ya existe para esta transacción bancaria
           let expenseId = crypto.randomUUID();
           let documentNumber = `PROV-${Math.floor(100000 + Math.random() * 900000)}`;

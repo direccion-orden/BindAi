@@ -17,6 +17,7 @@ import { SplitTransactionModal } from "./components/SplitTransactionModal";
 import { ReconciliationAuditView } from "./components/ReconciliationAuditView";
 import { Input } from "@/components/ui/input";
 import { runClientAiReconciliation } from "@/lib/services/autoReconcileClientService";
+import { AiReconcileOptionsModal } from "./components/AiReconcileOptionsModal";
 
 interface BankAccount {
   id: string;
@@ -223,19 +224,26 @@ export default function BancosPage() {
 
   const [runningAiReconcile, setRunningAiReconcile] = useState(false);
   const [isPausedAiReconcile, setIsPausedAiReconcile] = useState(false);
+  const [isAiOptionsModalOpen, setIsAiOptionsModalOpen] = useState(false);
   const [aiReconcileStatus, setAiReconcileStatus] = useState<string | null>(null);
 
   const isPausedRef = useRef(false);
   const isCancelledRef = useRef(false);
 
-  const handleRunAiReconciliation = async () => {
+  const handleOpenAiModal = () => {
+    if (!companyId || !selectedAccountId) return;
+    setIsAiOptionsModalOpen(true);
+  };
+
+  const handleRunAiReconciliation = async (includeProvisional: boolean = false) => {
     if (!companyId || !selectedAccountId) return;
     
     isPausedRef.current = false;
     isCancelledRef.current = false;
     setIsPausedAiReconcile(false);
     setRunningAiReconcile(true);
-    setAiReconcileStatus("Iniciando análisis del Agente IA...");
+    const modeLabel = includeProvisional ? "Con Provisionales" : "Solo XMLs";
+    setAiReconcileStatus(`[${modeLabel}] Iniciando análisis del Agente IA...`);
 
     try {
       const dateRange = (startDate || endDate) ? { startDate: startDate || undefined, endDate: endDate || undefined } : undefined;
@@ -244,11 +252,19 @@ export default function BancosPage() {
         isPaused: () => isPausedRef.current,
         isCancelled: () => isCancelledRef.current,
         onProgress: (current: number, total: number, message: string) => {
-          setAiReconcileStatus(`[${current}/${total}] ${message}`);
+          setAiReconcileStatus(`[${modeLabel}] [${current}/${total}] ${message}`);
         }
       };
 
-      const result = await runClientAiReconciliation(db, companyId, selectedAccountId, user?.email || undefined, dateRange, controlSignal);
+      const result = await runClientAiReconciliation(
+        db,
+        companyId,
+        selectedAccountId,
+        user?.email || undefined,
+        dateRange,
+        controlSignal,
+        { includeProvisionalExpenses: includeProvisional }
+      );
       
       if (result.cancelled) {
         setAiReconcileStatus(`Proceso cancelado por el usuario. Se procesaron ${result.processedCount} movimientos antes de detener.`);
@@ -798,7 +814,7 @@ export default function BancosPage() {
                           )}
                       </button>
                       <Button
-                        onClick={handleRunAiReconciliation}
+                        onClick={handleOpenAiModal}
                         disabled={runningAiReconcile || !selectedAccountId}
                         className="bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-600 hover:via-purple-700 hover:to-indigo-700 text-white font-extrabold text-xs shadow-sm h-8 px-3 rounded-lg flex items-center gap-1.5 transition-all ml-1"
                       >
@@ -1278,6 +1294,23 @@ export default function BancosPage() {
           onClose={() => setIsSyncfyModalOpen(false)}
           selectedAccountId={selectedAccountId}
           accounts={accounts}
+      />
+
+      <AiReconcileOptionsModal
+        isOpen={isAiOptionsModalOpen}
+        onClose={() => setIsAiOptionsModalOpen(false)}
+        onConfirm={(includeProvisional) => handleRunAiReconciliation(includeProvisional)}
+        bankAccountName={accounts.find(a => a.id === selectedAccountId)?.Name || accounts.find(a => a.id === selectedAccountId)?.name || "Cuenta Bancaria"}
+        dateRangeLabel={
+          dateFilterOption === "this_month" ? "Mes a la Fecha" :
+          dateFilterOption === "last_month" ? "Mes Pasado" :
+          dateFilterOption === "today" ? "Hoy" :
+          dateFilterOption === "yesterday" ? "Ayer" :
+          dateFilterOption === "last_30_days" ? "Últimos 30 Días" :
+          dateFilterOption === "this_year" ? "Este Año" :
+          dateFilterOption === "custom" ? `${startDate || 'Inicio'} a ${endDate || 'Fin'}` : "Cualquier fecha"
+        }
+        pendingCount={transactions.filter(t => !t.reconciled).length}
       />
 
       <EditReconciliationModal

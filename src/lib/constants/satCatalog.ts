@@ -19,6 +19,7 @@ export const FULL_SEED_ACCOUNTS = [
   { code: "118", name: "Impuestos acreditables pagados", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
   { code: "119", name: "Impuestos acreditables por pagar", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
   { code: "120", name: "Anticipo a proveedores", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "121", name: "Otros activos circulantes", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
   { code: "151", name: "Terrenos", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
   { code: "152", name: "Edificios", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
   { code: "153", name: "Maquinaria y equipo", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
@@ -44,6 +45,15 @@ export const FULL_SEED_ACCOUNTS = [
   { code: "173", name: "Gastos de organización y de constitución", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
   { code: "174", name: "Gastos de investigación y desarrollo", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
   { code: "175", name: "Software e intangibles", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "177", name: "Gastos de organización", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "178", name: "Investigación y desarrollo de mercado", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "179", name: "Marcas y patentes", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "180", name: "Crédito mercantil", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "181", name: "Gastos de instalación", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "184", name: "Depósitos en garantía", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "185", name: "Impuestos diferidos", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "186", name: "Cuentas y documentos por cobrar a largo plazo", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
+  { code: "191", name: "Otros activos a largo plazo", type: "ACTIVO", nature: "DEUDORA", level: 2, parentCode: "100" },
 
   // 200 PASIVO
   { code: "200", name: "Pasivo", type: "PASIVO", nature: "ACREEDORA", level: 1, parentCode: null },
@@ -62,6 +72,13 @@ export const FULL_SEED_ACCOUNTS = [
   { code: "213", name: "Impuestos y derechos por pagar", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
   { code: "214", name: "Provisiones por pagar a corto plazo", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
   { code: "215", name: "Impuestos retenidos", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
+  { code: "216", name: "Impuestos retenidos", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
+  { code: "217", name: "Pagos realizados por cuenta de terceros", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
+  { code: "218", name: "Otros pasivos a corto plazo", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
+  { code: "251", name: "Acreedores diversos a largo plazo", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
+  { code: "252", name: "Cuentas y documentos por pagar a largo plazo", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
+  { code: "253", name: "Cobros anticipados a largo plazo", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
+  { code: "256", name: "Otros pasivos a largo plazo", type: "PASIVO", nature: "ACREEDORA", level: 2, parentCode: "200" },
 
   // 300 CAPITAL CONTABLE
   { code: "300", name: "Capital Contable", type: "CAPITAL", nature: "ACREEDORA", level: 1, parentCode: null },
@@ -93,6 +110,8 @@ export const FULL_SEED_ACCOUNTS = [
   { code: "604", name: "Gastos de fabricación", type: "GASTOS", nature: "DEUDORA", level: 2, parentCode: "600" },
   { code: "605", name: "Mano de obra directa", type: "GASTOS", nature: "DEUDORA", level: 2, parentCode: "600" },
   { code: "606", name: "Facilidades administrativas", type: "GASTOS", nature: "DEUDORA", level: 2, parentCode: "600" },
+  { code: "613", name: "Depreciación contable", type: "GASTOS", nature: "DEUDORA", level: 2, parentCode: "600" },
+  { code: "614", name: "Amortización contable", type: "GASTOS", nature: "DEUDORA", level: 2, parentCode: "600" },
   
   // 700 RESULTADO INTEGRAL DE FINANCIAMIENTO
   { code: "700", name: "Resultado Integral de Financiamiento", type: "GASTOS", nature: "DEUDORA", level: 1, parentCode: null },

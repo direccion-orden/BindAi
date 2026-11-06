@@ -271,11 +271,11 @@ export function FormalizeProvisionalModal({
 
   const expenseAccountItems = useMemo(() => {
     return accounts
-      .filter((a: any) => a.type === "GASTOS" || a.type === "COSTOS" || (a.code && a.code.startsWith("601")))
+      .filter((a: any) => a.level >= 1 && !["100", "200", "300", "400", "500", "600", "700"].includes(a.code))
       .map(a => ({
         id: a.id,
         name: `${a.code ? a.code + " - " : ""}${a.name || a.Name || a.id}`,
-        subtitle: a.type || ""
+        subtitle: `${a.type || ""} • Nivel ${a.level || ""}`
       }));
   }, [accounts]);
 

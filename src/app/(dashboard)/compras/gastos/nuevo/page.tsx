@@ -403,7 +403,7 @@ function NuevoGastoForm() {
     // Load accounts
     const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
       const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const filtered = allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2);
+      const filtered = allAcc.filter((a: any) => a.level >= 1 && !["100", "200", "300", "400", "500", "600", "700"].includes(a.code));
       filtered.sort((a: any, b: any) => a.name.localeCompare(b.name, "es"));
       setAccounts(filtered);
     });

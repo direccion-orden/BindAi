@@ -362,11 +362,8 @@ export function EditReconciliationModal({
         // Accounts
         const accSnap = await getDocs(collection(db, "companies", companyId, "accounts"));
         const allAcc = accSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-        if (isCharge) {
-          setAccountingAccounts(allAcc.filter((a) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2));
-        } else {
-          setAccountingAccounts(allAcc.filter((a) => a.type === "INGRESOS" && a.level >= 2));
-        }
+        // Allow all operative accounts across types (Pasivo, Activo, Gastos, Costos, Ingresos)
+        setAccountingAccounts(allAcc.filter((a) => a.level >= 1 && !["100", "200", "300", "400", "500", "600", "700"].includes(a.code)));
 
         // Unpaid Docs
         if (isCharge) {

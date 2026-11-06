@@ -1205,9 +1205,7 @@ export default function BancosPage() {
                                       accountId={selectedAccountId}
                                       unpaidDocs={selectedTxs[0].amount < 0 ? unpaidExpenses : unpaidSales}
                                       accountingAccounts={
-                                          selectedTxs[0].amount < 0 
-                                              ? accountingAccountsAll.filter(a => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2)
-                                              : accountingAccountsAll.filter(a => a.type === "INGRESOS" && a.level >= 2)
+                                          accountingAccountsAll.filter(a => a.level >= 1 && !["100", "200", "300", "400", "500", "600", "700"].includes(a.code))
                                       }
                                       accountingAccountsAll={accountingAccountsAll}
                                       onDeselect={() => setSelectedTxs([])}

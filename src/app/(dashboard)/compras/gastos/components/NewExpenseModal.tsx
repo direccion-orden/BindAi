@@ -82,7 +82,7 @@ export function NewExpenseModal({ isOpen, onClose, companyId }: NewExpenseModalP
     const unsubAcc = onSnapshot(query(collection(db, "companies", companyId, "accounts")), (snap) => {
       const allAcc = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setAccountingAccounts(allAcc);
-      setExpenseAccounts(allAcc.filter((a: any) => (a.type === "GASTOS" || a.type === "COSTOS") && a.level >= 2));
+      setExpenseAccounts(allAcc.filter((a: any) => a.level >= 1 && !["100", "200", "300", "400", "500", "600", "700"].includes(a.code)));
       setVatAccounts(allAcc.filter((a: any) => a.code.startsWith("118") && a.level >= 2));
     });
 

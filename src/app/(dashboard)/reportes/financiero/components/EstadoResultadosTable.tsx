@@ -257,9 +257,18 @@ export default function EstadoResultadosTable({
     return costoKeywords.some((kw) => lower.includes(kw));
   };
 
-  // Robust Cost Center Resolution Helper (Cascade: Item -> Root -> Items list -> Bind ERP Account)
+  // Robust Cost Center Resolution Helper (Cascade: Root explicit -> Item level -> Items list -> Bind ERP Account)
   const resolveCostCenter = (doc: any, item?: any): string => {
-    // 1. Direct item-level costCenter
+    // 1. Direct root costCenterId or costCenterName (authoritative classification assigned to the expense)
+    if (doc.costCenterId && costCenterMap[doc.costCenterId]) {
+      return costCenterMap[doc.costCenterId].name;
+    }
+    if (doc.costCenterName) {
+      const norm = normalize(doc.costCenterName);
+      if (costCentersByName[norm]) return costCentersByName[norm].name;
+    }
+
+    // 2. Direct item-level costCenter (fallback when document root is unassigned, e.g. multi-item expense splits)
     if (item) {
       if (item.costCenterId && costCenterMap[item.costCenterId]) {
         return costCenterMap[item.costCenterId].name;
@@ -268,15 +277,6 @@ export default function EstadoResultadosTable({
         const norm = normalize(item.costCenterName);
         if (costCentersByName[norm]) return costCentersByName[norm].name;
       }
-    }
-
-    // 2. Direct root costCenterId or costCenterName
-    if (doc.costCenterId && costCenterMap[doc.costCenterId]) {
-      return costCenterMap[doc.costCenterId].name;
-    }
-    if (doc.costCenterName) {
-      const norm = normalize(doc.costCenterName);
-      if (costCentersByName[norm]) return costCentersByName[norm].name;
     }
 
     // 3. Fallback to doc's items array if no specific item was passed
@@ -413,7 +413,7 @@ export default function EstadoResultadosTable({
   // 1. Balance-sheet flows that NEVER enter P&L (neither OPEX nor post-EBITDA)
   const isBalanceSheetPassThrough = (doc: any, ccName?: string, item?: any): boolean => {
     // Check explicit cost center classification
-    const ccId = (item && item.costCenterId) || doc.costCenterId;
+    const ccId = doc.costCenterId || (item && item.costCenterId);
     const ccObj =
       (ccId && costCenterMap[ccId]) ||
       (ccName && costCentersByName[normalize(ccName)]);
@@ -480,7 +480,7 @@ export default function EstadoResultadosTable({
     item?: any
   ): "gastos_financieros" | "impuestos" | "dividendos" | null => {
     // Check explicit cost center classification
-    const ccId = (item && item.costCenterId) || doc.costCenterId;
+    const ccId = doc.costCenterId || (item && item.costCenterId);
     const ccObj =
       (ccId && costCenterMap[ccId]) ||
       (ccName && costCentersByName[normalize(ccName)]);
@@ -662,10 +662,11 @@ export default function EstadoResultadosTable({
 
         // Location check if a specific branch is selected
         if (selectedLocation !== "all") {
-          const itemLocId = (item && item.locationId) || doc.locationId;
+          const itemLocId = doc.locationId || (item && item.locationId);
           const itemLocName =
-            (item && item.locationName) ||
             doc.locationName ||
+            (doc.locationId && locationNameMap[doc.locationId]) ||
+            (item && item.locationName) ||
             (itemLocId && locationNameMap[itemLocId]);
           const matchesLocId = itemLocId && itemLocId === selectedLocation;
           const matchesLocName =
@@ -703,8 +704,8 @@ export default function EstadoResultadosTable({
 
         // C. Operating Cost vs Expense
         const ccObj =
-          (item && item.costCenterId && costCenterMap[item.costCenterId]) ||
           (doc.costCenterId && costCenterMap[doc.costCenterId]) ||
+          (item && item.costCenterId && costCenterMap[item.costCenterId]) ||
           costCentersByName[normalize(ccName)];
         const isCost = isCostoOperativo(ccName, ccObj?.classification || ccObj?.type);
         addExpense(ccName, isCost, dateStr, actualVal);

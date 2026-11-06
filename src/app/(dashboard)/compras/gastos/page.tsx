@@ -1144,6 +1144,19 @@ export default function GastosManualesPage() {
         updatedAt: now
       };
 
+      if (Array.isArray(exp.items) && exp.items.length > 0) {
+        updatePayload.items = exp.items.map((it: any) => ({
+          ...it,
+          costCenterId: effective.costCenterId || null,
+          costCenterName: selectedCC?.name || selectedCC?.Name || "",
+          accountId: effective.accountId || "",
+          accountCode: selectedAcc?.code || exp.accountCode || "",
+          accountName: selectedAcc?.name || exp.accountName || "",
+          locationId: effective.locationId || "",
+          locationName: selectedLoc?.name || selectedLoc?.Name || exp.locationName || ""
+        }));
+      }
+
       batch.update(expRef, updatePayload);
 
       // Actualizar póliza contable asociada si existe
@@ -1256,6 +1269,19 @@ export default function GastosManualesPage() {
           updatedAt: now
         };
 
+        if (Array.isArray(exp.items) && exp.items.length > 0) {
+          updatePayload.items = exp.items.map((it: any) => ({
+            ...it,
+            costCenterId: finalCostCenterId || null,
+            costCenterName: finalCC?.name || finalCC?.Name || "",
+            accountId: finalAccountId || "",
+            accountCode: finalAcc?.code || exp.accountCode || "",
+            accountName: finalAcc?.name || exp.accountName || "",
+            locationId: finalLocationId || "",
+            locationName: finalLoc?.name || finalLoc?.Name || exp.locationName || ""
+          }));
+        }
+
         batch.update(expRef, updatePayload);
       }
 
@@ -1340,6 +1366,20 @@ export default function GastosManualesPage() {
           reviewedAt: now,
           updatedAt: now
         };
+
+        if (Array.isArray(exp.items) && exp.items.length > 0) {
+          updatePayload.items = exp.items.map((it: any) => ({
+            ...it,
+            costCenterId: effective.costCenterId || null,
+            costCenterName: selectedCC?.name || selectedCC?.Name || "",
+            accountId: effective.accountId || "",
+            accountCode: selectedAcc?.code || exp.accountCode || "",
+            accountName: selectedAcc?.name || exp.accountName || "",
+            locationId: effective.locationId || "",
+            locationName: selectedLoc?.name || selectedLoc?.Name || exp.locationName || ""
+          }));
+        }
+
         batch.update(expRef, updatePayload);
       }
 

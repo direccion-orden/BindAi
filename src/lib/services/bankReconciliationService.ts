@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { BankTransaction } from "@/types/bank";
 
@@ -97,12 +97,41 @@ export async function unreconcileBankTransaction(
       const expRef = doc(db, "companies", companyId, "expenses", docId);
       const expSnap = await getDoc(expRef);
       if (expSnap.exists()) {
-        const currentPaid = expSnap.data().paidAmount || 0;
-        const newPaid = Math.max(0, currentPaid - absAmount);
-        await updateDoc(expRef, {
-          paidAmount: newPaid,
-          status: "pending",
-        });
+        const expData = expSnap.data();
+        const isProv = Boolean(
+          expData.isProvisional ||
+          expData.isPendingFiscalInvoice ||
+          (expData.documentNumber && expData.documentNumber.startsWith("PROV-"))
+        );
+
+        if (isProv) {
+          // Gasto provisional automático: al desconciliar se cancela para no dejar deuda fantasma ni duplicados
+          await updateDoc(expRef, {
+            status: "cancelado",
+            paidAmount: 0,
+            cancelledAt: new Date().toISOString(),
+            cancelledReason: "Desconciliación bancaria",
+          });
+
+          // Limpiar o dar de baja outflows vinculados a este gasto provisional
+          const outSnap = await getDocs(query(collection(db, "companies", companyId, "outflows"), where("documentId", "==", docId)));
+          for (const oDoc of outSnap.docs) {
+            await deleteDoc(oDoc.ref);
+          }
+
+          // Limpiar o dar de baja pólizas contables vinculadas
+          const jSnap = await getDocs(query(collection(db, "companies", companyId, "journal_entries"), where("documentId", "==", docId)));
+          for (const jDoc of jSnap.docs) {
+            await deleteDoc(jDoc.ref);
+          }
+        } else {
+          const currentPaid = expData.paidAmount || 0;
+          const newPaid = Math.max(0, currentPaid - absAmount);
+          await updateDoc(expRef, {
+            paidAmount: newPaid,
+            status: "pending",
+          });
+        }
       }
     } catch (e) {
       console.warn("Could not revert expense paidAmount:", e);

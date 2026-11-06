@@ -1291,6 +1291,12 @@ export default function GastosManualesPage() {
         return copy;
       });
 
+      // Reset batch state to prevent pollution across batches
+      setBatchLocationId("");
+      setBatchAccountId("");
+      setBatchCostCenterId("");
+      setBatchNonDeductible("keep");
+
       setActionFeedback(`¡${selectedExpenseIds.length} gastos guardados con éxito!`);
       setTimeout(() => setActionFeedback(null), 3500);
       setSelectedExpenseIds([]);
@@ -1753,9 +1759,14 @@ export default function GastosManualesPage() {
     return sortedExpenses.slice(startIndex, startIndex + pageSize);
   }, [sortedExpenses, currentPage, pageSize]);
 
-  // Reset de página al cambiar filtros
+  // Reset de página y selectores de lote al cambiar filtros
   useEffect(() => {
     setCurrentPage(1);
+    setBatchLocationId("");
+    setBatchAccountId("");
+    setBatchCostCenterId("");
+    setBatchNonDeductible("keep");
+    setSelectedExpenseIds([]);
   }, [
     searchTerm,
     statusFilter,
@@ -1807,6 +1818,11 @@ export default function GastosManualesPage() {
     setLocationFilter("all");
     setAccountFilter("all");
     setCostCenterFilter("all");
+    setBatchLocationId("");
+    setBatchAccountId("");
+    setBatchCostCenterId("");
+    setBatchNonDeductible("keep");
+    setSelectedExpenseIds([]);
   };
 
   // Métricas financieras calculadas en un solo pase O(N)
@@ -2216,7 +2232,13 @@ export default function GastosManualesPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setSelectedExpenseIds([])}
+                onClick={() => {
+                  setSelectedExpenseIds([]);
+                  setBatchLocationId("");
+                  setBatchAccountId("");
+                  setBatchCostCenterId("");
+                  setBatchNonDeductible("keep");
+                }}
                 className="text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border-white/20 h-8"
               >
                 Deseleccionar

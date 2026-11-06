@@ -207,11 +207,17 @@ export async function runClientAiReconciliation(
       });
     }
 
+    const existingProvByTxId = new Map<string, { id: string; docNumber: string; data: any }>();
     try {
-      const manualSnap = await getDocs(query(collection(db, "companies", companyId, "expenses"), where("status", "!=", "paid")));
-      manualSnap.forEach(d => {
+      const allExpensesSnap = await getDocs(collection(db, "companies", companyId, "expenses"));
+      allExpensesSnap.forEach(d => {
         const data = d.data();
-        if (!data.isProvisional) {
+        const isProv = Boolean(
+          data.isProvisional ||
+          data.isPendingFiscalInvoice ||
+          (data.documentNumber && data.documentNumber.startsWith("PROV-"))
+        );
+        if (!isProv && data.status !== "paid" && data.status !== "cancelado") {
           candidates.push({
             id: d.id,
             documentNumber: data.documentNumber,
@@ -221,24 +227,13 @@ export async function runClientAiReconciliation(
             concept: data.concept,
             _type: "gasto_manual"
           });
+        }
+        if (isProv && data.linkedBankTransactionId) {
+          existingProvByTxId.set(data.linkedBankTransactionId, { id: d.id, docNumber: data.documentNumber, data });
         }
       });
     } catch (e) {
-      const manualSnapAll = await getDocs(collection(db, "companies", companyId, "expenses"));
-      manualSnapAll.forEach(d => {
-        const data = d.data();
-        if (data.status !== "paid" && !data.isProvisional) {
-          candidates.push({
-            id: d.id,
-            documentNumber: data.documentNumber,
-            date: data.date,
-            total: data.amount || 0,
-            vendorName: data.vendorName,
-            concept: data.concept,
-            _type: "gasto_manual"
-          });
-        }
-      });
+      console.warn("Error prefetching expenses for candidates and provisional index:", e);
     }
 
     // 3. Obtener Cuentas Contables, Cuentas Bancarias y Catálogo Oficial de Proveedores
@@ -1556,8 +1551,14 @@ Formato JSON estricto:
             details.push({ txId: tx.id, action: "MATCH_INVOICE", docNumber, reasoning: evalData.reasoning });
           }
         } else if (evalData.recommendedAction === "CREATE_PROVISIONAL_EXPENSE") {
-          const expenseId = crypto.randomUUID();
-          const documentNumber = `PROV-${Math.floor(100000 + Math.random() * 900000)}`;
+          // Reutilizar gasto provisional previo si ya existe para esta transacción bancaria
+          let expenseId = crypto.randomUUID();
+          let documentNumber = `PROV-${Math.floor(100000 + Math.random() * 900000)}`;
+          const existingProv = existingProvByTxId.get(tx.id);
+          if (existingProv) {
+            expenseId = existingProv.id;
+            documentNumber = existingProv.docNumber || existingProv.data.documentNumber || documentNumber;
+          }
 
           const resolved = resolveVendorAndConcept(
             tx.concept || "",
@@ -1575,7 +1576,7 @@ Formato JSON estricto:
             apiKey
           );
 
-          // Crear Gasto Directo Provisional con Proveedor y Concepto Validados
+          // Crear o actualizar Gasto Directo Provisional con Proveedor y Concepto Validados
           await setDoc(doc(db, "companies", companyId, "expenses", expenseId), {
             id: expenseId,
             documentNumber,
@@ -1595,13 +1596,17 @@ Formato JSON estricto:
             accountCode: provClassification.accountCode,
             accountName: provClassification.accountName,
             costCenterId: provClassification.costCenterId || null,
-            createdAt: new Date().toISOString(),
-            createdBy: "Agente IA (Provisional)",
+            createdAt: existingProv?.data?.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            createdBy: existingProv?.data?.createdBy || "Agente IA (Provisional)",
             _type: "gasto_manual"
-          });
+          }, { merge: true });
 
-          // Outflow
-          const outflowId = crypto.randomUUID();
+          existingProvByTxId.set(tx.id, { id: expenseId, docNumber: documentNumber, data: { status: "paid" } });
+
+          // Outflow: Reutilizar o crear
+          const existingOutflowSnap = await getDocs(query(collection(db, "companies", companyId, "outflows"), where("documentId", "==", expenseId)));
+          const outflowId = existingOutflowSnap.empty ? crypto.randomUUID() : existingOutflowSnap.docs[0].id;
           await setDoc(doc(db, "companies", companyId, "outflows", outflowId), {
             id: outflowId,
             amount: txAbsAmount,
@@ -1613,12 +1618,14 @@ Formato JSON estricto:
             documentNumber,
             providerName: resolved.vendorName,
             bankAccountId,
-            createdAt: new Date().toISOString(),
+            createdAt: existingOutflowSnap.empty ? new Date().toISOString() : (existingOutflowSnap.docs[0].data().createdAt || new Date().toISOString()),
+            updatedAt: new Date().toISOString(),
             createdBy: "Agente IA"
-          });
+          }, { merge: true });
 
-          // Póliza Contable con cuenta y centro de costo clasificados
-          const journalId = crypto.randomUUID();
+          // Póliza Contable: Reutilizar o crear
+          const existingJournalSnap = await getDocs(query(collection(db, "companies", companyId, "journal_entries"), where("documentId", "==", expenseId)));
+          const journalId = existingJournalSnap.empty ? crypto.randomUUID() : existingJournalSnap.docs[0].id;
           await setDoc(doc(db, "companies", companyId, "journal_entries", journalId), {
             id: journalId,
             date: txDate,
@@ -1636,8 +1643,9 @@ Formato JSON estricto:
               },
               { accountCode: bankAccountInfo.code, accountName: bankAccountInfo.name, debit: 0, credit: txAbsAmount }
             ],
-            createdAt: new Date().toISOString()
-          });
+            createdAt: existingJournalSnap.empty ? new Date().toISOString() : (existingJournalSnap.docs[0].data().createdAt || new Date().toISOString()),
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
 
           // Actualizar transacción bancaria
           await updateDoc(doc(db, "companies", companyId, "bankAccounts", bankAccountId, "transactions", tx.id), {

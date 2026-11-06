@@ -359,10 +359,6 @@ export default function CatalogoCuentasPage() {
     }
   };
 
-  if (loading) {
-    return <div className="p-10 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
-  }
-
   // Helper para abrir el modal de edición
   const openEditModal = (acc: Account) => {
     setAccountToEdit(acc);
@@ -621,6 +617,10 @@ export default function CatalogoCuentasPage() {
       </React.Fragment>
     );
   };
+
+  if (loading) {
+    return <div className="p-10 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">

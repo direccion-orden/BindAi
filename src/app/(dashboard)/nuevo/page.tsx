@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Camera, Image as ImageIcon, Loader2, Search } from "lucide-react";
 import { ErpClient } from "@/app/actions/erp";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, serverTimestamp, query as firestoreQuery, orderBy, limit, getDocs, where, onSnapshot, doc, updateDoc, increment } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query as firestoreQuery, orderBy, limit, getDocs, where, onSnapshot, doc, updateDoc, increment, getDoc } from "firebase/firestore";
+import { PaymentEvidencePickerModal } from "@/components/evidencias-pago/PaymentEvidencePickerModal";
 import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
 import { CheckCircle2, AlertCircle } from "lucide-react";
@@ -35,6 +37,8 @@ export default function NuevoAnticipoPage() {
   
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
+  const [isPickerModalOpen, setIsPickerModalOpen] = useState(false);
   
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -418,7 +422,7 @@ export default function NuevoAnticipoPage() {
                   type="button"
                   variant="destructive" 
                   size="sm" 
-                  onClick={() => { setImageFile(null); setImagePreview(null); }}
+                  onClick={() => { setImageFile(null); setImagePreview(null); setSelectedEvidence(null); }}
                   className="absolute top-2 right-2"
                 >
                   Quitar

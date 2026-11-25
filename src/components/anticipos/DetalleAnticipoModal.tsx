@@ -10,7 +10,8 @@ import { ref as storageRef, deleteObject } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
 import { getLocalDateString } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { CheckCircle2, AlertCircle, Landmark } from "lucide-react";
+import { CheckCircle2, AlertCircle, Landmark, Camera, ExternalLink } from "lucide-react";
+import { PaymentEvidencePickerModal } from "@/components/evidencias-pago/PaymentEvidencePickerModal";
 
 interface DetalleAnticipoModalProps {
   anticipo: any;
@@ -19,7 +20,7 @@ interface DetalleAnticipoModalProps {
 }
 
 export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: DetalleAnticipoModalProps) {
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   const [reference, setReference] = useState("");
   const [receivedAt, setReceivedAt] = useState("");
   
@@ -28,6 +29,9 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
 
   const [editingAppIndex, setEditingAppIndex] = useState<number | null>(null);
   const [editingAppAmount, setEditingAppAmount] = useState<string>("");
+  const [currentImageUrl, setCurrentImageUrl] = useState("");
+  const [currentEvidenceId, setCurrentEvidenceId] = useState("");
+  const [isPickerModalOpen, setIsPickerModalOpen] = useState(false);
 
   // Reconciliation states
   const [unreconciledTransactions, setUnreconciledTransactions] = useState<any[]>([]);
@@ -38,6 +42,8 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
     if (anticipo) {
       setReference(anticipo.reference || "");
       setReceivedAt(anticipo.receivedAt || (anticipo.createdAt?.toDate ? getLocalDateString(anticipo.createdAt.toDate()) : ""));
+      setCurrentImageUrl(anticipo.imageUrl || "");
+      setCurrentEvidenceId(anticipo.paymentEvidenceId || "");
       setEditingAppIndex(null);
       setIsReconciling(false);
       setSelectedTransactionId("manual");
@@ -123,6 +129,77 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSelectEvidence = async (ev: any) => {
+    if (!companyId || !anticipo) return;
+    // Si ya habia otra evidencia previa vinculada, liberarla
+    if (currentEvidenceId && currentEvidenceId !== ev.id) {
+      try {
+        await updateDoc(doc(db, "companies", companyId, "payment_evidences", currentEvidenceId), {
+          status: "available",
+          linkedTo: null,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn("No se pudo liberar evidencia previa:", e);
+      }
+    }
+
+    // Vincular la nueva
+    try {
+      const folioStr = anticipo.folio || anticipo.id;
+      await updateDoc(doc(db, "companies", companyId, "payment_evidences", ev.id), {
+        status: "linked",
+        linkedTo: {
+          anticipoId: anticipo.id,
+          anticipoFolio: folioStr,
+          linkedAt: new Date().toISOString(),
+          linkedBy: user?.email || "Usuario"
+        },
+        updatedAt: new Date().toISOString()
+      });
+
+      // Actualizar de inmediato en el anticipo
+      await updateDoc(doc(db, "companies", companyId, "anticipos", anticipo.id), {
+        imageUrl: ev.imageUrl,
+        paymentEvidenceId: ev.id,
+        updatedAt: new Date()
+      });
+    } catch (e) {
+      console.error("Error al vincular evidencia al anticipo:", e);
+    }
+
+    setCurrentImageUrl(ev.imageUrl);
+    setCurrentEvidenceId(ev.id);
+  };
+
+  const handleUnlinkEvidence = async () => {
+    if (!companyId || !anticipo) return;
+    if (currentEvidenceId) {
+      try {
+        await updateDoc(doc(db, "companies", companyId, "payment_evidences", currentEvidenceId), {
+          status: "available",
+          linkedTo: null,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn("No se pudo liberar evidencia:", e);
+      }
+    }
+
+    try {
+      await updateDoc(doc(db, "companies", companyId, "anticipos", anticipo.id), {
+        imageUrl: null,
+        paymentEvidenceId: null,
+        updatedAt: new Date()
+      });
+    } catch (e) {
+      console.error("Error al desvincular imagen del anticipo:", e);
+    }
+
+    setCurrentImageUrl("");
+    setCurrentEvidenceId("");
   };
 
   const handleDeleteAnticipo = async () => {

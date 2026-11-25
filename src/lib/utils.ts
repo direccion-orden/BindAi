@@ -48,3 +48,12 @@ export function matchesClientFilter(c: any, search: string): boolean {
     phone.includes(q)
   );
 }
+
+export function formatMoney(amount: number = 0, currency: string = "MXN"): string {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount || 0);
+}

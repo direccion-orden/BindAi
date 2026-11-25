@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper, Target, PlusCircle, Layers, Warehouse, Smartphone, MessageCircle, TrendingUp } from "lucide-react";
+import { Camera, Receipt, FileText, Calculator, ShoppingCart, Banknote, LineChart, ChevronLeft, ChevronRight, ChevronDown, Vault, Package, Users, Tags, Truck, Barcode, ArrowRightLeft, ClipboardList, Boxes, Factory, Building2, DollarSign, BookOpen, Tag, Cpu, Printer, Newspaper, Target, PlusCircle, Layers, Warehouse, Smartphone, MessageCircle, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolean; onCloseMobile?: () => void }) {
@@ -77,6 +77,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }: { isMobileOpen?: boolea
         { href: "/ingresos", label: "Ingresos", icon: DollarSign },
         { href: "/egresos", label: "Egresos", icon: Banknote },
         { href: "/anticipos", label: "Anticipos", icon: DollarSign },
+        { href: "/evidencias-pago", label: "Evidencias de Pago", icon: Camera },
         { href: "/estado-cuenta", label: "Estados de Cuenta", icon: FileText },
         { href: "/cuentas-cobrar", label: "Cuentas por Cobrar", icon: Receipt },
         { href: "/caja", label: "Control de Caja", icon: Banknote },

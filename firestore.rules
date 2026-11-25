@@ -66,6 +66,9 @@ service cloud.firestore {
       match /anticipos/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }
+      match /payment_evidences/{document=**} {
+        allow read, write: if isUserOfCompany(companyId);
+      }
       match /cash_sessions/{docId} {
         allow read, write: if isUserOfCompany(companyId);
       }

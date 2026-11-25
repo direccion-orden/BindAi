@@ -93,7 +93,7 @@ export function PaymentEvidencePickerModal({
                 placeholder="Buscar por cliente, sucursal o referencia..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-10 text-xs rounded-xl"
+                className="pl-9 h-10 text-base sm:text-xs rounded-xl"
               />
             </div>
 

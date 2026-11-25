@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -7,6 +7,12 @@ import "./globals.css";
 // This ensures Firebase Hosting forwards ALL requests (including POST for Server Actions)
 // to the Cloud Run function instead of serving pre-rendered static HTML from CDN.
 export const dynamic = 'force-dynamic';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 const inter = Inter({
   subsets: ["latin"],

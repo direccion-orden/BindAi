@@ -61,6 +61,14 @@
   select {
     background-color: #ffffff !important;
   }
+  @media (max-width: 768px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="range"]):not([type="color"]),
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+
   .dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="range"]):not([type="color"]), 
   .dark textarea, 
   .dark select {

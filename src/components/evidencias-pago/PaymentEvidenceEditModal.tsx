@@ -145,7 +145,7 @@ export function PaymentEvidenceEditModal({
               <div className="relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <Input
-                  className="pl-9 h-10 text-xs rounded-xl"
+                  className="pl-9 h-10 text-base sm:text-xs rounded-xl"
                   placeholder="Buscar cliente..."
                   value={clientSearch}
                   onChange={(e) => {
@@ -196,7 +196,7 @@ export function PaymentEvidenceEditModal({
             <select
               value={selectedLocationId}
               onChange={(e) => setSelectedLocationId(e.target.value)}
-              className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-xs ring-offset-background outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-base sm:text-xs ring-offset-background outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="">-- Selecciona una sucursal --</option>
               {locations.map((loc) => (
@@ -208,17 +208,17 @@ export function PaymentEvidenceEditModal({
           </div>
 
           {/* FECHA Y MONTO */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5 min-w-0">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Fecha</label>
               <Input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="h-10 text-xs rounded-xl"
+                className="h-10 text-base sm:text-xs rounded-xl w-full"
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 min-w-0">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Monto</label>
               <Input
                 type="number"
@@ -226,7 +226,7 @@ export function PaymentEvidenceEditModal({
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="h-10 text-xs rounded-xl"
+                className="h-10 text-base sm:text-xs rounded-xl w-full"
               />
             </div>
           </div>
@@ -237,7 +237,7 @@ export function PaymentEvidenceEditModal({
             <Input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="h-10 text-xs rounded-xl"
+              className="h-10 text-base sm:text-xs rounded-xl"
             />
           </div>
 

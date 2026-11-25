@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import {
   Camera,
   Plus,
+  PlusCircle,
   Search,
   Calendar,
   Building2,
@@ -56,6 +57,7 @@ export default function EvidenciasPagoPage() {
   const [selectedEvidenceForView, setSelectedEvidenceForView] = useState<any | null>(null);
   const [selectedEvidenceForEdit, setSelectedEvidenceForEdit] = useState<any | null>(null);
   const [selectedEvidenceForLink, setSelectedEvidenceForLink] = useState<any | null>(null);
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   // Escuchar evidencias en tiempo real
   useEffect(() => {
@@ -246,6 +248,23 @@ export default function EvidenciasPagoPage() {
           Nueva Evidencia
         </Button>
       </div>
+
+      {/* BANNER DE ÉXITO AL CREAR ANTICIPO */}
+      {successBanner && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-4 py-3 rounded-xl flex items-center justify-between shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{successBanner}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessBanner(null)}
+            className="text-emerald-600 hover:text-emerald-800 p-1 rounded-lg"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* KPI METRIC CARDS */}
       <div className="grid grid-cols-3 gap-3">
@@ -524,7 +543,7 @@ export default function EvidenciasPagoPage() {
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {/* 2. Botón Relacionar */}
+                          {/* 2. Botón Crear Anticipo */}
                           <button
                             type="button"
                             onClick={() => setSelectedEvidenceForLink(ev)}
@@ -532,11 +551,11 @@ export default function EvidenciasPagoPage() {
                             className={`p-1.5 rounded-lg transition ${
                               isLinked
                                 ? "text-slate-300 cursor-not-allowed"
-                                : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                                : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                             }`}
-                            title={isLinked ? "Ya está relacionado" : "Relacionar con anticipo"}
+                            title={isLinked ? `Anticipo ANT-${ev.linkedTo?.anticipoFolio || ""} ya creado` : "Crear Anticipo con este comprobante"}
                           >
-                            <Link2 className="w-4 h-4" />
+                            <PlusCircle className="w-4 h-4" />
                           </button>
 
                           {/* 3. Botón Editar */}
@@ -651,12 +670,12 @@ export default function EvidenciasPagoPage() {
                       disabled={isLinked}
                       className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold transition active:scale-95 ${
                         isLinked
-                          ? "bg-slate-50 text-slate-300 cursor-not-allowed"
-                          : "bg-indigo-50 hover:bg-indigo-100 text-indigo-700"
+                          ? "bg-slate-50 text-slate-400 cursor-not-allowed"
+                          : "bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm"
                       }`}
                     >
-                      <Link2 className="w-3.5 h-3.5" />
-                      {isLinked ? "Vinculado" : "Relacionar"}
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      {isLinked ? `ANT-${ev.linkedTo?.anticipoFolio || ""}` : "Crear Anticipo"}
                     </button>
 
                     <button
@@ -716,7 +735,13 @@ export default function EvidenciasPagoPage() {
         evidence={selectedEvidenceForLink}
         isOpen={Boolean(selectedEvidenceForLink)}
         onClose={() => setSelectedEvidenceForLink(null)}
-        onSuccess={() => setSelectedEvidenceForLink(null)}
+        onSuccess={(folio) => {
+          setSelectedEvidenceForLink(null);
+          if (folio) {
+            setSuccessBanner(`¡Anticipo ANT-${folio} creado y relacionado exitosamente!`);
+            setTimeout(() => setSuccessBanner(null), 6000);
+          }
+        }}
       />
     </div>
   );

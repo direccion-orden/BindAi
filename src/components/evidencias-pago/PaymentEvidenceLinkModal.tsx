@@ -1,20 +1,39 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Link2, PlusCircle, CheckCircle2, Loader2, AlertCircle, Calendar } from "lucide-react";
-import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { Input } from "@/components/ui/input";
+import { PlusCircle, Check, Loader2, AlertCircle, Building2, User, Landmark, CreditCard, Eye, ExternalLink } from "lucide-react";
+import {
+  collection,
+  query as firestoreQuery,
+  orderBy,
+  limit,
+  getDocs,
+  doc,
+  addDoc,
+  updateDoc,
+  increment,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { formatMoney } from "@/lib/utils";
+import { getLocalDateString } from "@/lib/utils";
+
+const PAYMENT_TERMS = [
+  { id: "3", name: "Transferencia Electrónica" },
+  { id: "1", name: "Efectivo" },
+  { id: "2", name: "Cheque" },
+  { id: "4", name: "Tarjeta de Crédito" },
+  { id: "5", name: "Tarjeta de Débito" },
+];
 
 interface PaymentEvidenceLinkModalProps {
   evidence: any | null;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (newAnticipoFolio?: number) => void;
 }
 
 export function PaymentEvidenceLinkModal({
@@ -23,97 +42,185 @@ export function PaymentEvidenceLinkModal({
   onClose,
   onSuccess,
 }: PaymentEvidenceLinkModalProps) {
-  const router = useRouter();
   const { user, companyId } = useAuth();
 
-  const [loadingAnticipos, setLoadingAnticipos] = useState(false);
-  const [anticipos, setAnticipos] = useState<any[]>([]);
-  const [selectedAnticipoId, setSelectedAnticipoId] = useState("");
+  const [date, setDate] = useState("");
+  const [amount, setAmount] = useState("");
+  const [reference, setReference] = useState("");
+  const [selectedPaymentTerm, setSelectedPaymentTerm] = useState("3");
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isFullImageOpen, setIsFullImageOpen] = useState(false);
 
+  // Inicializar estados con la evidencia seleccionada
   useEffect(() => {
-    if (isOpen && evidence && companyId) {
-      fetchCandidateAnticipos();
+    if (evidence && isOpen) {
+      setDate(evidence.date || getLocalDateString(new Date()));
+      setAmount(evidence.amount ? String(evidence.amount) : "");
+      setReference(evidence.notes || "");
+      setSelectedPaymentTerm("3");
+      setErrorMessage("");
     }
-  }, [isOpen, evidence, companyId]);
+  }, [evidence, isOpen]);
 
-  const fetchCandidateAnticipos = async () => {
-    if (!companyId || !evidence) return;
-    setLoadingAnticipos(true);
-    setErrorMessage("");
-    try {
-      const q = query(
-        collection(db, "companies", companyId, "anticipos"),
-        where("clientId", "==", evidence.clientId)
-      );
-      const snap = await getDocs(q);
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      list.sort((a: any, b: any) => (b.folio || 0) - (a.folio || 0));
-      setAnticipos(list);
-    } catch (err: any) {
-      console.error("Error al buscar anticipos:", err);
-      setErrorMessage("No se pudieron cargar los anticipos del cliente.");
-    } finally {
-      setLoadingAnticipos(false);
-    }
+  // Cargar cuentas bancarias de la empresa
+  useEffect(() => {
+    if (!companyId || !isOpen) return;
+
+    const fetchAccounts = async () => {
+      setLoadingAccounts(true);
+      try {
+        const q = firestoreQuery(collection(db, "companies", companyId, "bankAccounts"));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map((d) => ({
+          id: d.id,
+          name: d.data().Name || d.data().name || "Cuenta sin nombre",
+        }));
+        setBankAccounts(data);
+        if (data.length > 0 && !selectedAccountId) {
+          setSelectedAccountId(data[0].id);
+        }
+      } catch (err) {
+        console.error("Error al cargar cuentas bancarias:", err);
+      } finally {
+        setLoadingAccounts(false);
+      }
+    };
+
+    fetchAccounts();
+  }, [companyId, isOpen]);
+
+  const handleScrollIntoView = (e: React.FocusEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
   };
 
   if (!evidence) return null;
 
-  const handleLinkToExisting = async () => {
-    if (!selectedAnticipoId || !companyId || !evidence) return;
-    const anticipoObj = anticipos.find((a) => a.id === selectedAnticipoId);
-    if (!anticipoObj) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage("");
+
+    if (!companyId || !evidence) return;
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setErrorMessage("Por favor ingresa un monto válido mayor a 0.");
+      return;
+    }
+
+    if (!selectedAccountId) {
+      setErrorMessage("Por favor selecciona una cuenta bancaria receptora.");
+      return;
+    }
 
     setIsSubmitting(true);
-    setErrorMessage("");
     try {
-      const batch = writeBatch(db);
+      // 1. Obtener el siguiente folio consecutivo
+      let nextFolio = 1;
+      const qFolio = firestoreQuery(
+        collection(db, "companies", companyId, "anticipos"),
+        orderBy("folio", "desc"),
+        limit(1)
+      );
+      const folioSnap = await getDocs(qFolio);
+      if (!folioSnap.empty) {
+        nextFolio = ((folioSnap.docs[0].data() as any).folio || 0) + 1;
+      }
 
-      const anticipoRef = doc(db, "companies", companyId, "anticipos", selectedAnticipoId);
-      batch.update(anticipoRef, {
+      const selectedAccount = bankAccounts.find((b) => b.id === selectedAccountId);
+      const termName = PAYMENT_TERMS.find((p) => p.id === selectedPaymentTerm)?.name || "Transferencia Electrónica";
+
+      let finalBankTransactionId = "";
+
+      // 2. Si es Efectivo, registrar movimiento en la cuenta bancaria de caja y actualizar saldo
+      if (selectedPaymentTerm === "1") {
+        const txData = {
+          amount: parsedAmount,
+          date: date,
+          concept: `Anticipo de Cliente (Efectivo): ${evidence.clientName} - Ref: ${reference || "Evidencia"}`,
+          reference: reference || "",
+          reconciled: true,
+          matchedAt: new Date().toISOString(),
+          reconcileType: "direct",
+          matchedDocumentId: `ANT-${nextFolio}`,
+          createdAt: new Date().toISOString(),
+        };
+        const txRef = await addDoc(
+          collection(db, "companies", companyId, "bankAccounts", selectedAccountId, "transactions"),
+          txData
+        );
+        finalBankTransactionId = txRef.id;
+
+        await updateDoc(doc(db, "companies", companyId, "bankAccounts", selectedAccountId), {
+          balance: increment(parsedAmount),
+        });
+      }
+
+      // 3. Crear el Anticipo en Firestore
+      const anticipoData = {
+        folio: nextFolio,
+        clientId: evidence.clientId,
+        clientName: evidence.clientName,
+        locationId: evidence.locationId || "",
+        locationName: evidence.locationName || "Sucursal",
+        amount: parsedAmount,
+        balance: parsedAmount,
+        reference: reference.trim(),
+        bankAccountId: selectedAccountId,
+        bankAccountName: selectedAccount?.name || "Cuenta Principal",
+        bankTransactionId: finalBankTransactionId || null,
+        paymentTermId: parseInt(selectedPaymentTerm),
+        paymentTermName: termName,
         imageUrl: evidence.imageUrl,
         paymentEvidenceId: evidence.id,
-      });
+        receivedAt: date,
+        createdBy: user?.email || "Usuario",
+        createdAt: serverTimestamp(),
+        status: "pending", // pending -> partially_applied -> applied
+      };
 
+      const anticipoRef = await addDoc(collection(db, "companies", companyId, "anticipos"), anticipoData);
+
+      // 4. Actualizar la Evidencia de Pago a estatus "linked"
       const evidenceRef = doc(db, "companies", companyId, "payment_evidences", evidence.id);
-      batch.update(evidenceRef, {
+      await updateDoc(evidenceRef, {
         status: "linked",
+        amount: parsedAmount,
         linkedTo: {
-          anticipoId: selectedAnticipoId,
-          anticipoFolio: anticipoObj.folio || selectedAnticipoId,
+          anticipoId: anticipoRef.id,
+          anticipoFolio: nextFolio,
           linkedAt: new Date().toISOString(),
           linkedBy: user?.email || "Usuario",
         },
         updatedAt: serverTimestamp(),
       });
 
-      await batch.commit();
-      onSuccess();
+      onSuccess(nextFolio);
     } catch (err: any) {
-      console.error("Error al vincular evidencia:", err);
-      setErrorMessage("Error al vincular con el anticipo: " + (err.message || ""));
+      console.error("Error al crear anticipo desde evidencia:", err);
+      setErrorMessage("Error al registrar el anticipo: " + (err.message || ""));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleGoToNewAnticipo = () => {
-    onClose();
-    router.push(`/nuevo?evidenceId=${evidence.id}`);
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !isSubmitting) onClose(); }}>
-      <DialogContent className="max-w-md w-[95vw] sm:w-full p-4 sm:p-6 rounded-2xl">
+      <DialogContent className="max-w-lg w-[95vw] sm:w-full p-4 sm:p-6 pb-28 sm:pb-6 max-h-[92vh] overflow-y-auto rounded-2xl">
         <DialogHeader className="space-y-1">
-          <DialogTitle className="text-lg font-bold flex items-center gap-2">
-            <Link2 className="w-5 h-5 text-indigo-600" />
-            Relacionar Comprobante con Anticipo
+          <DialogTitle className="text-xl font-bold flex items-center gap-2">
+            <PlusCircle className="w-5 h-5 text-indigo-600" />
+            Crear Anticipo desde Evidencia
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Vincula esta evidencia a un anticipo existente o genera uno nuevo usándola.
+            Verifica los datos precargados del comprobante para registrar el nuevo anticipo.
           </DialogDescription>
         </DialogHeader>
 
@@ -124,131 +231,206 @@ export function PaymentEvidenceLinkModal({
           </div>
         )}
 
-        <div className="space-y-4 pt-2">
-          {/* Opción 1: Crear Nuevo Anticipo */}
-          <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-xl space-y-2">
-            <div>
-              <p className="text-xs font-bold text-indigo-950">Crear un Nuevo Anticipo</p>
-              <p className="text-[11px] text-indigo-700">
-                Abre la pantalla de captura precargando este comprobante, cliente y sucursal.
-              </p>
+        {/* TARJETA RESUMEN DE LA EVIDENCIA (FOTO + CLIENTE + SUCURSAL) */}
+        <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl flex items-center gap-3">
+          {evidence.imageUrl && (
+            <div className="relative group shrink-0">
+              <img
+                src={evidence.imageUrl}
+                alt="Comprobante"
+                className="w-16 h-16 object-cover rounded-lg border border-indigo-200 shadow-sm cursor-pointer"
+                onClick={() => setIsFullImageOpen(true)}
+              />
+              <button
+                type="button"
+                onClick={() => setIsFullImageOpen(true)}
+                className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white rounded-lg transition"
+                title="Ver imagen completa"
+              >
+                <Eye className="w-4 h-4" />
+              </button>
             </div>
-            <Button
-              type="button"
-              onClick={handleGoToNewAnticipo}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl gap-2 mt-1 shadow-sm"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Crear Nuevo Anticipo con este Comprobante
-            </Button>
-          </div>
+          )}
 
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-slate-200"></div>
-            <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-slate-400">
-              O vincular a uno existente
-            </span>
-            <div className="flex-grow border-t border-slate-200"></div>
-          </div>
-
-          {/* Opción 2: Seleccionar anticipo existente */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Anticipos del Cliente ({evidence.clientName})
-            </label>
-
-            {loadingAnticipos ? (
-              <div className="p-4 flex items-center justify-center gap-2 text-xs text-slate-400">
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                Cargando anticipos...
-              </div>
-            ) : anticipos.length > 0 ? (
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {anticipos.map((ant) => {
-                  const isSelected = selectedAnticipoId === ant.id;
-                  const alreadyHasImg = Boolean(ant.imageUrl);
-                  return (
-                    <div
-                      key={ant.id}
-                      onClick={() => setSelectedAnticipoId(ant.id)}
-                      className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-center justify-between ${
-                        isSelected
-                          ? "border-indigo-600 bg-indigo-50/80 shadow-sm"
-                          : "border-slate-200 hover:border-slate-300 bg-white"
-                      }`}
-                    >
-                      <div className="space-y-0.5 truncate pr-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900">
-                            ANT-{ant.folio || ant.id}
-                          </span>
-                          <span className="font-semibold text-emerald-700">
-                            {formatMoney(ant.amount || 0)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {ant.receivedAt || "Sin fecha"}
-                          </span>
-                          {alreadyHasImg && (
-                            <span className="text-amber-600 font-medium">
-                              (Ya tiene foto asignada, se reemplazará)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="shrink-0">
-                        {isSelected ? (
-                          <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </div>
-                        ) : (
-                          <div className="w-5 h-5 rounded-full border border-slate-300"></div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">
-                No hay anticipos registrados para este cliente.
-              </div>
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 truncate">
+              <User className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span className="truncate">{evidence.clientName}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-600 truncate">
+              <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="truncate">{evidence.locationName || "Sucursal"}</span>
+            </div>
+            {evidence.imageUrl && (
+              <button
+                type="button"
+                onClick={() => window.open(evidence.imageUrl, "_blank")}
+                className="inline-flex items-center gap-1 text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold"
+              >
+                <span>Abrir comprobante</span>
+                <ExternalLink className="w-2.5 h-2.5" />
+              </button>
             )}
+          </div>
+        </div>
 
+        {/* MODAL LIGHTBOX PARA LA IMAGEN COMPLETA */}
+        {isFullImageOpen && (
+          <Dialog open={isFullImageOpen} onOpenChange={setIsFullImageOpen}>
+            <DialogContent className="max-w-2xl p-2 bg-black/90 border-0 rounded-2xl flex items-center justify-center">
+              <img
+                src={evidence.imageUrl}
+                alt="Comprobante completo"
+                className="max-h-[85vh] w-auto object-contain rounded-xl"
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3.5 pt-1">
+          {/* FECHA Y MONTO */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* FECHA */}
+            <div className="space-y-1.5 min-w-0">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Fecha de Recepción <span className="text-rose-500">*</span>
+              </label>
+              <div className="w-full min-w-0 overflow-hidden rounded-xl">
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  onFocus={handleScrollIntoView}
+                  className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-0 text-base sm:text-xs outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  style={{
+                    WebkitAppearance: "none",
+                    appearance: "none",
+                    height: "40px",
+                    minHeight: "40px",
+                    maxHeight: "40px",
+                    width: "100%",
+                    maxWidth: "100%",
+                    boxSizing: "border-box",
+                    margin: 0,
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    lineHeight: "40px",
+                  }}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* MONTO */}
+            <div className="space-y-1.5 min-w-0">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Monto del Anticipo <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  onFocus={handleScrollIntoView}
+                  className="pl-7 h-10 text-base sm:text-xs rounded-xl font-bold text-slate-900 w-full"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* CUENTA BANCARIA */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+              <Landmark className="w-3.5 h-3.5 text-slate-500" />
+              <span>Cuenta Bancaria Receptora <span className="text-rose-500">*</span></span>
+            </label>
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              disabled={loadingAccounts}
+              className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-base sm:text-xs ring-offset-background outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+            >
+              {loadingAccounts ? (
+                <option value="">Cargando cuentas...</option>
+              ) : bankAccounts.length === 0 ? (
+                <option value="">No hay cuentas bancarias registradas</option>
+              ) : (
+                bankAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
+          {/* FORMA DE PAGO */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+              <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+              <span>Forma de Pago</span>
+            </label>
+            <select
+              value={selectedPaymentTerm}
+              onChange={(e) => setSelectedPaymentTerm(e.target.value)}
+              className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-base sm:text-xs ring-offset-background outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {PAYMENT_TERMS.map((term) => (
+                <option key={term.id} value={term.id}>
+                  {term.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* REFERENCIA / CONCEPTO */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Referencia / Concepto (opcional)
+            </label>
+            <Input
+              placeholder="Ej. Transferencia Banamex / Folio de comprobante"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              onFocus={handleScrollIntoView}
+              className="h-10 text-base sm:text-xs rounded-xl"
+            />
+          </div>
+
+          <DialogFooter className="pt-2 flex flex-row gap-2 justify-end">
             <Button
               type="button"
-              disabled={!selectedAnticipoId || isSubmitting}
-              onClick={handleLinkToExisting}
-              className="w-full rounded-xl text-xs font-bold gap-2 mt-2"
+              variant="outline"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="rounded-xl flex-1 sm:flex-none text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="rounded-xl flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-2 shadow"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Vinculando...
+                  Guardando Anticipo...
                 </>
               ) : (
                 <>
-                  <Link2 className="w-4 h-4" />
-                  Confirmar Vinculación
+                  <Check className="w-4 h-4" />
+                  Guardar Anticipo
                 </>
               )}
             </Button>
-          </div>
-        </div>
-
-        <DialogFooter className="pt-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="w-full text-xs"
-          >
-            Cerrar
-          </Button>
-        </DialogFooter>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

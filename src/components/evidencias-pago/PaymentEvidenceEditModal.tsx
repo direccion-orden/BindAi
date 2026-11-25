@@ -219,13 +219,29 @@ export function PaymentEvidenceEditModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5 min-w-0">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Fecha</label>
-              <Input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                onFocus={handleScrollIntoView}
-                className="block h-10 text-base sm:text-xs rounded-xl w-full max-w-full text-left"
-              />
+              <div className="w-full min-w-0 overflow-hidden rounded-xl">
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  onFocus={handleScrollIntoView}
+                  className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-0 text-base sm:text-xs outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  style={{
+                    WebkitAppearance: "none",
+                    appearance: "none",
+                    height: "40px",
+                    minHeight: "40px",
+                    maxHeight: "40px",
+                    width: "100%",
+                    maxWidth: "100%",
+                    boxSizing: "border-box",
+                    margin: 0,
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    lineHeight: "40px",
+                  }}
+                />
+              </div>
             </div>
             <div className="space-y-1.5 min-w-0">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Monto</label>

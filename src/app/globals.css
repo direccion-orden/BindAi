@@ -87,18 +87,34 @@
 
   /* Normalización de input[type="date"] para iOS/WebKit */
   input[type="date"] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
     display: block !important;
     width: 100% !important;
     max-width: 100% !important;
+    min-width: 0 !important;
     box-sizing: border-box !important;
     height: 2.5rem !important;
     min-height: 2.5rem !important;
     max-height: 2.5rem !important;
+    line-height: 2.5rem !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    margin: 0 !important;
   }
   input[type="date"]::-webkit-date-and-time-value {
     text-align: left !important;
-    line-height: normal !important;
+    line-height: 2.5rem !important;
     min-height: 0 !important;
+    height: 2.5rem !important;
     margin: 0 !important;
     padding: 0 !important;
+  }
+  input[type="date"]::-webkit-datetime-edit {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 0 !important;
+    height: 100% !important;
   }

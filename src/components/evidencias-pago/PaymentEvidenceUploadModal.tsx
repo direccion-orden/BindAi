@@ -46,6 +46,14 @@ export function PaymentEvidenceUploadModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  
+  const handleScrollIntoView = (e: React.FocusEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
+  };
+
   const resetForm = () => {
     setImageFile(null);
     setImagePreview(null);
@@ -135,7 +143,7 @@ export function PaymentEvidenceUploadModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !isSubmitting) { resetForm(); onClose(); } }}>
-      <DialogContent className="max-w-lg w-[95vw] sm:w-full p-4 sm:p-6 max-h-[92vh] overflow-y-auto rounded-2xl">
+      <DialogContent className="max-w-lg w-[95vw] sm:w-full p-4 sm:p-6 pb-28 sm:pb-6 max-h-[92vh] overflow-y-auto rounded-2xl">
         <DialogHeader className="space-y-1">
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <Camera className="w-5 h-5 text-indigo-600" />
@@ -336,7 +344,8 @@ export function PaymentEvidenceUploadModal({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="h-10 text-base sm:text-xs rounded-xl w-full"
+                onFocus={handleScrollIntoView}
+                className="block h-10 text-base sm:text-xs rounded-xl w-full max-w-full text-left"
               />
             </div>
             <div className="space-y-1.5 min-w-0">
@@ -349,6 +358,7 @@ export function PaymentEvidenceUploadModal({
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  onFocus={handleScrollIntoView}
                   className="pl-7 h-10 text-base sm:text-xs rounded-xl font-semibold w-full"
                 />
               </div>
@@ -364,6 +374,7 @@ export function PaymentEvidenceUploadModal({
               placeholder="Ej. Transferencia Banamex / Pago de factura"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              onFocus={handleScrollIntoView}
               className="h-10 text-base sm:text-xs rounded-xl"
             />
           </div>

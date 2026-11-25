@@ -56,6 +56,14 @@ export function PaymentEvidenceEditModal({
 
   if (!evidence) return null;
 
+  
+  const handleScrollIntoView = (e: React.FocusEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
+  };
+
   const filteredClients = clients.filter((c) => {
     const q = clientSearch.toLowerCase();
     const name = (c.name || c.legalName || c.LegalName || "").toLowerCase();
@@ -104,7 +112,7 @@ export function PaymentEvidenceEditModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !isSubmitting) onClose(); }}>
-      <DialogContent className="max-w-md w-[95vw] sm:w-full p-4 sm:p-6 rounded-2xl">
+      <DialogContent className="max-w-md w-[95vw] sm:w-full p-4 sm:p-6 pb-28 sm:pb-6 rounded-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader className="space-y-1">
           <DialogTitle className="text-lg font-bold flex items-center gap-2">
             <Pencil className="w-5 h-5 text-indigo-600" />
@@ -215,7 +223,8 @@ export function PaymentEvidenceEditModal({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="h-10 text-base sm:text-xs rounded-xl w-full"
+                onFocus={handleScrollIntoView}
+                className="block h-10 text-base sm:text-xs rounded-xl w-full max-w-full text-left"
               />
             </div>
             <div className="space-y-1.5 min-w-0">
@@ -226,6 +235,7 @@ export function PaymentEvidenceEditModal({
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                onFocus={handleScrollIntoView}
                 className="h-10 text-base sm:text-xs rounded-xl w-full"
               />
             </div>
@@ -237,6 +247,7 @@ export function PaymentEvidenceEditModal({
             <Input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              onFocus={handleScrollIntoView}
               className="h-10 text-base sm:text-xs rounded-xl"
             />
           </div>

@@ -83,3 +83,22 @@
     scrollbar-width: none;
   }
 }
+
+
+  /* Normalización de input[type="date"] para iOS/WebKit */
+  input[type="date"] {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    height: 2.5rem !important;
+    min-height: 2.5rem !important;
+    max-height: 2.5rem !important;
+  }
+  input[type="date"]::-webkit-date-and-time-value {
+    text-align: left !important;
+    line-height: normal !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }

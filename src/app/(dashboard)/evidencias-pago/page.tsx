@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,7 +35,7 @@ import { PaymentEvidenceViewModal } from "@/components/evidencias-pago/PaymentEv
 import { PaymentEvidenceEditModal } from "@/components/evidencias-pago/PaymentEvidenceEditModal";
 import { PaymentEvidenceLinkModal } from "@/components/evidencias-pago/PaymentEvidenceLinkModal";
 
-export default function EvidenciasPagoPage() {
+function EvidenciasPagoContent() {
   const { companyId } = useAuth();
 
   const [evidences, setEvidences] = useState<any[]>([]);
@@ -51,6 +52,29 @@ export default function EvidenciasPagoPage() {
   const [dateFilterOption, setDateFilterOption] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  const searchParams = useSearchParams();
+
+  // Abrir modal si la URL contiene ?nueva=true o ?nuevo=true
+  useEffect(() => {
+    const isNew = searchParams?.get("nueva") || searchParams?.get("nuevo");
+    if (isNew === "true" || isNew === "1") {
+      setIsUploadOpen(true);
+    }
+  }, [searchParams]);
+
+  const handleCloseUploadModal = () => {
+    setIsUploadOpen(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("nueva") || url.searchParams.has("nuevo")) {
+        url.searchParams.delete("nueva");
+        url.searchParams.delete("nuevo");
+        const cleanUrl = url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '');
+        window.history.replaceState({}, '', cleanUrl);
+      }
+    }
+  };
 
   // Modales
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -708,11 +732,11 @@ export default function EvidenciasPagoPage() {
       {/* MODALES */}
       <PaymentEvidenceUploadModal
         isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
+        onClose={handleCloseUploadModal}
         clients={clients}
         locations={locations}
         onSuccess={() => {
-          setIsUploadOpen(false);
+          handleCloseUploadModal();
         }}
       />
 
@@ -744,5 +768,20 @@ export default function EvidenciasPagoPage() {
         }}
       />
     </div>
+  );
+}
+
+
+export default function EvidenciasPagoPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex justify-center items-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        </div>
+      }
+    >
+      <EvidenciasPagoContent />
+    </Suspense>
   );
 }

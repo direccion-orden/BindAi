@@ -7,6 +7,7 @@ import {
   classifyExpenseItemsBatch,
   ClassificationMemory
 } from "@/lib/services/expenseClassificationService";
+import { findOrCreateOfficialVendor } from "@/lib/services/vendorSyncService";
 
 export interface RegularizeControlSignal {
   isPaused: () => boolean;
@@ -341,13 +342,33 @@ Formato JSON estricto:
             }
           }
 
+          let finalVendorId = provExp.vendorId;
+          let finalVendorName = emitter || provExp.vendorName;
+          let finalVendorRfc = sat.emisorRfc || provExp.vendorRfc || "";
+
+          try {
+            const resolvedVendor = await findOrCreateOfficialVendor(companyId, {
+              rfc: sat.emisorRfc || undefined,
+              name: emitter || provExp.vendorName || "Proveedor",
+              createIfMissing: true
+            });
+            if (resolvedVendor) {
+              finalVendorId = resolvedVendor.id;
+              finalVendorName = resolvedVendor.name;
+              if (resolvedVendor.rfc) finalVendorRfc = resolvedVendor.rfc;
+            }
+          } catch (vErr) {
+            console.warn("Error resolviendo proveedor oficial al regularizar:", vErr);
+          }
+
           const expenseUpdate: any = {
             isProvisional: false,
             isPendingFiscalInvoice: false,
             status: "fiscal_regularizado",
             satInvoiceId: sat.id,
-            vendorName: emitter || provExp.vendorName,
-            vendorRfc: sat.emisorRfc || provExp.vendorRfc || "",
+            vendorId: finalVendorId,
+            vendorName: finalVendorName,
+            vendorRfc: finalVendorRfc,
             uuid: sat.uuid || "",
             folio: sat.folio || sat.invoiceNumber || provExp.documentNumber,
             regularizedAt: new Date().toISOString(),

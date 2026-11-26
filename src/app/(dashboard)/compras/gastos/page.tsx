@@ -757,6 +757,7 @@ export default function GastosManualesPage() {
   const [batchAccountId, setBatchAccountId] = useState<string>("");
   const [batchCostCenterId, setBatchCostCenterId] = useState<string>("");
   const [batchNonDeductible, setBatchNonDeductible] = useState<string>("keep");
+  const [batchVendorId, setBatchVendorId] = useState<string>("");
 
   // Modals State
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -1066,6 +1067,49 @@ export default function GastosManualesPage() {
       .sort((a, b) => a.name.localeCompare(b.name, "es"));
   }, [vendors, expenses]);
 
+  const vendorItems: TableSearchSelectItem[] = useMemo(() => {
+    const itemsById = new Map<string, TableSearchSelectItem>();
+    const seenNames = new Set<string>();
+
+    // 1. Catálogo oficial de proveedores indexado por ID
+    vendors.forEach(v => {
+      const name = (v.name || v.Name || v.LegalName || v.ProviderName || "").trim();
+      if (v.id && name && !itemsById.has(v.id)) {
+        itemsById.set(v.id, {
+          id: v.id,
+          name: name,
+          subtitle: v.rfc || v.RFC || undefined
+        });
+        seenNames.add(name.toLowerCase());
+      }
+    });
+
+    // 2. Proveedores registrados en gastos (evitando duplicar IDs o nombres)
+    expenses.forEach(e => {
+      const name = (e.vendorName || "").trim();
+      if (!name || name === "Proveedor no especificado") return;
+      const cleanName = name.toLowerCase();
+
+      if (seenNames.has(cleanName)) return;
+
+      let id = e.vendorId;
+      if (!id || itemsById.has(id)) {
+        id = `name:${cleanName}`;
+      }
+
+      if (!itemsById.has(id)) {
+        itemsById.set(id, {
+          id,
+          name,
+          subtitle: e.vendorRfc || undefined
+        });
+        seenNames.add(cleanName);
+      }
+    });
+
+    return Array.from(itemsById.values()).sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [vendors, expenses]);
+
   const accountItems: TableSearchSelectItem[] = useMemo(() => {
     return [...accounts]
       .sort((a, b) => {
@@ -1231,6 +1275,7 @@ export default function GastosManualesPage() {
       const commonLoc = locations.find(l => l.id === batchLocationId);
       const commonCC = costCenters.find(c => c.id === batchCostCenterId);
       const commonAcc = accounts.find(a => a.id === batchAccountId);
+      const commonVendor = vendorItems.find(v => v.id === batchVendorId);
 
       for (const expId of selectedExpenseIds) {
         const exp = expenses.find(e => e.id === expId);
@@ -1269,6 +1314,16 @@ export default function GastosManualesPage() {
           updatedAt: now
         };
 
+        if (applyCommonValues && batchVendorId && commonVendor) {
+          updatePayload.vendorName = commonVendor.name;
+          if (!commonVendor.id.startsWith("name:")) {
+            updatePayload.vendorId = commonVendor.id;
+          }
+          if (commonVendor.subtitle) {
+            updatePayload.vendorRfc = commonVendor.subtitle;
+          }
+        }
+
         if (Array.isArray(exp.items) && exp.items.length > 0) {
           updatePayload.items = exp.items.map((it: any) => ({
             ...it,
@@ -1296,9 +1351,12 @@ export default function GastosManualesPage() {
           const finalAcc = applyCommonValues && batchAccountId ? batchAccountId : eff.accountId;
           const finalCC = applyCommonValues && batchCostCenterId !== "" ? batchCostCenterId : eff.costCenterId;
           if (!finalAcc) return null;
+          const finalVendor = applyCommonValues && batchVendorId ? commonVendor : null;
+          const finalVendorId = finalVendor && !finalVendor.id.startsWith("name:") ? finalVendor.id : exp.vendorId;
+          const finalVendorName = finalVendor ? finalVendor.name : exp.vendorName;
           return {
-            vendorId: exp.vendorId,
-            vendorName: exp.vendorName,
+            vendorId: finalVendorId,
+            vendorName: finalVendorName,
             claveProdServ: exp.items?.[0]?.claveProdServ,
             productName: exp.items?.[0]?.productName || exp.concept,
             accountId: finalAcc,
@@ -1322,6 +1380,7 @@ export default function GastosManualesPage() {
       setBatchAccountId("");
       setBatchCostCenterId("");
       setBatchNonDeductible("keep");
+      setBatchVendorId("");
 
       setActionFeedback(`¡${selectedExpenseIds.length} gastos guardados con éxito!`);
       setTimeout(() => setActionFeedback(null), 3500);
@@ -1806,6 +1865,7 @@ export default function GastosManualesPage() {
     setBatchAccountId("");
     setBatchCostCenterId("");
     setBatchNonDeductible("keep");
+    setBatchVendorId("");
     setSelectedExpenseIds([]);
   }, [
     searchTerm,
@@ -1862,6 +1922,7 @@ export default function GastosManualesPage() {
     setBatchAccountId("");
     setBatchCostCenterId("");
     setBatchNonDeductible("keep");
+    setBatchVendorId("");
     setSelectedExpenseIds([]);
   };
 
@@ -2278,6 +2339,7 @@ export default function GastosManualesPage() {
                   setBatchAccountId("");
                   setBatchCostCenterId("");
                   setBatchNonDeductible("keep");
+                  setBatchVendorId("");
                 }}
                 className="text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border-white/20 h-8"
               >
@@ -2316,13 +2378,32 @@ export default function GastosManualesPage() {
           </div>
 
           {/* Quick batch selectors */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-1 text-slate-800">
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase font-bold text-slate-300 block">Sucursal en Lote</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2.5 pt-1 text-slate-800">
+            {/* Proveedor en Lote */}
+            <div className="space-y-1 min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block truncate" title="Proveedor en Lote">
+                Proveedor en Lote
+              </span>
+              <TableSearchSelect
+                value={batchVendorId}
+                onChange={(id) => setBatchVendorId(id)}
+                items={vendorItems}
+                placeholder="(Mantener individual)"
+                emptyLabel="(Sin proveedor)"
+                minWidth={280}
+                className="bg-white border-slate-300 shadow-xs"
+              />
+            </div>
+
+            {/* Sucursal en Lote */}
+            <div className="space-y-1 min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block truncate" title="Sucursal en Lote">
+                Sucursal en Lote
+              </span>
               <select
                 value={batchLocationId}
                 onChange={(e) => setBatchLocationId(e.target.value)}
-                className={`h-8 w-full text-xs rounded-md border border-slate-300 bg-white px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs transition-colors ${
+                className={`h-8 w-full text-xs rounded-md border border-slate-300 bg-white px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs transition-colors truncate ${
                   batchLocationId ? "text-slate-900 font-semibold" : "text-slate-500 font-normal"
                 }`}
               >
@@ -2335,8 +2416,11 @@ export default function GastosManualesPage() {
               </select>
             </div>
 
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase font-bold text-slate-300 block">Cuenta Contable en Lote</span>
+            {/* Cuenta Contable en Lote */}
+            <div className="space-y-1 min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block truncate" title="Cuenta Contable en Lote">
+                Cuenta Contable en Lote
+              </span>
               <TableSearchSelect
                 value={batchAccountId}
                 onChange={(id) => setBatchAccountId(id)}
@@ -2348,8 +2432,11 @@ export default function GastosManualesPage() {
               />
             </div>
 
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase font-bold text-slate-300 block">Centro de Costos en Lote</span>
+            {/* Centro de Costos en Lote */}
+            <div className="space-y-1 min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block truncate" title="Centro de Costos en Lote">
+                Centro de Costos en Lote
+              </span>
               <TableSearchSelect
                 value={batchCostCenterId}
                 onChange={(id) => setBatchCostCenterId(id)}
@@ -2361,12 +2448,15 @@ export default function GastosManualesPage() {
               />
             </div>
 
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase font-bold text-slate-300 block">Tipo Fiscal en Lote</span>
+            {/* Tipo Fiscal en Lote */}
+            <div className="space-y-1 min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-300 block truncate" title="Tipo Fiscal en Lote">
+                Tipo Fiscal en Lote
+              </span>
               <select
                 value={batchNonDeductible}
                 onChange={(e) => setBatchNonDeductible(e.target.value)}
-                className={`h-8 w-full text-xs rounded-md border border-slate-300 bg-white px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs transition-colors ${
+                className={`h-8 w-full text-xs rounded-md border border-slate-300 bg-white px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs transition-colors truncate ${
                   batchNonDeductible !== "keep" ? "text-slate-900 font-semibold" : "text-slate-500 font-normal"
                 }`}
               >

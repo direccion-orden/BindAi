@@ -218,11 +218,11 @@ export function TableSearchSelect({
                 No se encontraron opciones
               </div>
             ) : (
-              filteredItems.map(item => {
+              filteredItems.map((item, idx) => {
                 const isSelected = item.id === value;
                 return (
                   <button
-                    key={item.id}
+                    key={`${item.id}-${idx}`}
                     type="button"
                     onClick={() => {
                       onChange(item.id, item);

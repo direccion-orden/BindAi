@@ -1,18 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, Image as ImageIcon, Loader2, Search } from "lucide-react";
-import { ErpClient } from "@/app/actions/erp";
+import { Camera, Image as ImageIcon, Loader2, Search, CheckCircle2, AlertCircle, Building2, Calendar, Check, X } from "lucide-react";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, serverTimestamp, query as firestoreQuery, orderBy, limit, getDocs, where, onSnapshot, doc, updateDoc, increment, getDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query as firestoreQuery, orderBy, limit, getDocs, where, onSnapshot, doc, updateDoc, increment } from "firebase/firestore";
 import { PaymentEvidencePickerModal } from "@/components/evidencias-pago/PaymentEvidencePickerModal";
 import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/context/AuthContext";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { formatMoney } from "@/lib/utils";
 
 const PAYMENT_TERMS = [
   { id: "1", name: "Efectivo" },
@@ -34,12 +32,14 @@ export default function NuevoAnticipoPage() {
   const [reference, setReference] = useState("");
   const [receivedAt, setReceivedAt] = useState(new Date().toISOString().split("T")[0]);
 
-  
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
   const [isPickerModalOpen, setIsPickerModalOpen] = useState(false);
   
+  const [clientEvidences, setClientEvidences] = useState<any[]>([]);
+  const [loadingEvidences, setLoadingEvidences] = useState(false);
+
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedPaymentTerm, setSelectedPaymentTerm] = useState("3");
@@ -51,7 +51,7 @@ export default function NuevoAnticipoPage() {
   const [unreconciledTransactions, setUnreconciledTransactions] = useState<any[]>([]);
   const [selectedTransactionId, setSelectedTransactionId] = useState<string>("manual");
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!companyId) return;
     const fetchAccounts = async () => {
       try {
@@ -67,8 +67,36 @@ export default function NuevoAnticipoPage() {
     fetchAccounts();
   }, [companyId]);
 
+  // Cargar evidencias disponibles cuando se selecciona un cliente
+  useEffect(() => {
+    if (!companyId || !selectedClient?.id) {
+      setClientEvidences([]);
+      setLoadingEvidences(false);
+      return;
+    }
+
+    setLoadingEvidences(true);
+    const qEv = firestoreQuery(
+      collection(db, "companies", companyId, "payment_evidences"),
+      where("status", "==", "available"),
+      where("clientId", "==", selectedClient.id)
+    );
+
+    const unsubscribe = onSnapshot(qEv, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
+      setClientEvidences(list);
+      setLoadingEvidences(false);
+    }, (err) => {
+      console.error("Error loading client evidences:", err);
+      setLoadingEvidences(false);
+    });
+
+    return () => unsubscribe();
+  }, [companyId, selectedClient?.id]);
+
   // Fetch unreconciled transactions when account changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (!companyId || !selectedAccountId) {
       setUnreconciledTransactions([]);
       return;
@@ -81,7 +109,6 @@ export default function NuevoAnticipoPage() {
 
     const unsubscribe = onSnapshot(q, (snap) => {
       const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      // Only positive amounts (inflows) and not reconciled
       const filtered = txs.filter(t => t.amount > 0 && !t.reconciled);
       setUnreconciledTransactions(filtered);
     }, (error) => {
@@ -92,7 +119,7 @@ export default function NuevoAnticipoPage() {
   }, [companyId, selectedAccountId]);
 
   // Auto-fill when a transaction is selected
-  React.useEffect(() => {
+  useEffect(() => {
     if (selectedTransactionId && selectedTransactionId !== "manual") {
       const matchedTx = unreconciledTransactions.find(t => t.id === selectedTransactionId);
       if (matchedTx) {
@@ -119,7 +146,6 @@ export default function NuevoAnticipoPage() {
         return nameVal.includes(searchTerm) || rfcVal.includes(searchTerm) || emailVal.includes(searchTerm);
       });
       
-      // Map to expected structure
       const mapped = results.map(c => {
         const nameVal = c.LegalName || c.CommercialName || c.ClientName || c.legalName || c.name || c.razonSocial || "Cliente sin nombre";
         const rfcVal = c.RFC || c.rfc || "";
@@ -143,7 +169,52 @@ export default function NuevoAnticipoPage() {
       const file = e.target.files[0];
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
+      setSelectedEvidence(null);
     }
+  };
+
+  const handleSelectEvidence = (ev: any) => {
+    setSelectedEvidence(ev);
+    setImagePreview(ev.imageUrl || null);
+    setImageFile(null);
+    if (ev.amount) {
+      setAmount(String(ev.amount));
+    }
+    if (ev.date) {
+      setReceivedAt(ev.date);
+    }
+    if (ev.notes) {
+      setReference(ev.notes);
+    }
+    if (!selectedClient && ev.clientId) {
+      setSelectedClient({
+        id: ev.clientId,
+        legalName: ev.clientName || "Cliente",
+        rfc: ""
+      });
+    }
+    setIsPickerModalOpen(false);
+  };
+
+  const handleClearEvidence = () => {
+    setSelectedEvidence(null);
+    setImagePreview(null);
+    setImageFile(null);
+  };
+
+  const handleCancel = () => {
+    try {
+      window.close();
+    } catch (e) {
+      // ignore
+    }
+    setTimeout(() => {
+      if (typeof window !== "undefined" && window.history.length > 1) {
+        router.back();
+      } else {
+        router.push("/anticipos");
+      }
+    }, 100);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -156,12 +227,14 @@ export default function NuevoAnticipoPage() {
     
     setIsSubmitting(true);
     try {
-      let imageUrl = "";
+      let finalImageUrl = "";
       
       if (imageFile) {
         const storageRef = ref(storage, `anticipos/${Date.now()}_${imageFile.name}`);
         const snapshot = await uploadBytes(storageRef, imageFile);
-        imageUrl = await getDownloadURL(snapshot.ref);
+        finalImageUrl = await getDownloadURL(snapshot.ref);
+      } else if (selectedEvidence?.imageUrl) {
+        finalImageUrl = selectedEvidence.imageUrl;
       }
 
       // 1. Obtener último Folio
@@ -213,10 +286,12 @@ export default function NuevoAnticipoPage() {
       const termName = PAYMENT_TERMS.find(p => p.id === selectedPaymentTerm)?.name || "Efectivo";
 
       // 3. Guardar Anticipo en Firestore
-      await addDoc(collection(db, "companies", companyId, "anticipos"), {
+      const anticipoData: any = {
         folio: nextFolio,
         clientId: selectedClient.id,
         clientName: selectedClient.legalName,
+        locationId: selectedEvidence?.locationId || "",
+        locationName: selectedEvidence?.locationName || "",
         amount: finalAmount,
         balance: finalAmount,
         reference,
@@ -225,12 +300,30 @@ export default function NuevoAnticipoPage() {
         bankTransactionId: finalBankTransactionId || null,
         paymentTermId: parseInt(selectedPaymentTerm),
         paymentTermName: termName,
-        imageUrl,
+        imageUrl: finalImageUrl,
+        paymentEvidenceId: selectedEvidence ? selectedEvidence.id : null,
         receivedAt,
         createdBy: user?.email,
         createdAt: serverTimestamp(),
         status: "pending" // pending -> partially_applied -> applied
-      });
+      };
+
+      const anticipoRef = await addDoc(collection(db, "companies", companyId, "anticipos"), anticipoData);
+
+      // 4. Si proviene de una evidencia de pago, vincularla
+      if (selectedEvidence) {
+        await updateDoc(doc(db, "companies", companyId, "payment_evidences", selectedEvidence.id), {
+          status: "linked",
+          amount: finalAmount,
+          linkedTo: {
+            anticipoId: anticipoRef.id,
+            anticipoFolio: nextFolio,
+            linkedAt: new Date().toISOString(),
+            linkedBy: user?.email || "Usuario"
+          },
+          updatedAt: serverTimestamp()
+        });
+      }
 
       router.push("/anticipos");
 
@@ -247,7 +340,7 @@ export default function NuevoAnticipoPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Nuevo Anticipo</h1>
         <p className="text-muted-foreground">
-          Captura un nuevo anticipo y sube evidencia o toma una foto.
+          Captura un nuevo anticipo y sube evidencia o selecciona un comprobante existente.
         </p>
       </div>
 
@@ -259,7 +352,17 @@ export default function NuevoAnticipoPage() {
           {selectedClient ? (
             <div className="flex items-center justify-between p-3 border rounded-md bg-muted/30">
               <span className="font-medium text-primary">{selectedClient.legalName}</span>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedClient(null)}>
+              <Button 
+                type="button" 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => { 
+                  setSelectedClient(null); 
+                  setSelectedEvidence(null); 
+                  setImagePreview(null); 
+                  setImageFile(null); 
+                }}
+              >
                 Cambiar
               </Button>
             </div>
@@ -281,11 +384,119 @@ export default function NuevoAnticipoPage() {
                     <div 
                       key={c.id} 
                       className="p-3 hover:bg-muted cursor-pointer text-sm"
-                      onClick={() => setSelectedClient(c)}
+                      onClick={() => {
+                        setSelectedClient(c);
+                        setClients([]);
+                        setQuery("");
+                      }}
                     >
                       {c.legalName}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Panel de Evidencias Disponibles del Cliente */}
+          {selectedClient && (
+            <div className="mt-3 p-4 border rounded-xl bg-slate-50/70 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Camera className="w-4 h-4 text-indigo-600" />
+                  <span className="text-sm font-semibold text-slate-800">
+                    Evidencias Disponibles
+                  </span>
+                  {clientEvidences.length > 0 && (
+                    <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-bold">
+                      {clientEvidences.length} {clientEvidences.length === 1 ? "disponible" : "disponibles"}
+                    </span>
+                  )}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPickerModalOpen(true)}
+                  className="text-xs h-7 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                >
+                  Ver todas
+                </Button>
+              </div>
+
+              {loadingEvidences ? (
+                <div className="p-3 bg-white border rounded-lg flex items-center justify-center gap-2 text-xs text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                  Buscando evidencias disponibles del cliente...
+                </div>
+              ) : clientEvidences.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    Selecciona una evidencia para precargar automáticamente monto, fecha, comprobante y referencia:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {clientEvidences.map((ev) => {
+                      const isSelected = selectedEvidence?.id === ev.id;
+                      return (
+                        <div
+                          key={ev.id}
+                          onClick={() => handleSelectEvidence(ev)}
+                          className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
+                            isSelected
+                              ? "bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200 shadow-sm"
+                              : "bg-white hover:bg-slate-50 border-slate-200 hover:border-indigo-300"
+                          }`}
+                        >
+                          <div className="w-14 h-14 rounded-lg overflow-hidden bg-slate-900 shrink-0 border border-slate-200">
+                            <img
+                              src={ev.imageUrl}
+                              alt="Comprobante"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0 text-xs space-y-0.5">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-bold text-slate-800">
+                                {ev.amount ? formatMoney(ev.amount) : "Sin monto"}
+                              </span>
+                              {isSelected && (
+                                <span className="bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-1">
+                                  <Check className="w-3 h-3" /> Usando
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-slate-500 text-[11px] flex items-center gap-1 truncate">
+                              <Building2 className="w-3 h-3 shrink-0 text-slate-400" />
+                              <span className="truncate">{ev.locationName || "Sucursal"}</span>
+                            </p>
+                            <p className="text-slate-500 text-[11px] flex items-center gap-1">
+                              <Calendar className="w-3 h-3 shrink-0 text-slate-400" />
+                              <span>{ev.date || "Sin fecha"}</span>
+                            </p>
+                            {ev.notes && (
+                              <p className="text-slate-600 text-[11px] truncate italic" title={ev.notes}>
+                                &quot;{ev.notes}&quot;
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-white border border-dashed rounded-lg text-xs text-slate-500 flex items-center justify-between">
+                  <span>No hay evidencias pendientes registradas para este cliente.</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsPickerModalOpen(true)}
+                    className="text-xs h-6 text-indigo-600 hover:text-indigo-700 p-0"
+                  >
+                    Buscar otra
+                  </Button>
                 </div>
               )}
             </div>
@@ -353,7 +564,7 @@ export default function NuevoAnticipoPage() {
                 value={selectedAccountId}
                 onChange={e => {
                   setSelectedAccountId(e.target.value);
-                  setSelectedTransactionId("manual"); // Reset transaction when account changes
+                  setSelectedTransactionId("manual");
                 }}
               >
                 <option value="" disabled>Seleccione una cuenta...</option>
@@ -411,19 +622,44 @@ export default function NuevoAnticipoPage() {
 
         {/* Evidencia: Foto/Cámara */}
         <div className="space-y-3">
-          <label className="text-sm font-medium">4. Evidencia del Anticipo</label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">4. Evidencia del Anticipo</label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsPickerModalOpen(true)}
+              className="text-xs h-8 text-indigo-600 border-indigo-200 hover:bg-indigo-50 flex items-center gap-1.5"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              Elegir de Evidencias
+            </Button>
+          </div>
           
           <div className="flex flex-col gap-4">
             {imagePreview && (
-              <div className="relative w-full h-48 rounded-md overflow-hidden border">
+              <div className="relative w-full h-56 rounded-xl overflow-hidden border bg-slate-900 flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imagePreview} alt="Evidencia" className="object-cover w-full h-full" />
+                <img src={imagePreview} alt="Evidencia" className="object-contain w-full h-full" />
+                
+                <div className="absolute top-2 left-2">
+                  {selectedEvidence ? (
+                    <span className="bg-indigo-600 text-white text-xs px-2.5 py-1 rounded-full font-medium shadow flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Evidencia vinculada
+                    </span>
+                  ) : (
+                    <span className="bg-slate-800/80 text-white text-xs px-2.5 py-1 rounded-full font-medium shadow">
+                      Imagen cargada
+                    </span>
+                  )}
+                </div>
+
                 <Button 
                   type="button"
                   variant="destructive" 
                   size="sm" 
-                  onClick={() => { setImageFile(null); setImagePreview(null); setSelectedEvidence(null); }}
-                  className="absolute top-2 right-2"
+                  onClick={handleClearEvidence}
+                  className="absolute top-2 right-2 shadow"
                 >
                   Quitar
                 </Button>
@@ -460,7 +696,7 @@ export default function NuevoAnticipoPage() {
         </div>
 
         <div className="pt-4 flex justify-end gap-4 border-t">
-          <Button type="button" variant="ghost" onClick={() => router.back()} disabled={isSubmitting}>
+          <Button type="button" variant="ghost" onClick={handleCancel} disabled={isSubmitting}>
             Cancelar
           </Button>
           <Button type="submit" disabled={!selectedClient || !amount || isSubmitting}>
@@ -469,6 +705,14 @@ export default function NuevoAnticipoPage() {
           </Button>
         </div>
       </form>
+
+      {/* Modal de Selección de Evidencias */}
+      <PaymentEvidencePickerModal
+        isOpen={isPickerModalOpen}
+        onClose={() => setIsPickerModalOpen(false)}
+        clientId={selectedClient?.id}
+        onSelectEvidence={handleSelectEvidence}
+      />
     </div>
   );
 }

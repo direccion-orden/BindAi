@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, FileText, X, Trash2, Save } from "lucide-react";
-import { doc, updateDoc, deleteDoc, collection, query as firestoreQuery, orderBy, onSnapshot, increment, addDoc, getDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, collection, query as firestoreQuery, orderBy, onSnapshot, increment, addDoc, getDoc, where, getDocs, serverTimestamp } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
 import { getLocalDateString } from "@/lib/utils";
@@ -234,8 +234,41 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
         }
       }
 
-      // 2. Borrar imagen de storage si existe
-      if (anticipo.imageUrl) {
+      // 2. Desvincular y liberar evidencia de pago si existe (sin borrar la imagen de Storage)
+      const evidenceIdToRelease = anticipo.paymentEvidenceId || currentEvidenceId;
+      if (evidenceIdToRelease) {
+        try {
+          await updateDoc(doc(db, "companies", companyId, "payment_evidences", evidenceIdToRelease), {
+            status: "available",
+            linkedTo: null,
+            updatedAt: serverTimestamp()
+          });
+        } catch (evErr) {
+          console.error("Error liberando evidencia de pago:", evErr);
+        }
+      } else {
+        // Respaldo: buscar si alguna evidencia quedó vinculada por anticipoId
+        try {
+          const evQuery = firestoreQuery(
+            collection(db, "companies", companyId, "payment_evidences"),
+            where("linkedTo.anticipoId", "==", anticipo.id)
+          );
+          const evSnap = await getDocs(evQuery);
+          for (const evDoc of evSnap.docs) {
+            await updateDoc(doc(db, "companies", companyId, "payment_evidences", evDoc.id), {
+              status: "available",
+              linkedTo: null,
+              updatedAt: serverTimestamp()
+            });
+          }
+        } catch (fallbackErr) {
+          console.warn("Error en respaldo buscando evidencia vinculada:", fallbackErr);
+        }
+      }
+
+      // 3. Borrar imagen de Storage ÚNICAMENTE SI NO proviene del módulo de evidencias de pago
+      const isEvidenceImage = Boolean(evidenceIdToRelease) || (anticipo.imageUrl && anticipo.imageUrl.includes("payment_evidences"));
+      if (anticipo.imageUrl && !isEvidenceImage) {
         try {
           const imgRef = storageRef(storage, anticipo.imageUrl);
           await deleteObject(imgRef);
@@ -244,7 +277,7 @@ export function DetalleAnticipoModal({ anticipo, isOpen, onOpenChange }: Detalle
         }
       }
 
-      // 3. Borrar el documento del anticipo
+      // 4. Borrar el documento del anticipo
       await deleteDoc(doc(db, "companies", companyId, "anticipos", anticipo.id));
       onOpenChange(false);
     } catch (err) {
